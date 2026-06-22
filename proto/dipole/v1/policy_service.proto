@@ -1,0 +1,181 @@
+syntax = "proto3";
+package dipole.v1;
+option go_package = "github.com/dipolehq/dipole/gen/dipole/v1;dipolev1";
+
+service PolicyEvaluationService {
+  rpc Evaluate(PolicyEvaluationRequest) returns (PolicyEvaluationResponse);
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc ReportHealth(HealthReport) returns (HealthAck);
+  rpc IngestEvents(stream WorkloadEventBatch) returns (EventAck);
+}
+
+// --- Policy Evaluation ---
+
+message PolicyEvaluationRequest {
+  string proxy_id = 1;
+  string tenant_id = 2;
+  string resource_set_id = 3;
+  ClientEvidence client = 4;
+  ServerTarget server = 5;
+}
+
+message PolicyEvaluationResponse {
+  bool allowed = 1;
+  string deny_reason = 2;
+  Credential credential = 3;
+  InjectionConfig injection = 4;
+  string policy_id = 5;
+  string client_workload_id = 6;
+  string server_workload_id = 7;
+  repeated TrustProviderResult trust_results = 8;
+}
+
+// --- Client Evidence ---
+
+message ClientEvidence {
+  string source_ip = 1;
+  string hostname = 2;
+  K8sEvidence k8s = 3;
+  AwsEvidence aws = 4;
+  AzureEvidence azure = 5;
+  GcpEvidence gcp = 6;
+  IdentityTokenEvidence github = 7;
+  IdentityTokenEvidence gitlab = 8;
+  IdentityTokenEvidence terraform = 9;
+  ProcessEvidence process = 10;
+  map<string, string> environment = 11;
+  string aembit_client_id = 12;
+  string redirect_uri = 13;
+}
+
+message K8sEvidence {
+  string service_account_token = 1;
+  string namespace = 2;
+  string pod_name = 3;
+  string service_account_name = 4;
+  string service_account_uid = 5;
+}
+
+message AwsEvidence {
+  string instance_identity_document = 1;
+  string instance_identity_signature = 2;
+  StsGetCallerIdentity sts_get_caller_identity = 3;
+}
+
+message StsGetCallerIdentity {
+  map<string, string> signed_headers = 1;
+  string region = 2;
+}
+
+message AzureEvidence {
+  string encoding = 1;
+  string signature = 2;
+  string nonce = 3;
+}
+
+message GcpEvidence {
+  string identity_token = 1;
+}
+
+message IdentityTokenEvidence {
+  string identity_token = 1;
+}
+
+message ProcessEvidence {
+  string name = 1;
+  string path = 2;
+  string command_line = 3;
+  string user_name = 4;
+}
+
+// --- Server Target ---
+
+message ServerTarget {
+  string host = 1;
+  int32 port = 2;
+}
+
+// --- Credential & Injection ---
+
+message Credential {
+  string type = 1;
+  string value = 2;
+  string username = 3;
+  string password = 4;
+  string aws_access_key_id = 5;
+  string aws_secret_access_key = 6;
+  string aws_session_token = 7;
+  int64 expires_at = 8;
+}
+
+message InjectionConfig {
+  string method = 1;
+  string header_name = 2;
+  string prefix = 3;
+  string query_param = 4;
+  string scheme = 5;
+}
+
+message TrustProviderResult {
+  string provider_id = 1;
+  string provider_name = 2;
+  bool attested = 3;
+  string reason = 4;
+  string attribute = 5;
+  string expected_value = 6;
+  string actual_value = 7;
+}
+
+// --- Registration ---
+
+message RegisterRequest {
+  string tenant_id = 1;
+  string registration_token = 2;
+  string proxy_version = 3;
+}
+
+message RegisterResponse {
+  string proxy_id = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+// --- Health ---
+
+message HealthReport {
+  string component_id = 1;
+  string tenant_id = 2;
+  string status = 3;
+  string version = 4;
+  int64 timestamp = 5;
+  int32 active_connections = 6;
+}
+
+message HealthAck {
+  bool acknowledged = 1;
+}
+
+// --- Events ---
+
+message WorkloadEventBatch {
+  string tenant_id = 1;
+  repeated WorkloadEvent events = 2;
+}
+
+message WorkloadEvent {
+  string event_id = 1;
+  string connection_id = 2;
+  string event_type = 3;
+  string policy_id = 4;
+  string client_workload_id = 5;
+  string server_workload_id = 6;
+  string outcome = 7;
+  string severity = 8;
+  string resource_set_id = 9;
+  int64 timestamp = 10;
+  bytes payload = 11;
+}
+
+message EventAck {
+  int32 accepted = 1;
+}
