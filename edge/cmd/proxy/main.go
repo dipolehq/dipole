@@ -7,11 +7,15 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
+
 	"github.com/dipolehq/dipole/edge/internal/config"
+	"github.com/dipolehq/dipole/edge/internal/proxy"
 )
 
 func main() {
@@ -31,10 +35,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	waitForShutdown(ctx, cancel, cfg, logger)
+	handler := func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
+		// Placeholder: will be replaced by TLS MITM engine in Task 6
+		logger.Info("connection received", "host", targetHost, "port", targetPort, "connection_id", connID)
+		clientConn.Close()
+	}
+
+	listener := proxy.NewExplicitListener(cfg, logger, handler)
+
+	go func() {
+		if err := listener.Start(ctx); err != nil {
+			logger.Error("listener failed", "error", err)
+			cancel()
+		}
+	}()
+
+	waitForShutdown(cancel, cfg, logger, listener)
 }
 
-func waitForShutdown(_ context.Context, cancel context.CancelFunc, cfg *config.ProxyConfig, logger *slog.Logger) {
+func waitForShutdown(cancel context.CancelFunc, cfg *config.ProxyConfig, logger *slog.Logger, listener *proxy.ExplicitListener) {
 	sigCh := make(chan os.Signal, 1)
 
 	if cfg.SIGTERMStrategy == "sigkill" {
@@ -48,6 +67,7 @@ func waitForShutdown(_ context.Context, cancel context.CancelFunc, cfg *config.P
 	sig := <-sigCh
 	logger.Info("received signal, shutting down", "signal", sig.String())
 	cancel()
+	listener.Shutdown()
 }
 
 func newLogger(level string) *slog.Logger {
