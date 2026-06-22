@@ -4,11 +4,31 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type Pool interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 type Repositories struct {
-	pool *pgxpool.Pool
+	pool                Pool
+	Tenants             *TenantRepo
+	ClientWorkloads     *ClientWorkloadRepo
+	ServerWorkloads     *ServerWorkloadRepo
+	TrustProviders      *TrustProviderRepo
+	CredentialProviders *CredentialProviderRepo
+	AccessConditions    *AccessConditionRepo
+	AccessPolicies      *AccessPolicyRepo
+	AgentControllers    *AgentControllerRepo
+	Events              *EventRepo
+	ResourceSets        *ResourceSetRepo
+	Users               *UserRepo
+	Roles               *RoleRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -31,9 +51,25 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func NewRepositories(pool *pgxpool.Pool) *Repositories {
-	return &Repositories{pool: pool}
+	return &Repositories{
+		pool:                pool,
+		Tenants:             &TenantRepo{pool: pool},
+		ClientWorkloads:     &ClientWorkloadRepo{pool: pool},
+		ServerWorkloads:     &ServerWorkloadRepo{pool: pool},
+		TrustProviders:      &TrustProviderRepo{pool: pool},
+		CredentialProviders: &CredentialProviderRepo{pool: pool},
+		AccessConditions:    &AccessConditionRepo{pool: pool},
+		AccessPolicies:      &AccessPolicyRepo{pool: pool},
+		AgentControllers:    &AgentControllerRepo{pool: pool},
+		Events:              &EventRepo{pool: pool},
+		ResourceSets:        &ResourceSetRepo{pool: pool},
+		Users:               &UserRepo{pool: pool},
+		Roles:               &RoleRepo{pool: pool},
+	}
 }
 
 func (r *Repositories) Close() {
-	r.pool.Close()
+	if p, ok := r.pool.(*pgxpool.Pool); ok {
+		p.Close()
+	}
 }
