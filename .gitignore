@@ -1,0 +1,47 @@
+# IDE and editor
+.kiro/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+bin/
+vendor/
+*.exe
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Build artifacts
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node (web/)
+node_modules/
+web/dist/
+
+# Protobuf generated code (regenerated via buf generate)
+gen/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Docker
+docker-compose.override.yml
+
+# Test
+*.coverprofile
