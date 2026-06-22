@@ -1,0 +1,2 @@
+ALTER TABLE credential_providers DROP CONSTRAINT IF EXISTS fk_credential_providers_integration;
+DROP TABLE IF EXISTS credential_provider_integrations;
