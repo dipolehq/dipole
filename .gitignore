@@ -17,6 +17,12 @@ vendor/
 *.out
 coverage.txt
 coverage.html
+edge/proxy
+edge/controller
+edge/injector
+edge/cli
+edge/init
+cloud/server
 
 # Build artifacts
 dist/
