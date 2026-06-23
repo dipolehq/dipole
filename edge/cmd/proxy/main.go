@@ -1,25 +1,25 @@
 /*
-Agent Proxy entry point. Initializes the TLS MITM pipeline (CA → cache → engine),
-starts the explicit proxy listener, and handles graceful shutdown.
+Agent Proxy entry point. Initializes the TLS MITM pipeline, protocol detection,
+credential injection, metrics server, and both explicit + transparent listeners.
 */
 package main
 
 import (
 	"bufio"
 	"context"
-	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/edge/internal/config"
+	"github.com/dipolehq/dipole/edge/internal/injection"
+	"github.com/dipolehq/dipole/edge/internal/metrics"
+	"github.com/dipolehq/dipole/edge/internal/protocols"
 	"github.com/dipolehq/dipole/edge/internal/proxy"
 	dipoletls "github.com/dipolehq/dipole/edge/internal/tls"
 )
@@ -47,35 +47,64 @@ func main() {
 
 	cache := dipoletls.NewCertCache(ca)
 	engine := dipoletls.NewMITMEngine(cache)
+	httpHandler := &protocols.HTTPHandler{Logger: logger}
 
-	handler := newConnectionHandler(engine, logger)
-	listener := proxy.NewExplicitListener(cfg, logger, handler)
+	handler := newConnectionHandler(engine, httpHandler, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Start metrics server
 	go func() {
-		if err := listener.Start(ctx); err != nil {
-			logger.Error("listener failed", "error", err)
+		if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
+			logger.Warn("metrics server failed", "error", err)
+		}
+	}()
+
+	// Start explicit listener
+	explicitListener := proxy.NewExplicitListener(cfg, logger, handler)
+	go func() {
+		if err := explicitListener.Start(ctx); err != nil {
+			logger.Error("explicit listener failed", "error", err)
 			cancel()
 		}
 	}()
 
-	waitForShutdown(cancel, cfg, logger, listener)
+	// Start transparent listener
+	transparentListener := proxy.NewTransparentListener(cfg, logger, handler)
+	go func() {
+		if err := transparentListener.Start(ctx); err != nil {
+			logger.Warn("transparent listener failed (expected on non-Linux)", "error", err)
+		}
+	}()
+
+	waitForShutdown(cancel, cfg, logger, explicitListener)
 }
 
-func newConnectionHandler(engine *dipoletls.MITMEngine, logger *slog.Logger) proxy.ConnectionHandler {
+func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
-		if targetPort == 443 || targetPort == 8443 {
-			handleTLS(engine, clientConn, targetHost, targetPort, connID, logger)
-		} else {
-			handlePassthrough(clientConn, targetHost, targetPort, connID, logger)
+		proto, reader := protocols.Detect(targetHost, targetPort, clientConn)
+		logger.Info("protocol detected", "protocol", proto.String(), "host", targetHost, "port", targetPort, "connection_id", connID)
+		metrics.ConnectionsActive.WithLabelValues(proto.String()).Inc()
+		defer metrics.ConnectionsActive.WithLabelValues(proto.String()).Dec()
+
+		switch proto {
+		case protocols.ProtoHTTPS, protocols.ProtoSnowflake:
+			handleHTTPS(engine, httpHandler, clientConn, reader, targetHost, targetPort, connID, logger)
+		case protocols.ProtoHTTP, protocols.ProtoMCP:
+			handleHTTP(httpHandler, clientConn, reader, targetHost, targetPort, connID, logger)
+		default:
+			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
+
+		metrics.ConnectionsTotal.WithLabelValues(proto.String(), "forwarded").Inc()
 	}
 }
 
-func handleTLS(engine *dipoletls.MITMEngine, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
-	clientPlain, serverConn, err := engine.Decrypt(clientConn, targetHost, targetPort)
+func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
+	// Wrap conn with buffered reader so peeked bytes from Detect are available to TLS handshake
+	bufferedConn := newBufferedConn(reader, clientConn)
+	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
 		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
 		return
@@ -83,68 +112,31 @@ func handleTLS(engine *dipoletls.MITMEngine, clientConn net.Conn, targetHost str
 	defer clientPlain.Close()
 	defer serverConn.Close()
 
+	cred, config := getTestCredential(targetHost)
 	clientReader := bufio.NewReader(clientPlain)
-	serverReader := bufio.NewReader(serverConn)
-
-	for {
-		req, err := http.ReadRequest(clientReader)
-		if err != nil {
-			if err != io.EOF {
-				logger.Debug("read request failed", "host", targetHost, "error", err, "connection_id", connID)
-			}
-			return
-		}
-
-		req.URL.Host = targetHost
-		req.URL.Scheme = "https"
-
-		logger.Info("request",
-			"method", req.Method,
-			"host", targetHost,
-			"path", req.URL.Path,
-			"connection_id", connID,
-		)
-
-		if err := req.Write(serverConn); err != nil {
-			logger.Debug("write to server failed", "error", err, "connection_id", connID)
-			return
-		}
-
-		resp, err := http.ReadResponse(serverReader, req)
-		if err != nil {
-			logger.Debug("read response failed", "error", err, "connection_id", connID)
-			return
-		}
-
-		if err := resp.Write(clientPlain); err != nil {
-			resp.Body.Close()
-			return
-		}
-		resp.Body.Close()
-
-		if req.Close || resp.Close || strings.EqualFold(req.Header.Get("Connection"), "close") {
-			return
-		}
-	}
+	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, config, connID)
 }
 
-func handlePassthrough(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
+func handleHTTP(httpHandler *protocols.HTTPHandler, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
 	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
 	if err != nil {
-		logger.Error("passthrough dial failed", "host", targetHost, "error", err, "connection_id", connID)
+		logger.Error("HTTP dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
 		clientConn.Close()
 		return
 	}
+	defer clientConn.Close()
+	defer serverConn.Close()
 
-	logger.Info("passthrough", "host", targetHost, "port", targetPort, "connection_id", connID)
+	cred, config := getTestCredential(targetHost)
+	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, config, connID)
+}
 
-	done := make(chan struct{}, 2)
-	go func() { io.Copy(serverConn, clientConn); done <- struct{}{} }()
-	go func() { io.Copy(clientConn, serverConn); done <- struct{}{} }()
-	<-done
-
-	clientConn.Close()
-	serverConn.Close()
+func getTestCredential(targetHost string) (*injection.Credential, *injection.InjectionConfig) {
+	if targetHost == "httpbin.org" {
+		return &injection.Credential{Type: "bearer", Value: "test-hardcoded-12345"},
+			&injection.InjectionConfig{Method: "http_bearer"}
+	}
+	return nil, nil
 }
 
 func waitForShutdown(cancel context.CancelFunc, cfg *config.ProxyConfig, logger *slog.Logger, listener *proxy.ExplicitListener) {
@@ -178,4 +170,19 @@ func newLogger(level string) *slog.Logger {
 	}
 
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+}
+
+// bufferedConn wraps a bufio.Reader + net.Conn so that buffered (peeked)
+// bytes are read first, then subsequent reads go to the underlying conn.
+type bufferedConn struct {
+	r *bufio.Reader
+	net.Conn
+}
+
+func newBufferedConn(r *bufio.Reader, conn net.Conn) *bufferedConn {
+	return &bufferedConn{r: r, Conn: conn}
+}
+
+func (bc *bufferedConn) Read(b []byte) (int, error) {
+	return bc.r.Read(b)
 }
