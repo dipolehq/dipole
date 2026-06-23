@@ -94,7 +94,9 @@ func (l *ExplicitListener) Start(ctx context.Context) error {
 func (l *ExplicitListener) Shutdown() {
 	l.shutdownOnce.Do(func() {
 		close(l.shutdownCh)
-		l.listener.Close()
+		if l.listener != nil {
+			l.listener.Close()
+		}
 
 		done := make(chan struct{})
 		go func() {
