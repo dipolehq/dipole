@@ -84,6 +84,7 @@ func handleTLS(engine *dipoletls.MITMEngine, clientConn net.Conn, targetHost str
 	defer serverConn.Close()
 
 	clientReader := bufio.NewReader(clientPlain)
+	serverReader := bufio.NewReader(serverConn)
 
 	for {
 		req, err := http.ReadRequest(clientReader)
@@ -109,7 +110,7 @@ func handleTLS(engine *dipoletls.MITMEngine, clientConn net.Conn, targetHost str
 			return
 		}
 
-		resp, err := http.ReadResponse(bufio.NewReader(serverConn), req)
+		resp, err := http.ReadResponse(serverReader, req)
 		if err != nil {
 			logger.Debug("read response failed", "error", err, "connection_id", connID)
 			return
