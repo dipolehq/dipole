@@ -1,9 +1,9 @@
 /*
 kerberos_validator.go verifies Kerberos-attested workload identity.
 
-In Aembit's model, the Agent Controller performs Kerberos authentication
-(it holds the keytab) and signs the attested identity. Cloud validates the
-Controller's attestation rather than raw Kerberos tickets directly.
+The Agent Controller performs Kerberos authentication (it holds the keytab)
+and signs the attested identity. Cloud validates the Controller's attestation
+rather than raw Kerberos tickets directly.
 
 KerberosValidator checks that Kerberos evidence contains a principal and
 realm, then evaluates match rules against these fields. Only enabled when

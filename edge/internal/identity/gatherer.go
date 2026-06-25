@@ -39,7 +39,7 @@ func (g *EvidenceGatherer) Gather(sourceIP string) *pb.ClientEvidence {
 	ev := &pb.ClientEvidence{
 		SourceIp:       sourceIP,
 		Hostname:       hostname(),
-		AembitClientId: os.Getenv("CLIENT_WORKLOAD_ID"),
+		DipoleClientId: os.Getenv("CLIENT_WORKLOAD_ID"),
 		Environment:    gatherEnv(),
 	}
 

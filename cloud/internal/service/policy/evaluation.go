@@ -151,8 +151,8 @@ func matchIdentifier(id domain.Identifier, ev *domain.ClientEvidence) bool {
 		return id.Value == ev.Hostname
 	case "source_ip":
 		return id.Value == ev.SourceIP
-	case "aembit_client_id":
-		return id.Value == ev.AembitClientID
+	case "dipole_client_id":
+		return id.Value == ev.DipoleClientID
 	case "process_name":
 		return ev.Process != nil && id.Value == ev.Process.Name
 	case "process_path":

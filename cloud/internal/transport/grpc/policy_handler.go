@@ -81,7 +81,7 @@ func mapEvidence(c *pb.ClientEvidence) *domain.ClientEvidence {
 	ev := &domain.ClientEvidence{
 		SourceIP:       c.SourceIp,
 		Hostname:       c.Hostname,
-		AembitClientID: c.AembitClientId,
+		DipoleClientID: c.DipoleClientId,
 		RedirectURI:    c.RedirectUri,
 	}
 

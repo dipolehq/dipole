@@ -36,7 +36,7 @@ const (
 
 	CredentialProviderTypeAPIKey                 = "api_key"
 	CredentialProviderTypeUsernamePassword       = "username_password"
-	CredentialProviderTypeAembitAccessToken      = "aembit_access_token"
+	CredentialProviderTypeDipoleAccessToken      = "dipole_access_token"
 	CredentialProviderTypeOIDCIDToken            = "oidc_id_token"
 	CredentialProviderTypeJWT                    = "json_web_token"
 	CredentialProviderTypeJWTSVID                = "jwt_svid"
@@ -89,7 +89,7 @@ const (
 	IdentifierTypeProcessCommandLine         = "process_command_line"
 	IdentifierTypeProcessUserName            = "process_user_name"
 	IdentifierTypeRedirectURI                = "redirect_uri"
-	IdentifierTypeAembitClientID             = "aembit_client_id"
+	IdentifierTypeDipoleClientID             = "dipole_client_id"
 
 	AgentStatusUnregistered = "Unregistered"
 	AgentStatusRegistered   = "Registered"

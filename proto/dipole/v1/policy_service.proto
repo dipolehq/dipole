@@ -44,7 +44,7 @@ message ClientEvidence {
   IdentityTokenEvidence terraform = 9;
   ProcessEvidence process = 10;
   map<string, string> environment = 11;
-  string aembit_client_id = 12;
+  string dipole_client_id = 12;
   string redirect_uri = 13;
 }
 

@@ -12,7 +12,7 @@ type ClientEvidence struct {
 	Terraform      *IdentityTokenEvidence
 	Process        *ProcessEvidence
 	Environment    map[string]string
-	AembitClientID string
+	DipoleClientID string
 	RedirectURI    string
 }
 

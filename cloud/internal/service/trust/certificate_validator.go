@@ -2,8 +2,8 @@
 certificate_validator.go verifies Certificate Signed Attestation documents.
 
 CertificateValidator verifies that a signed attestation document was signed
-by a certificate that chains to a configured trust anchor. Per Aembit's docs,
-this Trust Provider validates ONLY the cryptographic signature — confirming
+by a certificate that chains to a configured trust anchor. This Trust Provider
+validates ONLY the cryptographic signature — confirming
 that a trusted certificate signed the attestation document. Match rules on
 subject fields are also supported for additional filtering.
 */
