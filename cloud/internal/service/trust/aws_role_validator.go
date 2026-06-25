@@ -24,11 +24,13 @@ import (
 
 type AWSRoleValidator struct {
 	httpClient *http.Client
+	stsURLFmt  string // format string for STS URL, default "https://sts.%s.amazonaws.com/"
 }
 
 func NewAWSRoleValidator() *AWSRoleValidator {
 	return &AWSRoleValidator{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
+		stsURLFmt:  "https://sts.%s.amazonaws.com/",
 	}
 }
 
@@ -96,7 +98,7 @@ type getCallerIdentityResult struct {
 }
 
 func (v *AWSRoleValidator) replaySTS(ctx context.Context, signedHeaders map[string]string, region string) (*stsIdentity, error) {
-	url := fmt.Sprintf("https://sts.%s.amazonaws.com/", region)
+	url := fmt.Sprintf(v.stsURLFmt, region)
 	body := "Action=GetCallerIdentity&Version=2011-06-15"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))

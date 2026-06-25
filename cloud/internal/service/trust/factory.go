@@ -15,6 +15,13 @@ func NewConfiguredService(logger *slog.Logger) *TrustValidationService {
 	svc.RegisterValidator("gitlab_job", &OIDCValidator{})
 	svc.RegisterValidator("terraform_cloud", &OIDCValidator{})
 	svc.RegisterValidator("oidc_id_token", &OIDCValidator{})
+	svc.RegisterValidator("aws_metadata_service", &AWSIMDSValidator{})
+	svc.RegisterValidator("aws_role", NewAWSRoleValidator())
+	svc.RegisterValidator("azure_metadata", &AzureValidator{})
+	svc.RegisterValidator("gcp_identity_token", &GCPValidator{})
+	svc.RegisterValidator("kerberos", &KerberosValidator{})
+	svc.RegisterValidator("certificate_signed_attestation", &CertificateValidator{})
+	svc.RegisterValidator("samlv2_response", NewSAMLValidator())
 
 	return svc
 }
