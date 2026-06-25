@@ -16,6 +16,7 @@ import (
 type ProxyConfig struct {
 	TenantID                      string
 	AgentController               string
+	CloudEndpoint                 string
 	HTTPServerPort                int
 	MetricsPort                   int
 	HTTPIdleTimeoutSecs           int
@@ -34,6 +35,7 @@ func LoadFromEnv() (*ProxyConfig, error) {
 	cfg := &ProxyConfig{
 		TenantID:                      os.Getenv("DIPOLE_TENANT_ID"),
 		AgentController:               os.Getenv("DIPOLE_AGENT_CONTROLLER"),
+		CloudEndpoint:                 envStr("DIPOLE_CLOUD_GRPC_ENDPOINT", ""),
 		HTTPServerPort:                envInt("DIPOLE_HTTP_SERVER_PORT", 8000),
 		MetricsPort:                   envInt("DIPOLE_METRICS_PORT", 9099),
 		HTTPIdleTimeoutSecs:           envInt("DIPOLE_HTTP_IDLE_TIMEOUT_SECS", 3600),
