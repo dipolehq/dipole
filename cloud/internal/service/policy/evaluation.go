@@ -56,6 +56,8 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		return &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}, nil
 	}
 
+	var lastTrustResults []domain.TrustProviderResult
+
 	for _, p := range policies {
 		if !matchAllIdentifiers(p.ClientWorkload.Identifiers, evidence) {
 			continue
@@ -63,18 +65,21 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 
 		// Trust verification (AND logic — all must attest)
 		trustFailed := false
+		var trustResults []domain.TrustProviderResult
 		for _, tp := range p.TrustProviders {
 			tp := tp
 			result, err := s.trust.Validate(ctx, &tp, evidence)
 			if err != nil {
 				return nil, err
 			}
+			trustResults = append(trustResults, *result)
 			if !result.Attested {
 				trustFailed = true
 				break
 			}
 		}
 		if trustFailed {
+			lastTrustResults = trustResults
 			continue
 		}
 
@@ -108,6 +113,10 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 			ClientWorkloadID: p.ClientWorkload.ID,
 			ServerWorkloadID: p.ServerWorkload.ID,
 		}, nil
+	}
+
+	if len(lastTrustResults) > 0 {
+		return &domain.EvaluationResult{Allowed: false, DenyReason: "AttestationFailed", TrustResults: lastTrustResults}, nil
 	}
 
 	return &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}, nil

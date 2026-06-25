@@ -177,5 +177,17 @@ func mapResponse(r *domain.EvaluationResult) *pb.PolicyEvaluationResponse {
 		resp.ServerWorkloadId = r.ServerWorkloadID.String()
 	}
 
+	for _, tr := range r.TrustResults {
+		resp.TrustResults = append(resp.TrustResults, &pb.TrustProviderResult{
+			ProviderId:    tr.ProviderID.String(),
+			ProviderName:  tr.ProviderName,
+			Attested:      tr.Attested,
+			Reason:        tr.Reason,
+			Attribute:     tr.Attribute,
+			ExpectedValue: tr.ExpectedValue,
+			ActualValue:   tr.ActualValue,
+		})
+	}
+
 	return resp
 }
