@@ -15,5 +15,42 @@ services:
       timeout: 3s
       retries: 5
 
+  cloud:
+    build:
+      context: ./cloud
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      DIPOLE_DATABASE_URL: postgres://dipole:devpassword@postgres:5432/dipole?sslmode=disable
+      DIPOLE_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      DIPOLE_GRPC_PORT: "50051"
+      DIPOLE_HTTP_PORT: "8080"
+      DIPOLE_LOG_LEVEL: debug
+      DIPOLE_REGION: ap-south-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  proxy:
+    build:
+      context: ./edge
+      dockerfile: Dockerfile.proxy
+    ports:
+      - "8000:8000"
+      - "9099:9099"
+    environment:
+      DIPOLE_TENANT_ID: "dev-tenant-id"
+      DIPOLE_CLOUD_GRPC_ENDPOINT: "cloud:50051"
+      DIPOLE_HTTP_SERVER_PORT: "8000"
+      DIPOLE_METRICS_PORT: "9099"
+      DIPOLE_LOG_LEVEL: debug
+      DIPOLE_PASS_THROUGH_TRAFFIC_BEFORE_REGISTRATION: "true"
+      K8S_NAMESPACE: default
+      K8S_POD_NAME: test-pod
+    depends_on:
+      - cloud
+
 volumes:
   pgdata:
