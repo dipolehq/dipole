@@ -1,0 +1,27 @@
+/*
+Package trust provides Trust Provider validation for the policy evaluation engine.
+
+TrustValidator verifies workload identity evidence against Trust Provider configs.
+StubTrustValidator always returns attested=true (replaced with real validators in Jobs 5-6).
+*/
+package trust
+
+import (
+	"context"
+
+	"github.com/dipolehq/dipole/cloud/internal/domain"
+)
+
+type TrustValidator interface {
+	Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence) (*domain.TrustProviderResult, error)
+}
+
+type StubTrustValidator struct{}
+
+func (s *StubTrustValidator) Validate(_ context.Context, provider *domain.TrustProvider, _ *domain.ClientEvidence) (*domain.TrustProviderResult, error) {
+	return &domain.TrustProviderResult{
+		ProviderID:   provider.ID,
+		ProviderName: provider.Name,
+		Attested:     true,
+	}, nil
+}
