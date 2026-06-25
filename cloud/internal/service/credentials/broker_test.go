@@ -6,9 +6,19 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
+	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
 var testKey = []byte("01234567890123456789012345678901") // 32 bytes
+
+func testIssuer(t *testing.T) *identity.IdentityIssuer {
+	t.Helper()
+	issuer, err := identity.NewIdentityIssuer("test", "ap-south-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return issuer
+}
 
 func encrypt(t *testing.T, plaintext string) []byte {
 	t.Helper()
@@ -20,13 +30,13 @@ func encrypt(t *testing.T, plaintext string) []byte {
 }
 
 func TestRetrieve_APIKey(t *testing.T) {
-	broker := NewCredentialBroker(testKey)
+	broker := NewCredentialBroker(testKey, testIssuer(t))
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
 		ConfigEncrypted: encrypt(t, `{"api_key":"sk_live_test123"}`),
 	}
 
-	cred, err := broker.Retrieve(context.Background(), provider, nil)
+	cred, err := broker.Retrieve(context.Background(), provider, &domain.ClientEvidence{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,13 +49,13 @@ func TestRetrieve_APIKey(t *testing.T) {
 }
 
 func TestRetrieve_UsernamePassword(t *testing.T) {
-	broker := NewCredentialBroker(testKey)
+	broker := NewCredentialBroker(testKey, testIssuer(t))
 	provider := &domain.CredentialProvider{
 		Type:            "username_password",
 		ConfigEncrypted: encrypt(t, `{"username":"admin","password":"s3cr3t"}`),
 	}
 
-	cred, err := broker.Retrieve(context.Background(), provider, nil)
+	cred, err := broker.Retrieve(context.Background(), provider, &domain.ClientEvidence{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,26 +71,26 @@ func TestRetrieve_UsernamePassword(t *testing.T) {
 }
 
 func TestRetrieve_WrongKey_ReturnsError(t *testing.T) {
-	broker := NewCredentialBroker([]byte("wrong-key-wrong-key-wrong-key!!")) // 32 bytes, different from encryption key
+	broker := NewCredentialBroker([]byte("wrong-key-wrong-key-wrong-key!!"), testIssuer(t))
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
 		ConfigEncrypted: encrypt(t, `{"api_key":"x"}`),
 	}
 
-	_, err := broker.Retrieve(context.Background(), provider, nil)
+	_, err := broker.Retrieve(context.Background(), provider, &domain.ClientEvidence{}, nil)
 	if err == nil {
 		t.Error("expected error with wrong decryption key")
 	}
 }
 
 func TestRetrieve_UnsupportedType_ReturnsError(t *testing.T) {
-	broker := NewCredentialBroker(testKey)
+	broker := NewCredentialBroker(testKey, testIssuer(t))
 	provider := &domain.CredentialProvider{
-		Type:            "oauth_client_credentials",
-		ConfigEncrypted: []byte("irrelevant"),
+		Type:            "nonexistent_type",
+		ConfigEncrypted: encrypt(t, `{}`),
 	}
 
-	_, err := broker.Retrieve(context.Background(), provider, nil)
+	_, err := broker.Retrieve(context.Background(), provider, &domain.ClientEvidence{}, nil)
 	if err == nil {
 		t.Error("expected error for unsupported type")
 	}

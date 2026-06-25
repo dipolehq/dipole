@@ -27,7 +27,7 @@ type ConditionEvaluator interface {
 }
 
 type CredentialBroker interface {
-	Retrieve(ctx context.Context, provider *domain.CredentialProvider, evidence *domain.ClientEvidence) (*domain.Credential, error)
+	Retrieve(ctx context.Context, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
 type PolicyEvaluationService struct {
@@ -98,7 +98,7 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		var credential *domain.Credential
 		if len(p.CredentialProviders) > 0 {
 			cp := &p.CredentialProviders[0]
-			cred, err := s.broker.Retrieve(ctx, cp, evidence)
+			cred, err := s.broker.Retrieve(ctx, cp, evidence, nil)
 			if err != nil {
 				return &domain.EvaluationResult{Allowed: false, DenyReason: "CredentialRetrievalFailed"}, nil
 			}
