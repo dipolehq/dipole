@@ -16,10 +16,9 @@ import (
 
 	"github.com/google/uuid"
 
-	pb "github.com/dipolehq/dipole/gen/dipole/v1"
-
 	"github.com/dipolehq/dipole/edge/internal/cloudclient"
 	"github.com/dipolehq/dipole/edge/internal/config"
+	"github.com/dipolehq/dipole/edge/internal/identity"
 	"github.com/dipolehq/dipole/edge/internal/injection"
 	"github.com/dipolehq/dipole/edge/internal/metrics"
 	"github.com/dipolehq/dipole/edge/internal/protocols"
@@ -66,7 +65,8 @@ func main() {
 	}
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
-	handler := newConnectionHandler(engine, httpHandler, cloud, cfg, logger)
+	gatherer := identity.NewEvidenceGatherer(logger)
+	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, cfg, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -95,7 +95,7 @@ func main() {
 	waitForShutdown(cancel, cfg, logger, explicitListener)
 }
 
-func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
+func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
 		proto, reader := protocols.Detect(targetHost, targetPort, clientConn)
 		logger.Info("protocol detected", "protocol", proto.String(), "host", targetHost, "port", targetPort, "connection_id", connID)
@@ -104,9 +104,9 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 
 		switch proto {
 		case protocols.ProtoHTTPS, protocols.ProtoSnowflake:
-			handleHTTPS(engine, httpHandler, cloud, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
+			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
-			handleHTTP(httpHandler, cloud, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
+			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
@@ -115,7 +115,7 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 	}
 }
 
-func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
+func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
@@ -125,7 +125,7 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	defer clientPlain.Close()
 	defer serverConn.Close()
 
-	allowed, cred, injCfg := evaluatePolicy(cloud, cfg, targetHost, targetPort, connID, logger)
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		return
@@ -135,8 +135,8 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
 }
 
-func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
-	allowed, cred, injCfg := evaluatePolicy(cloud, cfg, targetHost, targetPort, connID, logger)
+func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		clientConn.Close()
@@ -155,28 +155,12 @@ func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClie
 	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
 }
 
-func evaluatePolicy(cloud *cloudclient.CloudClient, cfg *config.ProxyConfig, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
+func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
 	if cloud == nil {
 		return true, nil, nil
 	}
 
-	evidence := &pb.ClientEvidence{
-		SourceIp:       "",
-		Hostname:       "",
-		AembitClientId: cfg.ClientWorkloadID,
-		Environment:    make(map[string]string),
-	}
-	if cfg.K8sNamespace != "" {
-		evidence.K8S = &pb.K8SEvidence{
-			Namespace: cfg.K8sNamespace,
-			PodName:   cfg.K8sPodName,
-		}
-		evidence.Environment["K8S_NAMESPACE"] = cfg.K8sNamespace
-		evidence.Environment["K8S_POD_NAME"] = cfg.K8sPodName
-	}
-	if cfg.ClientWorkloadID != "" {
-		evidence.Environment["CLIENT_WORKLOAD_ID"] = cfg.ClientWorkloadID
-	}
+	evidence := gatherer.Gather("")
 
 	ctx := context.Background()
 	result, err := cloud.Evaluate(ctx, evidence, targetHost, targetPort)
