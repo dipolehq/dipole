@@ -2,8 +2,9 @@
 Package identity gathers workload identity evidence from the local environment.
 
 EvidenceGatherer is called on every intercepted request to collect fresh
-evidence (K8s SA token, env vars, source IP). Sub-gatherers that fail (e.g.,
-not in K8s) are skipped gracefully — we send whatever evidence is available.
+evidence (K8s SA token, AWS IMDS/STS, env vars, source IP). Sub-gatherers
+that fail (e.g., not in K8s, not on AWS) are skipped gracefully — we send
+whatever evidence is available.
 */
 package identity
 
@@ -15,11 +16,18 @@ import (
 )
 
 type EvidenceGatherer struct {
-	logger *slog.Logger
+	logger  *slog.Logger
+	awsIMDS *awsIMDSGatherer
+	awsSTS  *awsSTSGatherer
 }
 
 func NewEvidenceGatherer(logger *slog.Logger) *EvidenceGatherer {
-	return &EvidenceGatherer{logger: logger}
+	imds := newIMDSClient()
+	return &EvidenceGatherer{
+		logger:  logger,
+		awsIMDS: newAWSIMDSGatherer(imds),
+		awsSTS:  newAWSSTSGatherer(imds),
+	}
 }
 
 func (g *EvidenceGatherer) Gather(sourceIP string) *pb.ClientEvidence {
@@ -34,7 +42,36 @@ func (g *EvidenceGatherer) Gather(sourceIP string) *pb.ClientEvidence {
 		ev.K8S = k8s
 	}
 
+	if aws := g.gatherAWS(); aws != nil {
+		ev.Aws = aws
+	}
+
 	return ev
+}
+
+func (g *EvidenceGatherer) gatherAWS() *pb.AwsEvidence {
+	imds, _ := g.awsIMDS.Gather()
+	sts, _ := g.awsSTS.Gather()
+
+	if imds == nil && sts == nil {
+		return nil
+	}
+
+	aws := &pb.AwsEvidence{}
+
+	if imds != nil {
+		aws.InstanceIdentityDocument = imds.IdentityDocument
+		aws.InstanceIdentitySignature = imds.IdentitySignature
+	}
+
+	if sts != nil {
+		aws.StsGetCallerIdentity = &pb.StsGetCallerIdentity{
+			SignedHeaders: sts.SignedHeaders,
+			Region:        sts.Region,
+		}
+	}
+
+	return aws
 }
 
 func hostname() string {
