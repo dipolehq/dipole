@@ -24,6 +24,7 @@ type MCPAuthServer struct {
 	issuer    *identity.IdentityIssuer
 	dcr       *mcp.DCRService
 	authorize *mcp.AuthorizeService
+	tokens    *mcp.TokenService
 	config    MCPAuthConfig
 	logger    *slog.Logger
 }
@@ -35,11 +36,12 @@ type MCPAuthConfig struct {
 	Domain          string
 }
 
-func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
+func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, tokens *mcp.TokenService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
 	return &MCPAuthServer{
 		issuer:    issuer,
 		dcr:       dcr,
 		authorize: authz,
+		tokens:    tokens,
 		config:    cfg,
 		logger:    logger,
 	}
@@ -56,6 +58,7 @@ func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", s.HandleJWKS)
 	mux.HandleFunc("POST /register", s.HandleRegister)
 	mux.HandleFunc("GET /connect/authorize", s.HandleAuthorize)
+	mux.HandleFunc("POST /connect/token", s.HandleToken)
 }
 
 // HandleMetadata serves OAuth 2.1 metadata and OIDC discovery.
@@ -163,6 +166,42 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
+}
+
+// HandleToken implements the OAuth 2.1 token endpoint.
+// Supports authorization_code (with PKCE) and refresh_token grant types.
+func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := s.extractTenantID(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
+		return
+	}
+
+	req := &mcp.TokenRequest{
+		GrantType:    r.FormValue("grant_type"),
+		Code:         r.FormValue("code"),
+		RedirectURI:  r.FormValue("redirect_uri"),
+		ClientID:     r.FormValue("client_id"),
+		CodeVerifier: r.FormValue("code_verifier"),
+		RefreshToken: r.FormValue("refresh_token"),
+	}
+
+	resp, err := s.tokens.Exchange(req, tenantID)
+	if err != nil {
+		errCode := "invalid_grant"
+		if err.Error() == "unsupported_grant_type" {
+			errCode = "unsupported_grant_type"
+		}
+		writeJSONError(w, http.StatusBadRequest, errCode, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // extractTenantID resolves the tenant from the request context or header.
