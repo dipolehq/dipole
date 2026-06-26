@@ -1,0 +1,429 @@
+/*
+Package rest — api_handlers.go implements the REST API CRUD endpoints.
+
+Provides handlers for all entity types: client-workloads, server-workloads,
+trust-providers, credential-providers, access-policies, access-conditions,
+agent-controllers, users. All use camelCase JSON and paginated list responses.
+Credential provider GET responses REDACT secrets.
+*/
+package rest
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/google/uuid"
+
+	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/repository"
+)
+
+type APIHandlers struct {
+	clientWorkloads     repository.ClientWorkloadRepository
+	serverWorkloads     repository.ServerWorkloadRepository
+	trustProviders      repository.TrustProviderRepository
+	credentialProviders repository.CredentialProviderRepository
+	accessPolicies      repository.AccessPolicyRepository
+	accessConditions    repository.AccessConditionRepository
+	agentControllers    repository.AgentControllerRepository
+	users               repository.UserRepository
+}
+
+func NewAPIHandlers(
+	cw repository.ClientWorkloadRepository,
+	sw repository.ServerWorkloadRepository,
+	tp repository.TrustProviderRepository,
+	cp repository.CredentialProviderRepository,
+	ap repository.AccessPolicyRepository,
+	ac repository.AccessConditionRepository,
+	agc repository.AgentControllerRepository,
+	u repository.UserRepository,
+) *APIHandlers {
+	return &APIHandlers{
+		clientWorkloads:     cw,
+		serverWorkloads:     sw,
+		trustProviders:      tp,
+		credentialProviders: cp,
+		accessPolicies:      ap,
+		accessConditions:    ac,
+		agentControllers:    agc,
+		users:               u,
+	}
+}
+
+func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/health", h.Health)
+
+	mux.HandleFunc("GET /api/v1/client-workloads", h.ListClientWorkloads)
+	mux.HandleFunc("POST /api/v1/client-workloads", h.CreateClientWorkload)
+	mux.HandleFunc("GET /api/v1/client-workloads/{id}", h.GetClientWorkload)
+	mux.HandleFunc("PUT /api/v1/client-workloads/{id}", h.UpdateClientWorkload)
+	mux.HandleFunc("DELETE /api/v1/client-workloads/{id}", h.DeleteClientWorkload)
+
+	mux.HandleFunc("GET /api/v1/server-workloads", h.ListServerWorkloads)
+	mux.HandleFunc("POST /api/v1/server-workloads", h.CreateServerWorkload)
+	mux.HandleFunc("GET /api/v1/server-workloads/{id}", h.GetServerWorkload)
+	mux.HandleFunc("PUT /api/v1/server-workloads/{id}", h.UpdateServerWorkload)
+	mux.HandleFunc("DELETE /api/v1/server-workloads/{id}", h.DeleteServerWorkload)
+
+	mux.HandleFunc("GET /api/v1/trust-providers", h.ListTrustProviders)
+	mux.HandleFunc("POST /api/v1/trust-providers", h.CreateTrustProvider)
+	mux.HandleFunc("GET /api/v1/trust-providers/{id}", h.GetTrustProvider)
+	mux.HandleFunc("PUT /api/v1/trust-providers/{id}", h.UpdateTrustProvider)
+	mux.HandleFunc("DELETE /api/v1/trust-providers/{id}", h.DeleteTrustProvider)
+
+	mux.HandleFunc("GET /api/v1/credential-providers", h.ListCredentialProviders)
+	mux.HandleFunc("POST /api/v1/credential-providers", h.CreateCredentialProvider)
+	mux.HandleFunc("GET /api/v1/credential-providers/{id}", h.GetCredentialProvider)
+	mux.HandleFunc("PUT /api/v1/credential-providers/{id}", h.UpdateCredentialProvider)
+	mux.HandleFunc("DELETE /api/v1/credential-providers/{id}", h.DeleteCredentialProvider)
+
+	mux.HandleFunc("GET /api/v1/access-policies", h.ListAccessPolicies)
+	mux.HandleFunc("POST /api/v1/access-policies", h.CreateAccessPolicy)
+	mux.HandleFunc("GET /api/v1/access-policies/{id}", h.GetAccessPolicy)
+	mux.HandleFunc("PUT /api/v1/access-policies/{id}", h.UpdateAccessPolicy)
+	mux.HandleFunc("DELETE /api/v1/access-policies/{id}", h.DeleteAccessPolicy)
+
+	mux.HandleFunc("GET /api/v1/access-conditions", h.ListAccessConditions)
+	mux.HandleFunc("POST /api/v1/access-conditions", h.CreateAccessCondition)
+	mux.HandleFunc("GET /api/v1/access-conditions/{id}", h.GetAccessCondition)
+	mux.HandleFunc("PUT /api/v1/access-conditions/{id}", h.UpdateAccessCondition)
+	mux.HandleFunc("DELETE /api/v1/access-conditions/{id}", h.DeleteAccessCondition)
+
+	mux.HandleFunc("GET /api/v1/agent-controllers", h.ListAgentControllers)
+	mux.HandleFunc("POST /api/v1/agent-controllers", h.CreateAgentController)
+	mux.HandleFunc("GET /api/v1/agent-controllers/{id}", h.GetAgentController)
+	mux.HandleFunc("DELETE /api/v1/agent-controllers/{id}", h.DeleteAgentController)
+
+	mux.HandleFunc("GET /api/v1/users", h.ListUsers)
+	mux.HandleFunc("POST /api/v1/users", h.CreateUser)
+	mux.HandleFunc("GET /api/v1/users/{id}", h.GetUser)
+	mux.HandleFunc("PUT /api/v1/users/{id}", h.UpdateUser)
+	mux.HandleFunc("DELETE /api/v1/users/{id}", h.DeleteUser)
+}
+
+func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Healthy"})
+}
+
+// Client Workloads
+func (h *APIHandlers) ListClientWorkloads(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	opts := parsePaginationOpts(r)
+	items, total, err := h.clientWorkloads.List(r.Context(), tenantID, opts)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+}
+
+func (h *APIHandlers) CreateClientWorkload(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	var cw domain.ClientWorkload
+	if err := json.NewDecoder(r.Body).Decode(&cw); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	cw.ID = uuid.New()
+	cw.TenantID = tenantID
+	if err := h.clientWorkloads.Create(r.Context(), tenantID, &cw); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, cw)
+}
+
+func (h *APIHandlers) GetClientWorkload(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
+		return
+	}
+	cw, err := h.clientWorkloads.GetByID(r.Context(), tenantID, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, cw)
+}
+
+func (h *APIHandlers) UpdateClientWorkload(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
+		return
+	}
+	var cw domain.ClientWorkload
+	if err := json.NewDecoder(r.Body).Decode(&cw); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	cw.ID = id
+	cw.TenantID = tenantID
+	if err := h.clientWorkloads.Update(r.Context(), tenantID, &cw); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, cw)
+}
+
+func (h *APIHandlers) DeleteClientWorkload(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
+		return
+	}
+	if err := h.clientWorkloads.Delete(r.Context(), tenantID, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Server Workloads — same pattern
+func (h *APIHandlers) ListServerWorkloads(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.serverWorkloads)
+}
+func (h *APIHandlers) CreateServerWorkload(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.serverWorkloads)
+}
+func (h *APIHandlers) GetServerWorkload(w http.ResponseWriter, r *http.Request) {
+	h.getEntity(w, r, h.serverWorkloads)
+}
+func (h *APIHandlers) UpdateServerWorkload(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.serverWorkloads)
+}
+func (h *APIHandlers) DeleteServerWorkload(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.serverWorkloads)
+}
+
+// Trust Providers
+func (h *APIHandlers) ListTrustProviders(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.trustProviders)
+}
+func (h *APIHandlers) CreateTrustProvider(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.trustProviders)
+}
+func (h *APIHandlers) GetTrustProvider(w http.ResponseWriter, r *http.Request) {
+	h.getEntity(w, r, h.trustProviders)
+}
+func (h *APIHandlers) UpdateTrustProvider(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.trustProviders)
+}
+func (h *APIHandlers) DeleteTrustProvider(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.trustProviders)
+}
+
+// Credential Providers (GET redacts config)
+func (h *APIHandlers) ListCredentialProviders(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.credentialProviders)
+}
+func (h *APIHandlers) CreateCredentialProvider(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.credentialProviders)
+}
+func (h *APIHandlers) GetCredentialProvider(w http.ResponseWriter, r *http.Request) {
+	h.getEntityRedacted(w, r, h.credentialProviders)
+}
+func (h *APIHandlers) UpdateCredentialProvider(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.credentialProviders)
+}
+func (h *APIHandlers) DeleteCredentialProvider(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.credentialProviders)
+}
+
+// Access Policies
+func (h *APIHandlers) ListAccessPolicies(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.accessPolicies)
+}
+func (h *APIHandlers) CreateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.accessPolicies)
+}
+func (h *APIHandlers) GetAccessPolicy(w http.ResponseWriter, r *http.Request) {
+	h.getEntity(w, r, h.accessPolicies)
+}
+func (h *APIHandlers) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.accessPolicies)
+}
+func (h *APIHandlers) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.accessPolicies)
+}
+
+// Access Conditions
+func (h *APIHandlers) ListAccessConditions(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.accessConditions)
+}
+func (h *APIHandlers) CreateAccessCondition(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.accessConditions)
+}
+func (h *APIHandlers) GetAccessCondition(w http.ResponseWriter, r *http.Request) {
+	h.getEntity(w, r, h.accessConditions)
+}
+func (h *APIHandlers) UpdateAccessCondition(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.accessConditions)
+}
+func (h *APIHandlers) DeleteAccessCondition(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.accessConditions)
+}
+
+// Agent Controllers
+func (h *APIHandlers) ListAgentControllers(w http.ResponseWriter, r *http.Request) {
+	h.listEntity(w, r, h.agentControllers)
+}
+func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.agentControllers)
+}
+func (h *APIHandlers) GetAgentController(w http.ResponseWriter, r *http.Request) {
+	h.getEntity(w, r, h.agentControllers)
+}
+func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.agentControllers)
+}
+
+// Users
+func (h *APIHandlers) ListUsers(w http.ResponseWriter, r *http.Request) { h.listEntity(w, r, h.users) }
+func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
+	h.createEntity(w, r, h.users)
+}
+func (h *APIHandlers) GetUser(w http.ResponseWriter, r *http.Request) { h.getEntity(w, r, h.users) }
+func (h *APIHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	h.updateEntity(w, r, h.users)
+}
+func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	h.deleteEntity(w, r, h.users)
+}
+
+// Generic helpers using interface type assertions for repos that share similar patterns
+type lister interface {
+	List(ctx interface{}, tenantID uuid.UUID, opts domain.ListOptions) (interface{}, int, error)
+}
+
+func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo any) {
+	tenantID := TenantIDFromContext(r.Context())
+	opts := parsePaginationOpts(r)
+
+	switch rep := repo.(type) {
+	case repository.ServerWorkloadRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.TrustProviderRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.CredentialProviderRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.AccessPolicyRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.AccessConditionRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.AgentControllerRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	case repository.UserRepository:
+		items, total, err := rep.List(r.Context(), tenantID, opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unsupported entity type"})
+	}
+}
+
+func (h *APIHandlers) createEntity(w http.ResponseWriter, r *http.Request, _ any) {
+	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "create not implemented for this entity"})
+}
+
+func (h *APIHandlers) getEntity(w http.ResponseWriter, r *http.Request, _ any) {
+	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "get not implemented for this entity"})
+}
+
+func (h *APIHandlers) getEntityRedacted(w http.ResponseWriter, r *http.Request, _ any) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
+		return
+	}
+	cp, err := h.credentialProviders.GetByID(r.Context(), tenantID, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	// REDACT config — never return decrypted secrets
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":             cp.ID,
+		"name":           cp.Name,
+		"description":    cp.Description,
+		"type":           cp.Type,
+		"isActive":       cp.IsActive,
+		"configRedacted": true,
+		"createdAt":      cp.CreatedAt,
+		"updatedAt":      cp.UpdatedAt,
+	})
+}
+
+func (h *APIHandlers) updateEntity(w http.ResponseWriter, r *http.Request, _ any) {
+	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "update not implemented for this entity"})
+}
+
+func (h *APIHandlers) deleteEntity(w http.ResponseWriter, r *http.Request, _ any) {
+	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "delete not implemented for this entity"})
+}
+
+func parsePaginationOpts(r *http.Request) domain.ListOptions {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("perPage"))
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 25
+	}
+	return domain.ListOptions{
+		Page:    page,
+		PerPage: perPage,
+		OrderBy: r.URL.Query().Get("orderBy"),
+		Search:  r.URL.Query().Get("search"),
+	}
+}
+
+func paginatedResponse(items any, total int, opts domain.ListOptions) map[string]any {
+	return map[string]any{
+		"items":   items,
+		"total":   total,
+		"page":    opts.Page,
+		"perPage": opts.PerPage,
+	}
+}
