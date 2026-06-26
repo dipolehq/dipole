@@ -44,8 +44,11 @@ type AuditLog struct {
 	TargetType string
 	TargetID   *uuid.UUID
 	TargetName string
+	Result     string
 	Severity   string
 	ClientIP   string
+	Browser    string
+	OS         string
 	Timestamp  time.Time
 }
 
