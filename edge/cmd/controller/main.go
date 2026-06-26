@@ -7,8 +7,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -140,7 +138,12 @@ func (c *AgentController) handleGetToken(w http.ResponseWriter, _ *http.Request)
 		return
 	}
 
-	token := c.generateToken()
+	token, err := c.requestTokenFromCloud()
+	if err != nil {
+		http.Error(w, `{"error":"failed to obtain token from cloud"}`, http.StatusBadGateway)
+		c.logger.Error("request token from cloud", "error", err)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -148,18 +151,27 @@ func (c *AgentController) handleGetToken(w http.ResponseWriter, _ *http.Request)
 	})
 }
 
-func (c *AgentController) generateToken() string {
-	c.tokenMu.Lock()
-	defer c.tokenMu.Unlock()
+func (c *AgentController) requestTokenFromCloud() (string, error) {
+	url := c.config.CloudEndpoint + "/internal/controllers/token"
+	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s"}`, c.config.TenantID, c.controllerID)
 
-	// Generate random token with embedded metadata
-	rawBytes := make([]byte, 32)
-	rand.Read(rawBytes)
-	token := hex.EncodeToString(rawBytes)
+	resp, err := http.Post(url, "application/json", strings.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("cloud unreachable: %w", err)
+	}
+	defer resp.Body.Close()
 
-	// Track as valid (will be checked by Cloud during proxy registration)
-	c.usedTokens[token] = false // false = not yet used
-	return token
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("cloud returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return result.Token, nil
 }
 
 func (c *AgentController) registerWithRetry(ctx context.Context) {
