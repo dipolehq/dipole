@@ -10,27 +10,33 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
+	"github.com/dipolehq/dipole/cloud/internal/service/mcp"
+	"github.com/google/uuid"
 )
 
 type MCPAuthServer struct {
 	issuer *identity.IdentityIssuer
+	dcr    *mcp.DCRService
 	config MCPAuthConfig
 	logger *slog.Logger
 }
 
 type MCPAuthConfig struct {
+	TenantID        uuid.UUID
 	TenantSubdomain string
 	Region          string
 	Domain          string
 }
 
-func NewMCPAuthServer(issuer *identity.IdentityIssuer, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
+func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
 	return &MCPAuthServer{
 		issuer: issuer,
+		dcr:    dcr,
 		config: cfg,
 		logger: logger,
 	}
@@ -45,6 +51,7 @@ func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", s.HandleMetadata)
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.HandleMetadata)
 	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", s.HandleJWKS)
+	mux.HandleFunc("POST /register", s.HandleRegister)
 }
 
 // HandleMetadata serves OAuth 2.1 metadata and OIDC discovery.
@@ -76,8 +83,53 @@ func (s *MCPAuthServer) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, jwks)
 }
 
+// HandleRegister implements Dynamic Client Registration (RFC 7591).
+// MCP clients POST their metadata to receive a unique client_id.
+func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := s.extractTenantID(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		return
+	}
+
+	var req mcp.DCRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
+		return
+	}
+
+	resp, err := s.dcr.Register(r.Context(), tenantID, &req)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_client_metadata", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, resp)
+}
+
+// extractTenantID resolves the tenant from the request context or header.
+// In production this comes from subdomain routing; in dev from X-Tenant-ID header.
+func (s *MCPAuthServer) extractTenantID(r *http.Request) (uuid.UUID, error) {
+	if h := r.Header.Get("X-Tenant-ID"); h != "" {
+		return uuid.Parse(h)
+	}
+	if s.config.TenantID != uuid.Nil {
+		return s.config.TenantID, nil
+	}
+	return uuid.Nil, errors.New("tenant not resolved")
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, errCode, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error":             errCode,
+		"error_description": description,
+	})
 }
