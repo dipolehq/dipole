@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dipole.controllerName" . }}
+  namespace: {{ include "dipole.namespace" . }}
+  labels:
+    {{- include "dipole.labels" . | nindent 4 }}
+    app: {{ include "dipole.controllerName" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "dipole.controllerName" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dipole.controllerName" . }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: controller
+          image: "{{ .Values.agentController.image.repository }}:{{ .Values.agentController.image.tag }}"
+          imagePullPolicy: {{ .Values.agentController.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: DIPOLE_TENANT_ID
+              value: {{ required "tenant is required" .Values.tenant | quote }}
+            {{- if .Values.agentController.deviceCode }}
+            - name: DIPOLE_DEVICE_CODE
+              value: {{ .Values.agentController.deviceCode | quote }}
+            {{- end }}
+            {{- if .Values.agentController.id }}
+            - name: DIPOLE_AGENT_CONTROLLER_ID
+              value: {{ .Values.agentController.id | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.agentController.resources | nindent 12 }}

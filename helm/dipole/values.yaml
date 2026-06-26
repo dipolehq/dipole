@@ -1,0 +1,54 @@
+tenant: ""
+
+agentController:
+  deviceCode: ""
+  id: ""
+  image:
+    repository: dipole/controller
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+agentInjector:
+  image:
+    repository: dipole/injector
+    tag: latest
+    pullPolicy: IfNotPresent
+  filters:
+    namespaces: []
+
+agentProxy:
+  image:
+    repository: dipole/proxy
+    tag: latest
+  env: {}
+  trustedCertificates: ""
+  runAsRestricted: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+init:
+  image:
+    repository: dipole/init
+    tag: latest
+
+serviceAccount:
+  create: true
+  name: dipole
+  openshift:
+    scc: ""
+
+cloud:
+  region: "ap-south-1"
+  domain: "dipole.io"

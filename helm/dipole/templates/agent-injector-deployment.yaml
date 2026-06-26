@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dipole.injectorName" . }}
+  namespace: {{ include "dipole.namespace" . }}
+  labels:
+    {{- include "dipole.labels" . | nindent 4 }}
+    app: {{ include "dipole.injectorName" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "dipole.injectorName" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dipole.injectorName" . }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: injector
+          image: "{{ .Values.agentInjector.image.repository }}:{{ .Values.agentInjector.image.tag }}"
+          imagePullPolicy: {{ .Values.agentInjector.image.pullPolicy }}
+          ports:
+            - containerPort: 443
+              name: webhook
+          env:
+            - name: DIPOLE_TENANT_ID
+              value: {{ .Values.tenant | quote }}
+            - name: DIPOLE_PROXY_IMAGE
+              value: "{{ .Values.agentProxy.image.repository }}:{{ .Values.agentProxy.image.tag }}"
+            - name: DIPOLE_INIT_IMAGE
+              value: "{{ .Values.init.image.repository }}:{{ .Values.init.image.tag }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
