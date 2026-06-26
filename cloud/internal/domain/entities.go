@@ -31,6 +31,7 @@ type ClientWorkload struct {
 	TenantID      uuid.UUID
 	Name          string
 	Description   string
+	IsActive      bool
 	Identifiers   []Identifier
 	Tags          []Tag
 	ResourceSetID *uuid.UUID

@@ -23,9 +23,9 @@ func (r *ClientWorkloadRepo) Create(ctx context.Context, tenantID uuid.UUID, cw 
 	tags, _ := json.Marshal(cw.Tags)
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO client_workloads (id, tenant_id, name, description, identifiers, tags, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		cw.ID, tenantID, cw.Name, cw.Description, identifiers, tags, cw.ResourceSetID)
+		`INSERT INTO client_workloads (id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		cw.ID, tenantID, cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID)
 	if err != nil {
 		return fmt.Errorf("create client workload: %w", err)
 	}
@@ -37,9 +37,9 @@ func (r *ClientWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 	var identifiers, tags []byte
 
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, description, identifiers, tags, resource_set_id, created_at, updated_at
+		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at
 		 FROM client_workloads WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt)
+		Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &cw.IsActive, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -61,7 +61,7 @@ func (r *ClientWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts 
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, identifiers, tags, resource_set_id, created_at, updated_at
+		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at
 		 FROM client_workloads WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
 		tenantID, opts.PerPage, offset)
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *ClientWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts 
 	for rows.Next() {
 		var cw domain.ClientWorkload
 		var identifiers, tags []byte
-		if err := rows.Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt); err != nil {
+		if err := rows.Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &cw.IsActive, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("scan client workload: %w", err)
 		}
 		json.Unmarshal(identifiers, &cw.Identifiers)
@@ -88,9 +88,9 @@ func (r *ClientWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, cw 
 	tags, _ := json.Marshal(cw.Tags)
 
 	_, err := r.pool.Exec(ctx,
-		`UPDATE client_workloads SET name = $1, description = $2, identifiers = $3, tags = $4, resource_set_id = $5, updated_at = NOW()
-		 WHERE tenant_id = $6 AND id = $7`,
-		cw.Name, cw.Description, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID)
+		`UPDATE client_workloads SET name = $1, description = $2, is_active = $3, identifiers = $4, tags = $5, resource_set_id = $6, updated_at = NOW()
+		 WHERE tenant_id = $7 AND id = $8`,
+		cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID)
 	if err != nil {
 		return fmt.Errorf("update client workload: %w", err)
 	}

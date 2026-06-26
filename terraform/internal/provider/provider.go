@@ -157,7 +157,9 @@ func (p *DipoleProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *DipoleProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		NewClientWorkloadResource,
+	}
 }
 
 func (p *DipoleProvider) DataSources(_ context.Context) []func() datasource.DataSource {
