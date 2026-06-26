@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dipole-labs/terraform-provider-dipole/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -34,6 +35,7 @@ type DipoleProviderModel struct {
 }
 
 type DipoleProviderData struct {
+	Client        *client.Client
 	ClientID      string
 	TenantID      string
 	Token         string
@@ -140,6 +142,7 @@ func (p *DipoleProvider) Configure(ctx context.Context, req provider.ConfigureRe
 	}
 
 	providerData := &DipoleProviderData{
+		Client:        client.New(baseURL, token, resourceSetID),
 		ClientID:      clientID,
 		TenantID:      tenantID,
 		Token:         token,
