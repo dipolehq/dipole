@@ -13,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	"github.com/dipolehq/dipole/cloud/internal/service/mcp"
@@ -20,10 +21,11 @@ import (
 )
 
 type MCPAuthServer struct {
-	issuer *identity.IdentityIssuer
-	dcr    *mcp.DCRService
-	config MCPAuthConfig
-	logger *slog.Logger
+	issuer    *identity.IdentityIssuer
+	dcr       *mcp.DCRService
+	authorize *mcp.AuthorizeService
+	config    MCPAuthConfig
+	logger    *slog.Logger
 }
 
 type MCPAuthConfig struct {
@@ -33,12 +35,13 @@ type MCPAuthConfig struct {
 	Domain          string
 }
 
-func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
+func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
 	return &MCPAuthServer{
-		issuer: issuer,
-		dcr:    dcr,
-		config: cfg,
-		logger: logger,
+		issuer:    issuer,
+		dcr:       dcr,
+		authorize: authz,
+		config:    cfg,
+		logger:    logger,
 	}
 }
 
@@ -52,6 +55,7 @@ func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.HandleMetadata)
 	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", s.HandleJWKS)
 	mux.HandleFunc("POST /register", s.HandleRegister)
+	mux.HandleFunc("GET /connect/authorize", s.HandleAuthorize)
 }
 
 // HandleMetadata serves OAuth 2.1 metadata and OIDC discovery.
@@ -107,6 +111,60 @@ func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
+// HandleAuthorize implements the OAuth 2.1 authorization endpoint with PKCE.
+// Validates the request, finds the matching Access Policy, evaluates conditions,
+// and redirects with an authorization code.
+func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := s.extractTenantID(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		return
+	}
+
+	q := r.URL.Query()
+	req := &mcp.AuthorizeRequest{
+		ClientID:            q.Get("client_id"),
+		RedirectURI:         q.Get("redirect_uri"),
+		ResponseType:        q.Get("response_type"),
+		CodeChallenge:       q.Get("code_challenge"),
+		CodeChallengeMethod: q.Get("code_challenge_method"),
+		Scope:               q.Get("scope"),
+		State:               q.Get("state"),
+		Resource:            q.Get("resource"),
+	}
+
+	if req.ResponseType != "code" {
+		writeJSONError(w, http.StatusBadRequest, "unsupported_response_type", "response_type must be code")
+		return
+	}
+
+	clientIP := r.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+
+	result, err := s.authorize.Authorize(r.Context(), tenantID, req, clientIP)
+	if err != nil {
+		if errors.Is(err, mcp.ErrClientNotFound) || errors.Is(err, mcp.ErrRedirectURIMismatch) {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+		if req.RedirectURI != "" {
+			redirectWithError(w, r, req.RedirectURI, "access_denied", err.Error(), req.State)
+			return
+		}
+		writeJSONError(w, http.StatusBadRequest, "access_denied", err.Error())
+		return
+	}
+
+	if result.IdPRedirect != "" {
+		http.Redirect(w, r, result.IdPRedirect, http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
+}
+
 // extractTenantID resolves the tenant from the request context or header.
 // In production this comes from subdomain routing; in dev from X-Tenant-ID header.
 func (s *MCPAuthServer) extractTenantID(r *http.Request) (uuid.UUID, error) {
@@ -132,4 +190,20 @@ func writeJSONError(w http.ResponseWriter, status int, errCode, description stri
 		"error":             errCode,
 		"error_description": description,
 	})
+}
+
+func redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, errCode, description, state string) {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, errCode, description)
+		return
+	}
+	q := u.Query()
+	q.Set("error", errCode)
+	q.Set("error_description", description)
+	if state != "" {
+		q.Set("state", state)
+	}
+	u.RawQuery = q.Encode()
+	http.Redirect(w, r, u.String(), http.StatusFound)
 }
