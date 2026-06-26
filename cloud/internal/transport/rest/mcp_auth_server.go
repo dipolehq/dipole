@@ -21,12 +21,13 @@ import (
 )
 
 type MCPAuthServer struct {
-	issuer    *identity.IdentityIssuer
-	dcr       *mcp.DCRService
-	authorize *mcp.AuthorizeService
-	tokens    *mcp.TokenService
-	config    MCPAuthConfig
-	logger    *slog.Logger
+	issuer      *identity.IdentityIssuer
+	dcr         *mcp.DCRService
+	authorize   *mcp.AuthorizeService
+	tokens      *mcp.TokenService
+	idpCallback *mcp.IdPCallbackService
+	config      MCPAuthConfig
+	logger      *slog.Logger
 }
 
 type MCPAuthConfig struct {
@@ -36,14 +37,15 @@ type MCPAuthConfig struct {
 	Domain          string
 }
 
-func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, tokens *mcp.TokenService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
+func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, tokens *mcp.TokenService, idpCallback *mcp.IdPCallbackService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
 	return &MCPAuthServer{
-		issuer:    issuer,
-		dcr:       dcr,
-		authorize: authz,
-		tokens:    tokens,
-		config:    cfg,
-		logger:    logger,
+		issuer:      issuer,
+		dcr:         dcr,
+		authorize:   authz,
+		tokens:      tokens,
+		idpCallback: idpCallback,
+		config:      cfg,
+		logger:      logger,
 	}
 }
 
@@ -59,6 +61,8 @@ func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /register", s.HandleRegister)
 	mux.HandleFunc("GET /connect/authorize", s.HandleAuthorize)
 	mux.HandleFunc("POST /connect/token", s.HandleToken)
+	mux.HandleFunc("GET /callback/oidc", s.HandleOIDCCallback)
+	mux.HandleFunc("POST /callback/saml", s.HandleSAMLCallback)
 }
 
 // HandleMetadata serves OAuth 2.1 metadata and OIDC discovery.
@@ -202,6 +206,52 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// HandleOIDCCallback processes the IdP redirect after OIDC user authentication.
+// Exchanges the IdP code for an id_token, validates via Trust Provider, and
+// issues an MCP authorization code back to the original MCP client.
+func (s *MCPAuthServer) HandleOIDCCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	if code == "" || state == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing code or state")
+		return
+	}
+
+	result, err := s.idpCallback.HandleOIDCCallback(r.Context(), code, state)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "access_denied", err.Error())
+		return
+	}
+
+	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
+}
+
+// HandleSAMLCallback processes the IdP POST after SAML user authentication.
+// Validates the SAML assertion via Trust Provider and issues an MCP authorization code.
+func (s *MCPAuthServer) HandleSAMLCallback(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
+		return
+	}
+
+	samlResponse := r.FormValue("SAMLResponse")
+	relayState := r.FormValue("RelayState")
+
+	if samlResponse == "" || relayState == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing SAMLResponse or RelayState")
+		return
+	}
+
+	result, err := s.idpCallback.HandleSAMLCallback(r.Context(), samlResponse, relayState)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "access_denied", err.Error())
+		return
+	}
+
+	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
 }
 
 // extractTenantID resolves the tenant from the request context or header.

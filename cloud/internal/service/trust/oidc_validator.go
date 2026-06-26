@@ -211,6 +211,9 @@ func extractOIDCToken(providerType string, evidence *domain.ClientEvidence) stri
 		if evidence.Terraform != nil && evidence.Terraform.IdentityToken != "" {
 			return evidence.Terraform.IdentityToken
 		}
+		if evidence.Environment != nil && evidence.Environment["OIDC_ID_TOKEN"] != "" {
+			return evidence.Environment["OIDC_ID_TOKEN"]
+		}
 	}
 	return ""
 }

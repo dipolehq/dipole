@@ -58,14 +58,16 @@ type AuthorizeService struct {
 	codeStore  *AuthCodeStore
 	policies   PolicyFinder
 	conditions ConditionChecker
+	idpService *IdPService
 }
 
-func NewAuthorizeService(dcr *DCRService, codeStore *AuthCodeStore, policies PolicyFinder, conditions ConditionChecker) *AuthorizeService {
+func NewAuthorizeService(dcr *DCRService, codeStore *AuthCodeStore, policies PolicyFinder, conditions ConditionChecker, idpService *IdPService) *AuthorizeService {
 	return &AuthorizeService{
 		dcr:        dcr,
 		codeStore:  codeStore,
 		policies:   policies,
 		conditions: conditions,
+		idpService: idpService,
 	}
 }
 
@@ -101,8 +103,28 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 		return nil, ErrNoPolicyFound
 	}
 
-	// TODO (Task 5): If Enforce SSO = ON, redirect to IdP here and return IdPRedirect.
-	// For now, we handle the SSO-off path: skip user auth, evaluate conditions, issue code.
+	// Enforce SSO: if the policy has OIDC or SAML Trust Providers, redirect to IdP.
+	if s.idpService != nil {
+		for _, tp := range policy.TrustProviders {
+			tp := tp
+			switch tp.Type {
+			case domain.TrustProviderTypeOIDCIDToken:
+				result, err := s.idpService.BuildOIDCRedirect(req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				if err != nil {
+					return nil, err
+				}
+				return &AuthorizeResult{IdPRedirect: result.RedirectURL}, nil
+			case domain.TrustProviderTypeSAMLv2Response:
+				result, err := s.idpService.BuildSAMLRedirect(req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				if err != nil {
+					return nil, err
+				}
+				return &AuthorizeResult{IdPRedirect: result.RedirectURL}, nil
+			}
+		}
+	}
+
+	// SSO off path: no OIDC/SAML Trust Provider → skip user auth, evaluate conditions, issue code.
 
 	if len(policy.AccessConditions) > 0 && s.conditions != nil {
 		evidence := &domain.ClientEvidence{SourceIP: clientIP}
