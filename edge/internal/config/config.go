@@ -23,6 +23,7 @@ type ProxyConfig struct {
 	LogLevel                      string
 	SIGTERMStrategy               string
 	PassThroughBeforeRegistration bool
+	PostStartMaxWaitSec           int
 	SteeringAllowedHosts          []string
 	K8sPodName                    string
 	K8sNamespace                  string
@@ -42,6 +43,7 @@ func LoadFromEnv() (*ProxyConfig, error) {
 		LogLevel:                      envStr("DIPOLE_LOG_LEVEL", "info"),
 		SIGTERMStrategy:               envStr("DIPOLE_SIGTERM_STRATEGY", "immediate"),
 		PassThroughBeforeRegistration: envBool("DIPOLE_PASS_THROUGH_TRAFFIC_BEFORE_REGISTRATION", true),
+		PostStartMaxWaitSec:           envInt("DIPOLE_POST_START_MAX_WAIT_SEC", 60),
 		K8sPodName:                    os.Getenv("K8S_POD_NAME"),
 		K8sNamespace:                  os.Getenv("K8S_NAMESPACE"),
 		ResourceSetID:                 os.Getenv("DIPOLE_RESOURCE_SET_ID"),
