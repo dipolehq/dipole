@@ -14,24 +14,16 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 )
 
-type LeftSideAuthenticator interface {
-	Authenticate(token string) (*GatewayAuthResult, error)
+type GatewayAuthenticator interface {
+	Authenticate(token string) (*gw.AuthResult, error)
 }
 
-type MCPMethodHandler interface {
-	HandleMethod(ctx *GatewayRequestContext, method string, params json.RawMessage) (any, error)
-}
-
-type GatewayAuthResult struct {
-	UserID string
-	Claims map[string]any
-}
-
-type GatewayRequestContext struct {
-	UserID string
-	Claims map[string]any
+type GatewayMethodHandler interface {
+	HandleMethod(ctx *gw.RequestContext, method string, params json.RawMessage) (any, error)
 }
 
 type JSONRPCRequest struct {
@@ -42,9 +34,9 @@ type JSONRPCRequest struct {
 }
 
 type JSONRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      any           `json:"id"`
+	Result  any           `json:"result,omitempty"`
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
@@ -54,12 +46,12 @@ type JSONRPCError struct {
 }
 
 type MCPGatewayServer struct {
-	auth          LeftSideAuthenticator
-	methodHandler MCPMethodHandler
+	auth          GatewayAuthenticator
+	methodHandler GatewayMethodHandler
 	logger        *slog.Logger
 }
 
-func NewMCPGatewayServer(auth LeftSideAuthenticator, handler MCPMethodHandler, logger *slog.Logger) *MCPGatewayServer {
+func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, logger *slog.Logger) *MCPGatewayServer {
 	return &MCPGatewayServer{
 		auth:          auth,
 		methodHandler: handler,
@@ -67,7 +59,7 @@ func NewMCPGatewayServer(auth LeftSideAuthenticator, handler MCPMethodHandler, l
 	}
 }
 
-func (s *MCPGatewayServer) RegisterRoutes(mux *http.ServeMux) {
+func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mcp", s.HandleMCP)
 	mux.HandleFunc("DELETE /mcp", s.HandleSessionDelete)
 }
@@ -106,7 +98,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := &GatewayRequestContext{
+	ctx := &gw.RequestContext{
 		UserID: authResult.UserID,
 		Claims: authResult.Claims,
 	}

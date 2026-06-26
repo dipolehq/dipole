@@ -111,6 +111,28 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 	return creds, nil
 }
 
+func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID string, tenantID uuid.UUID, serverName string) (*ServerCredential, error) {
+	policies, err := a.policyFinder.FindGatewayPolicies(ctx, tenantID, a.gatewayURL)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, policy := range policies {
+		if policy.ServerWorkload.Name != serverName {
+			continue
+		}
+		token, err := a.resolveCredential(ctx, userID, tenantID, &policy)
+		if err != nil {
+			return nil, err
+		}
+		return &ServerCredential{
+			AccessToken:    token,
+			ServerWorkload: policy.ServerWorkload,
+		}, nil
+	}
+	return nil, ErrNoPolicyForServer
+}
+
 func (a *RightSideAuth) resolveCredential(ctx context.Context, userID string, tenantID uuid.UUID, policy *RightSidePolicy) (string, error) {
 	switch policy.CredentialType {
 	case "mcp_user_based_access_token":
