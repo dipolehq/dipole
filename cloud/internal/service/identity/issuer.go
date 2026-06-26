@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,6 +65,83 @@ func NewIdentityIssuer(tenantSubdomain, region string) (*IdentityIssuer, error) 
 
 func (i *IdentityIssuer) IssuerURL() string {
 	return i.issuerURL
+}
+
+// VerifyTokenSignature verifies a JWT was signed by this issuer's keys.
+func (i *IdentityIssuer) VerifyTokenSignature(token string) error {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid JWT format")
+	}
+
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return fmt.Errorf("decode header: %w", err)
+	}
+	var header struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return fmt.Errorf("parse header: %w", err)
+	}
+
+	signingInput := parts[0] + "." + parts[1]
+	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
+	}
+
+	hash := crypto.SHA256.New()
+	hash.Write([]byte(signingInput))
+	digest := hash.Sum(nil)
+
+	switch header.Alg {
+	case "ES256":
+		if !ecdsa.VerifyASN1(i.es256Key.Public().(*ecdsa.PublicKey), digest, ecdsaFixedToASN1(sigBytes, 32)) {
+			return fmt.Errorf("ES256 signature verification failed")
+		}
+	case "RS256":
+		if err := rsa.VerifyPKCS1v15(i.rs256Key.Public().(*rsa.PublicKey), crypto.SHA256, digest, sigBytes); err != nil {
+			return fmt.Errorf("RS256 signature verification failed")
+		}
+	default:
+		return fmt.Errorf("unsupported algorithm: %s", header.Alg)
+	}
+
+	return nil
+}
+
+// ecdsaFixedToASN1 converts a fixed-size ECDSA signature (r || s) to ASN.1 DER format.
+func ecdsaFixedToASN1(sig []byte, keySize int) []byte {
+	if len(sig) != keySize*2 {
+		return sig
+	}
+	r := new(big.Int).SetBytes(sig[:keySize])
+	s := new(big.Int).SetBytes(sig[keySize:])
+
+	// ASN.1 DER: SEQUENCE { INTEGER r, INTEGER s }
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+
+	// Add leading zero if high bit set (positive integer encoding)
+	if len(rBytes) > 0 && rBytes[0]&0x80 != 0 {
+		rBytes = append([]byte{0}, rBytes...)
+	}
+	if len(sBytes) > 0 && sBytes[0]&0x80 != 0 {
+		sBytes = append([]byte{0}, sBytes...)
+	}
+
+	// Build DER: 0x30 <len> 0x02 <rlen> <r> 0x02 <slen> <s>
+	inner := make([]byte, 0, 2+len(rBytes)+2+len(sBytes))
+	inner = append(inner, 0x02, byte(len(rBytes)))
+	inner = append(inner, rBytes...)
+	inner = append(inner, 0x02, byte(len(sBytes)))
+	inner = append(inner, sBytes...)
+
+	out := make([]byte, 0, 2+len(inner))
+	out = append(out, 0x30, byte(len(inner)))
+	out = append(out, inner...)
+	return out
 }
 
 func (i *IdentityIssuer) IssueToken(req IssuanceRequest) (string, error) {
