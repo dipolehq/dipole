@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -77,6 +78,7 @@ func (r *clientWorkloadResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"is_active": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 				Description: "Active status of the Client Workload.",
 			},
 			"identifiers": schema.SetNestedAttribute{
@@ -236,15 +238,10 @@ type apiTag struct {
 }
 
 func (r *clientWorkloadResource) modelToAPI(ctx context.Context, m clientWorkloadModel) apiClientWorkload {
-	isActive := true
-	if !m.IsActive.IsNull() && !m.IsActive.IsUnknown() {
-		isActive = m.IsActive.ValueBool()
-	}
-
 	api := apiClientWorkload{
 		Name:        m.Name.ValueString(),
 		Description: m.Description.ValueString(),
-		IsActive:    isActive,
+		IsActive:    m.IsActive.ValueBool(),
 	}
 
 	var identifiers []struct {

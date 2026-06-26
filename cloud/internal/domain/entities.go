@@ -40,22 +40,28 @@ type ClientWorkload struct {
 }
 
 type ServerWorkload struct {
-	ID            uuid.UUID
-	TenantID      uuid.UUID
-	Name          string
-	Description   string
-	Host          string
-	Port          int
-	AppProtocol   string
-	TLS           bool
-	AuthMethod    string
-	AuthScheme    string
-	AuthConfig    map[string]string
-	URLPath       string
-	Tags          []Tag
-	ResourceSetID *uuid.UUID
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	Name              string
+	Description       string
+	IsActive          bool
+	Host              string
+	Port              int
+	AppProtocol       string
+	TransportProtocol string
+	TLS               bool
+	TLSVerification   string
+	RequestedPort     int
+	RequestedTLS      bool
+	AuthMethod        string
+	AuthScheme        string
+	AuthConfig        map[string]string
+	HTTPHeaders       map[string]string
+	URLPath           string
+	Tags              []Tag
+	ResourceSetID     *uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type MatchRule struct {
