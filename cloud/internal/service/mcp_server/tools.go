@@ -22,11 +22,12 @@ import (
 const maxPerPage = 100
 
 type ToolService struct {
-	eventRepo repository.EventRepository
+	eventRepo   repository.EventRepository
+	auditLogger *AuditLogger
 }
 
-func NewToolService(eventRepo repository.EventRepository) *ToolService {
-	return &ToolService{eventRepo: eventRepo}
+func NewToolService(eventRepo repository.EventRepository, auditLogger *AuditLogger) *ToolService {
+	return &ToolService{eventRepo: eventRepo, auditLogger: auditLogger}
 }
 
 func (s *ToolService) ListTools() any {
@@ -34,6 +35,10 @@ func (s *ToolService) ListTools() any {
 }
 
 func (s *ToolService) CallTool(name string, args map[string]any, tenantID uuid.UUID, resourceSetID *uuid.UUID) (any, error) {
+	if s.auditLogger != nil {
+		s.auditLogger.LogToolCall(context.Background(), tenantID, name, "")
+	}
+
 	switch name {
 	case "get_audit_logs":
 		return s.getAuditLogs(args, tenantID)
