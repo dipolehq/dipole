@@ -170,7 +170,12 @@ func (p *DipoleProvider) Resources(_ context.Context) []func() resource.Resource
 }
 
 func (p *DipoleProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewClientWorkloadDataSource,
+		NewServerWorkloadDataSource,
+		NewTrustProviderDataSource,
+		NewAccessPolicyDataSource,
+	}
 }
 
 func stringValueOrEnv(val types.String, envKey string) string {
