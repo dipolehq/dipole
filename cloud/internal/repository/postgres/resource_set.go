@@ -85,3 +85,22 @@ func (r *ResourceSetRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uui
 	}
 	return nil
 }
+
+func (r *ResourceSetRepo) GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT role_id FROM role_resource_set_assignments WHERE resource_set_id = $1`, resourceSetID)
+	if err != nil {
+		return nil, fmt.Errorf("get resource set role assignments: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan role id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}

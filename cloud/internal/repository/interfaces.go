@@ -90,6 +90,7 @@ type ResourceSetRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ResourceSet, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error)
 }
 
 type UserRepository interface {
@@ -107,4 +108,6 @@ type RoleRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.Role, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, role *domain.Role) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	AssignResourceSets(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID, resourceSetIDs []uuid.UUID) error
+	GetResourceSetIDs(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID) ([]uuid.UUID, error)
 }

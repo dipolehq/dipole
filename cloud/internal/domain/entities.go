@@ -197,6 +197,8 @@ type Role struct {
 	ID          uuid.UUID
 	TenantID    uuid.UUID
 	Name        string
+	Description string
+	IsActive    bool
 	Permissions json.RawMessage
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

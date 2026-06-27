@@ -12,9 +12,11 @@ import (
 	"errors"
 
 	"github.com/dipole-labs/terraform-provider-dipole/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -29,7 +31,10 @@ type roleResource struct {
 type roleModel struct {
 	ID              types.String `tfsdk:"id"`
 	Name            types.String `tfsdk:"name"`
+	Description     types.String `tfsdk:"description"`
+	IsActive        types.Bool   `tfsdk:"is_active"`
 	PermissionsJSON types.String `tfsdk:"permissions_json"`
+	ResourceSetIDs  types.Set    `tfsdk:"resource_set_ids"`
 }
 
 func NewRoleResource() resource.Resource {
@@ -55,9 +60,24 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Required:    true,
 				Description: "Display name of the Role.",
 			},
+			"description": schema.StringAttribute{
+				Optional:    true,
+				Description: "Description of the Role.",
+			},
+			"is_active": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
+				Description: "Active status of the Role.",
+			},
 			"permissions_json": schema.StringAttribute{
 				Required:    true,
 				Description: "Role permissions as JSON. Defines read/write access per resource type. Use jsonencode() to provide.",
+			},
+			"resource_set_ids": schema.SetAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				Description: "Set of Resource Set IDs this role is assigned to.",
 			},
 		},
 	}
@@ -165,30 +185,59 @@ func (r *roleResource) ImportState(ctx context.Context, req resource.ImportState
 }
 
 type apiRole struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Permissions json.RawMessage `json:"permissions"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	IsActive       bool            `json:"isActive"`
+	Permissions    json.RawMessage `json:"permissions"`
+	ResourceSetIDs []string        `json:"resourceSetIds"`
 }
 
 func roleToAPI(m roleModel) apiRole {
 	api := apiRole{
-		Name: m.Name.ValueString(),
+		Name:        m.Name.ValueString(),
+		Description: m.Description.ValueString(),
+		IsActive:    m.IsActive.ValueBool(),
 	}
 	if !m.PermissionsJSON.IsNull() && !m.PermissionsJSON.IsUnknown() {
 		api.Permissions = json.RawMessage(m.PermissionsJSON.ValueString())
+	}
+	if !m.ResourceSetIDs.IsNull() && !m.ResourceSetIDs.IsUnknown() {
+		var ids []string
+		m.ResourceSetIDs.ElementsAs(context.Background(), &ids, false)
+		api.ResourceSetIDs = ids
 	}
 	return api
 }
 
 func roleFromAPI(api apiRole) *roleModel {
 	m := &roleModel{
-		ID:   types.StringValue(api.ID),
-		Name: types.StringValue(api.Name),
+		ID:       types.StringValue(api.ID),
+		Name:     types.StringValue(api.Name),
+		IsActive: types.BoolValue(api.IsActive),
 	}
+
+	if api.Description != "" {
+		m.Description = types.StringValue(api.Description)
+	} else {
+		m.Description = types.StringNull()
+	}
+
 	if len(api.Permissions) > 0 && string(api.Permissions) != "null" {
 		m.PermissionsJSON = types.StringValue(string(api.Permissions))
 	} else {
 		m.PermissionsJSON = types.StringValue("{}")
 	}
+
+	if len(api.ResourceSetIDs) > 0 {
+		elements := make([]attr.Value, 0, len(api.ResourceSetIDs))
+		for _, id := range api.ResourceSetIDs {
+			elements = append(elements, types.StringValue(id))
+		}
+		m.ResourceSetIDs, _ = types.SetValue(types.StringType, elements)
+	} else {
+		m.ResourceSetIDs = types.SetNull(types.StringType)
+	}
+
 	return m
 }

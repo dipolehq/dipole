@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/dipole-labs/terraform-provider-dipole/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -30,6 +31,7 @@ type resourceSetModel struct {
 	ID          types.String `tfsdk:"id"`
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
+	Roles       types.Set    `tfsdk:"roles"`
 }
 
 func NewResourceSetResource() resource.Resource {
@@ -58,6 +60,11 @@ func (r *resourceSetResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"description": schema.StringAttribute{
 				Optional:    true,
 				Description: "Description of the Resource Set.",
+			},
+			"roles": schema.SetAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "Role IDs associated with this Resource Set (read-only, managed from dipole_role resource).",
 			},
 		},
 	}
@@ -173,9 +180,10 @@ func (r *resourceSetResource) ImportState(ctx context.Context, req resource.Impo
 }
 
 type apiResourceSet struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Roles       []string `json:"roles"`
 }
 
 func resourceSetFromAPI(api apiResourceSet) *resourceSetModel {
@@ -187,6 +195,15 @@ func resourceSetFromAPI(api apiResourceSet) *resourceSetModel {
 		m.Description = types.StringValue(api.Description)
 	} else {
 		m.Description = types.StringNull()
+	}
+	if len(api.Roles) > 0 {
+		elements := make([]attr.Value, 0, len(api.Roles))
+		for _, id := range api.Roles {
+			elements = append(elements, types.StringValue(id))
+		}
+		m.Roles, _ = types.SetValue(types.StringType, elements)
+	} else {
+		m.Roles, _ = types.SetValue(types.StringType, []attr.Value{})
 	}
 	return m
 }
