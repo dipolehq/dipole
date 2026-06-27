@@ -160,6 +160,7 @@ func (p *DipoleProvider) Resources(_ context.Context) []func() resource.Resource
 	return []func() resource.Resource{
 		NewClientWorkloadResource,
 		NewServerWorkloadResource,
+		NewTrustProviderResource,
 	}
 }
 
