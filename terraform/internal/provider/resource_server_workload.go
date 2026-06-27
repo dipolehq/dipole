@@ -268,25 +268,25 @@ func (r *serverWorkloadResource) ImportState(ctx context.Context, req resource.I
 }
 
 type apiServerWorkload struct {
-	ID                string            `json:"ID"`
-	Name              string            `json:"Name"`
-	Description       string            `json:"Description"`
-	IsActive          bool              `json:"IsActive"`
-	Host              string            `json:"Host"`
-	Port              int               `json:"Port"`
-	AppProtocol       string            `json:"AppProtocol"`
-	TransportProtocol string            `json:"TransportProtocol"`
-	TLS               bool              `json:"TLS"`
-	TLSVerification   string            `json:"TLSVerification"`
-	RequestedPort     int               `json:"RequestedPort"`
-	RequestedTLS      bool              `json:"RequestedTLS"`
-	AuthMethod        string            `json:"AuthMethod"`
-	AuthScheme        string            `json:"AuthScheme"`
-	AuthConfig        map[string]string `json:"AuthConfig"`
-	HTTPHeaders       map[string]string `json:"HTTPHeaders"`
-	URLPath           string            `json:"URLPath"`
-	Tags              []apiTag          `json:"Tags"`
-	ResourceSetID     *string           `json:"ResourceSetID"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Description       string            `json:"description"`
+	IsActive          bool              `json:"isActive"`
+	Host              string            `json:"host"`
+	Port              int               `json:"port"`
+	AppProtocol       string            `json:"appProtocol"`
+	TransportProtocol string            `json:"transportProtocol"`
+	TLS               bool              `json:"tls"`
+	TLSVerification   string            `json:"tlsVerification"`
+	RequestedPort     int               `json:"requestedPort"`
+	RequestedTLS      bool              `json:"requestedTls"`
+	AuthMethod        string            `json:"authMethod"`
+	AuthScheme        string            `json:"authScheme"`
+	AuthConfig        map[string]string `json:"authConfig"`
+	HTTPHeaders       map[string]string `json:"httpHeaders"`
+	URLPath           string            `json:"urlPath"`
+	Tags              []apiTag          `json:"tags"`
+	ResourceSetID     *string           `json:"resourceSetId"`
 }
 
 func (r *serverWorkloadResource) modelToAPI(ctx context.Context, m serverWorkloadModel) apiServerWorkload {

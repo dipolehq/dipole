@@ -218,13 +218,13 @@ func (r *clientWorkloadResource) ImportState(ctx context.Context, req resource.I
 }
 
 type apiClientWorkload struct {
-	ID            string          `json:"ID"`
-	Name          string          `json:"Name"`
-	Description   string          `json:"Description"`
-	IsActive      bool            `json:"IsActive"`
-	Identifiers   []apiIdentifier `json:"Identifiers"`
-	Tags          []apiTag        `json:"Tags"`
-	ResourceSetID *string         `json:"ResourceSetID"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Description   string          `json:"description"`
+	IsActive      bool            `json:"isActive"`
+	Identifiers   []apiIdentifier `json:"identifiers"`
+	Tags          []apiTag        `json:"tags"`
+	ResourceSetID *string         `json:"resourceSetId"`
 }
 
 type apiIdentifier struct {

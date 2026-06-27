@@ -221,17 +221,17 @@ func (r *trustProviderResource) ImportState(ctx context.Context, req resource.Im
 }
 
 type apiTrustProvider struct {
-	ID              string          `json:"ID"`
-	Name            string          `json:"Name"`
-	Description     string          `json:"Description"`
-	IsActive        bool            `json:"IsActive"`
-	Type            string          `json:"Type"`
-	Config          json.RawMessage `json:"Config"`
-	MatchRules      json.RawMessage `json:"MatchRules"`
-	EdgeSDKClientID string          `json:"EdgeSDKClientID"`
-	EdgeSDKAudience string          `json:"EdgeSDKAudience"`
-	Tags            []apiTag        `json:"Tags"`
-	ResourceSetID   *string         `json:"ResourceSetID"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	IsActive        bool            `json:"isActive"`
+	Type            string          `json:"type"`
+	Config          json.RawMessage `json:"config"`
+	MatchRules      json.RawMessage `json:"matchRules"`
+	EdgeSDKClientID string          `json:"edgeSdkClientId"`
+	EdgeSDKAudience string          `json:"edgeSdkAudience"`
+	Tags            []apiTag        `json:"tags"`
+	ResourceSetID   *string         `json:"resourceSetId"`
 }
 
 func (r *trustProviderResource) modelToAPI(ctx context.Context, m trustProviderModel) apiTrustProvider {
