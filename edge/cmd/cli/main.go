@@ -93,7 +93,7 @@ func deriveEndpoint(clientID string) (endpoint, identityType string, err error) 
 	region := parts[1]
 	tenant := parts[2]
 	identityType = parts[4]
-	endpoint = fmt.Sprintf("https://%s.ec.%s.dipole.io", tenant, region)
+	endpoint = fmt.Sprintf("https://%s.ec.%s.dipolehq.com", tenant, region)
 	return endpoint, identityType, nil
 }
 

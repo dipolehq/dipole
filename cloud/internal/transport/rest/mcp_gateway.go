@@ -4,7 +4,7 @@ Package rest — mcp_gateway.go implements the MCP Identity Gateway HTTP server.
 MCPGatewayServer handles MCP protocol traffic (JSON-RPC over HTTP) from AI agents.
 It validates Bearer tokens (left-side auth), parses MCP methods, routes to downstream
 MCP servers with per-user credentials (right-side auth), and aggregates results.
-Served at https://<tenant>.mcpgateway.<region>.dipole.io/mcp in production.
+Served at https://<tenant>.mcpgateway.<region>.dipolehq.com/mcp in production.
 */
 package rest
 

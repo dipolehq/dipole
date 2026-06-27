@@ -13,7 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dipole-labs/terraform-provider-dipole/internal/client"
+	"github.com/dipolehq/terraform-provider-dipole/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -120,13 +120,13 @@ func (p *DipoleProvider) Configure(ctx context.Context, req provider.ConfigureRe
 	// Derive base URL from tenant_id, or parse it from client_id
 	var baseURL string
 	if tenantID != "" {
-		baseURL = "https://" + tenantID + ".dipole.io"
+		baseURL = "https://" + tenantID + ".dipolehq.com"
 	} else if clientID != "" {
 		// client_id format: dipole:<region>:<tenantSubdomain>:identity:<type>:<uuid>
 		parts := strings.Split(clientID, ":")
 		if len(parts) >= 3 {
 			tenantID = parts[2]
-			baseURL = "https://" + tenantID + ".dipole.io"
+			baseURL = "https://" + tenantID + ".dipolehq.com"
 		}
 	}
 

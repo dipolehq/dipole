@@ -29,8 +29,8 @@ func TestIssueToken_ES256_CorrectClaims(t *testing.T) {
 
 	claims := decodePayload(t, token)
 
-	if claims["iss"] != "https://acme.id.ap-south-1.dipole.io" {
-		t.Errorf("iss = %v, want https://acme.id.ap-south-1.dipole.io", claims["iss"])
+	if claims["iss"] != "https://acme.id.ap-south-1.dipolehq.com" {
+		t.Errorf("iss = %v, want https://acme.id.ap-south-1.dipolehq.com", claims["iss"])
 	}
 	if claims["sub"] != "workload-123" {
 		t.Errorf("sub = %v, want workload-123", claims["sub"])
@@ -179,10 +179,10 @@ func TestDiscoveryDocument(t *testing.T) {
 
 	doc := issuer.DiscoveryDocument()
 
-	if doc["issuer"] != "https://myco.id.ap-south-1.dipole.io" {
+	if doc["issuer"] != "https://myco.id.ap-south-1.dipolehq.com" {
 		t.Errorf("issuer = %v", doc["issuer"])
 	}
-	if doc["jwks_uri"] != "https://myco.id.ap-south-1.dipole.io/.well-known/openid-configuration/jwks" {
+	if doc["jwks_uri"] != "https://myco.id.ap-south-1.dipolehq.com/.well-known/openid-configuration/jwks" {
 		t.Errorf("jwks_uri = %v", doc["jwks_uri"])
 	}
 }

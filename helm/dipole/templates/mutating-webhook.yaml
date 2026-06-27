@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "dipole.labels" . | nindent 4 }}
 webhooks:
-  - name: agent-inject.dipole.io
+  - name: agent-inject.dipolehq.com
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: Ignore

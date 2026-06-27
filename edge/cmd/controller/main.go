@@ -94,7 +94,7 @@ func loadControllerConfig() *ControllerConfig {
 
 	cloudEndpoint := os.Getenv("DIPOLE_CLOUD_ENDPOINT")
 	if cloudEndpoint == "" {
-		cloudEndpoint = fmt.Sprintf("https://%s.dipole.io", tenantID)
+		cloudEndpoint = fmt.Sprintf("https://%s.dipolehq.com", tenantID)
 	}
 
 	port := 80

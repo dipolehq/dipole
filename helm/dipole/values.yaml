@@ -51,4 +51,4 @@ serviceAccount:
 
 cloud:
   region: "ap-south-1"
-  domain: "dipole.io"
+  domain: "dipolehq.com"

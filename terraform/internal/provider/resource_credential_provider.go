@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/dipole-labs/terraform-provider-dipole/internal/client"
+	"github.com/dipolehq/terraform-provider-dipole/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"

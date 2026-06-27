@@ -24,7 +24,7 @@ func TestGitHubValidator_ValidToken_Attested(t *testing.T) {
 		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
 	}, logger: nil}
 
-	audience := "https://acme.id.ap-south-1.dipole.io"
+	audience := "https://acme.id.ap-south-1.dipolehq.com"
 	claims := map[string]interface{}{
 		"iss":        "https://token.actions.githubusercontent.com",
 		"sub":        "repo:myorg/myrepo:ref:refs/heads/main",
@@ -67,13 +67,13 @@ func TestGitHubValidator_AudienceMismatch(t *testing.T) {
 	}, logger: nil}
 
 	claims := map[string]interface{}{
-		"aud": "https://wrong-audience.dipole.io",
+		"aud": "https://wrong-audience.dipolehq.com",
 		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
 	}
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
-		EdgeSDKAudience: "https://acme.id.ap-south-1.dipole.io",
+		EdgeSDKAudience: "https://acme.id.ap-south-1.dipolehq.com",
 		Config:          json.RawMessage(`{"match_rules":[]}`),
 	}
 	evidence := &domain.ClientEvidence{
@@ -101,7 +101,7 @@ func TestGitHubValidator_WrongRepository_MatchRuleFailed(t *testing.T) {
 		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
 	}, logger: nil}
 
-	audience := "https://acme.id.ap-south-1.dipole.io"
+	audience := "https://acme.id.ap-south-1.dipolehq.com"
 	claims := map[string]interface{}{
 		"aud":        audience,
 		"repository": "other-org/other-repo",

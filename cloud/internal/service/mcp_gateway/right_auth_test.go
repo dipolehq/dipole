@@ -31,7 +31,7 @@ func TestRightAuth_PerUserIsolation(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, "https://gw.dipole.io/")
+	rightAuth := NewRightSideAuth(policyFinder, store, "https://gw.dipolehq.com/")
 
 	// Alice gets Alice's token
 	cred, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
@@ -65,7 +65,7 @@ func TestRightAuth_FirstTimeAccess_ConsentRequired(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipole.io/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
 
 	_, err := rightAuth.GetCredential(context.Background(), "newuser@corp.com", tenantID, "jira.example.com", 443)
 	if err != ErrConsentRequired {
@@ -76,7 +76,7 @@ func TestRightAuth_FirstTimeAccess_ConsentRequired(t *testing.T) {
 func TestRightAuth_NoPolicyForServer_Denied(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{policies: nil}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipole.io/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
 
 	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "unknown.example.com", 443)
 	if err != ErrNoPolicyForServer {
@@ -103,7 +103,7 @@ func TestRightAuth_ExpiredToken_Error(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, "https://gw.dipole.io/")
+	rightAuth := NewRightSideAuth(policyFinder, store, "https://gw.dipolehq.com/")
 
 	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
 	if err != ErrCredentialExpired {

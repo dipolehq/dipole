@@ -1,4 +1,4 @@
-module github.com/dipole-labs/terraform-provider-dipole
+module github.com/dipolehq/terraform-provider-dipole
 
 go 1.25.8
 

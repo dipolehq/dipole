@@ -14,7 +14,7 @@ func TestBuildPatches_WithAnnotation_HasInitAndSidecar(t *testing.T) {
 		ControllerURL: "http://controller.dipole:80",
 	}}
 
-	patches := inj.buildPatches(map[string]string{"dipole.io/agent-inject": "enabled"}, 1)
+	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1)
 
 	if len(patches) != 2 {
 		t.Fatalf("expected 2 patches (init + sidecar), got %d", len(patches))
@@ -36,8 +36,8 @@ func TestBuildPatches_ExplicitMode_NoInit_HasHTTPProxy(t *testing.T) {
 	}}
 
 	patches := inj.buildPatches(map[string]string{
-		"dipole.io/agent-inject":  "enabled",
-		"dipole.io/steering-mode": "explicit",
+		"dipolehq.com/agent-inject":  "enabled",
+		"dipolehq.com/steering-mode": "explicit",
 	}, 2)
 
 	for _, p := range patches {
@@ -68,8 +68,8 @@ func TestBuildPatches_WithResourceSetID(t *testing.T) {
 	}}
 
 	patches := inj.buildPatches(map[string]string{
-		"dipole.io/agent-inject":    "enabled",
-		"dipole.io/resource-set-id": "rs-uuid-123",
+		"dipolehq.com/agent-inject":    "enabled",
+		"dipolehq.com/resource-set-id": "rs-uuid-123",
 	}, 1)
 
 	sidecarJSON, _ := json.Marshal(patches[1].Value)
@@ -90,8 +90,8 @@ func TestBuildPatches_CustomEnvAnnotation(t *testing.T) {
 	}}
 
 	patches := inj.buildPatches(map[string]string{
-		"dipole.io/agent-inject":           "enabled",
-		"dipole.io/agent-proxy-env-MY_VAR": "my-value",
+		"dipolehq.com/agent-inject":           "enabled",
+		"dipolehq.com/agent-proxy-env-MY_VAR": "my-value",
 	}, 1)
 
 	sidecarJSON, _ := json.Marshal(patches[1].Value)

@@ -10,13 +10,13 @@ import (
 	"context"
 	"log"
 
-	"github.com/dipole-labs/terraform-provider-dipole/internal/provider"
+	"github.com/dipolehq/terraform-provider-dipole/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
 func main() {
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/dipole-labs/dipole",
+		Address: "registry.terraform.io/dipolehq/dipole",
 	}
 
 	err := providerserver.Serve(context.Background(), provider.New, opts)

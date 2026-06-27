@@ -7,7 +7,7 @@ GenerateEdgeSDKClientID creates the identifier used by CLI/Edge API:
 
 GenerateEdgeSDKAudience creates the OIDC audience value:
 
-	https://<tenantSubdomain>.id.<region>.dipole.io
+	https://<tenantSubdomain>.id.<region>.dipolehq.com
 
 Both are immutable after Trust Provider creation.
 */
@@ -24,7 +24,7 @@ func GenerateEdgeSDKClientID(region, tenantSubdomain, tpType string, tpID uuid.U
 }
 
 func GenerateEdgeSDKAudience(region, tenantSubdomain string) string {
-	return fmt.Sprintf("https://%s.id.%s.dipole.io", tenantSubdomain, region)
+	return fmt.Sprintf("https://%s.id.%s.dipolehq.com", tenantSubdomain, region)
 }
 
 func typeShortName(tpType string) string {

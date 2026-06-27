@@ -1,6 +1,6 @@
 /*
 Agent Injector — Kubernetes MutatingAdmissionWebhook that injects the Agent
-Proxy sidecar into pods annotated with dipole.io/agent-inject: "enabled".
+Proxy sidecar into pods annotated with dipolehq.com/agent-inject: "enabled".
 Adds init container (iptables, UID 26248) + sidecar (proxy, UID 65534).
 Uses failurePolicy=Ignore so injector downtime never blocks pod creation.
 */
@@ -134,7 +134,7 @@ func (inj *AgentInjector) handleMutate(w http.ResponseWriter, r *http.Request) {
 		Allowed: true,
 	}
 
-	if pod.Metadata.Annotations["dipole.io/agent-inject"] == "enabled" {
+	if pod.Metadata.Annotations["dipolehq.com/agent-inject"] == "enabled" {
 		patches := inj.buildPatches(pod.Metadata.Annotations, len(pod.Spec.Containers))
 		patchBytes, _ := json.Marshal(patches)
 		patchType := "JSONPatch"
@@ -161,7 +161,7 @@ type jsonPatch struct {
 func (inj *AgentInjector) buildPatches(annotations map[string]string, containerCount int) []jsonPatch {
 	var patches []jsonPatch
 
-	steeringMode := annotations["dipole.io/steering-mode"]
+	steeringMode := annotations["dipolehq.com/steering-mode"]
 
 	// Init container (skip for explicit steering)
 	if steeringMode != "explicit" {
@@ -191,16 +191,16 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 		{"name": "K8S_NAMESPACE", "valueFrom": map[string]interface{}{"fieldRef": map[string]string{"fieldPath": "metadata.namespace"}}},
 	}
 
-	if rsID := annotations["dipole.io/resource-set-id"]; rsID != "" {
+	if rsID := annotations["dipolehq.com/resource-set-id"]; rsID != "" {
 		sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": "DIPOLE_RESOURCE_SET_ID", "value": rsID})
 	}
-	if clientID := annotations["dipole.io/client-id"]; clientID != "" {
+	if clientID := annotations["dipolehq.com/client-id"]; clientID != "" {
 		sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": "CLIENT_WORKLOAD_ID", "value": clientID})
 	}
 
 	for k, v := range annotations {
-		if strings.HasPrefix(k, "dipole.io/agent-proxy-env-") {
-			varName := strings.TrimPrefix(k, "dipole.io/agent-proxy-env-")
+		if strings.HasPrefix(k, "dipolehq.com/agent-proxy-env-") {
+			varName := strings.TrimPrefix(k, "dipolehq.com/agent-proxy-env-")
 			sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": varName, "value": v})
 		}
 	}

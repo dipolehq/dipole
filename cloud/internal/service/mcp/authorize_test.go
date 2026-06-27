@@ -98,7 +98,7 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 		},
 	}
 
-	idpSvc := NewIdPService("https://test.mcp.ap-south-1.dipole.io")
+	idpSvc := NewIdPService("https://test.mcp.ap-south-1.dipolehq.com")
 	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, idpSvc)
 
 	result, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{

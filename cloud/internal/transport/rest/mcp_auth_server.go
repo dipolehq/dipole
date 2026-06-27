@@ -2,7 +2,7 @@
 Package rest provides HTTP transport handlers for the Cloud service.
 
 MCPAuthServer implements the OAuth 2.1 Authorization Server endpoints for
-MCP client authorization. Served on the <tenant>.mcp.<region>.dipole.io
+MCP client authorization. Served on the <tenant>.mcp.<region>.dipolehq.com
 subdomain. Handles: OAuth metadata discovery, OIDC discovery, JWKS, DCR,
 authorization, and token exchange.
 */
