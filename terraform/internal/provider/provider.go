@@ -162,6 +162,7 @@ func (p *DipoleProvider) Resources(_ context.Context) []func() resource.Resource
 		NewServerWorkloadResource,
 		NewTrustProviderResource,
 		NewCredentialProviderResource,
+		NewAccessPolicyResource,
 	}
 }
 
