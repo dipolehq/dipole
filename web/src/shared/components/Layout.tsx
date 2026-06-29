@@ -9,7 +9,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-surface-secondary">
       <Sidebar />
-      <main className="ml-52">{children}</main>
+      <main className="ml-[204px]">{children}</main>
     </div>
   )
 }

@@ -46,14 +46,12 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   return (
-    <aside className="fixed left-0 top-0 h-screen w-52 bg-[#28282B] flex flex-col">
-      {/* Logo */}
+    <aside className="fixed left-0 top-0 h-screen w-51 bg-[#28282B] flex flex-col">
       <div className="px-4 pt-5 pb-6 flex items-center gap-2">
         <img src="/dipole_logo.svg" alt="Dipole" className="h-9 w-9" />
         <span className="text-white font-semibold text-xl tracking-tight">Dipole</span>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-3 py-1 space-y-px overflow-y-auto">
         {NAV_ITEMS.map((item, idx) => {
           if (item.type === 'divider') {
@@ -79,14 +77,12 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User profile */}
       <div className="px-3 py-3 border-t border-white/10 relative group">
         <button className="flex items-center gap-2.5 w-full px-3 py-2 rounded text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors">
           <User size={16} className="shrink-0" />
           <span>John Doe</span>
         </button>
 
-        {/* Popover menu — inside sidebar, same width */}
         <div className="absolute bottom-full left-0 right-0 px-3 pb-1 hidden group-hover:block z-50">
           <div className="bg-[#333336] rounded-lg shadow-lg py-1">
             <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">

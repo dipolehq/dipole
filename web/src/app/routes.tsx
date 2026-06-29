@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from '@/shared/components/Layout'
+import { DashboardPage } from '@/features/dashboard/components/DashboardPage'
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -13,7 +14,7 @@ export function AppRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Placeholder title="Dashboard" />} />
+        <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<Placeholder title="Access Policies" />} />
         <Route path="/client-workloads" element={<Placeholder title="Client Workloads" />} />
         <Route path="/trust-providers" element={<Placeholder title="Trust Providers" />} />
