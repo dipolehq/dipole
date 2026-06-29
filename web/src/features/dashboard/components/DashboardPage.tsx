@@ -5,6 +5,7 @@ import { AccessDecisionsChart } from '@/features/dashboard/components/AccessDeci
 import { ConnectionsChart } from '@/features/dashboard/components/ConnectionsChart'
 import { DonutChart } from '@/features/dashboard/components/DonutChart'
 import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
+import { PageHeader } from '@/shared/components/PageHeader'
 import {
   STAT_CARDS,
   CREDENTIAL_USAGE_CONFIG,
@@ -20,7 +21,7 @@ export function DashboardPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+        <PageHeader />
         <div className="flex items-center gap-3">
           <Link
             to="/help"

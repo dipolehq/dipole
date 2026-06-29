@@ -1,1 +1,1 @@
-// Policies feature module — access policy management
+export { PoliciesPage } from './components/PoliciesPage'

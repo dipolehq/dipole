@@ -1,11 +1,13 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from '@/shared/components/Layout'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { DashboardPage } from '@/features/dashboard/components/DashboardPage'
+import { PoliciesPage } from '@/features/policies/components/PoliciesPage'
 
-function Placeholder({ title }: { title: string }) {
+function Placeholder() {
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
+      <PageHeader />
     </div>
   )
 }
@@ -15,16 +17,16 @@ export function AppRoutes() {
     <Layout>
       <Routes>
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/access-policies" element={<Placeholder title="Access Policies" />} />
-        <Route path="/client-workloads" element={<Placeholder title="Client Workloads" />} />
-        <Route path="/trust-providers" element={<Placeholder title="Trust Providers" />} />
-        <Route path="/access-conditions" element={<Placeholder title="Access Conditions" />} />
-        <Route path="/credential-providers" element={<Placeholder title="Credential Providers" />} />
-        <Route path="/server-workloads" element={<Placeholder title="Server Workloads" />} />
-        <Route path="/reporting" element={<Placeholder title="Reporting" />} />
-        <Route path="/edge-components" element={<Placeholder title="Edge Components" />} />
-        <Route path="/administration" element={<Placeholder title="Administration" />} />
-        <Route path="/help" element={<Placeholder title="Help" />} />
+        <Route path="/access-policies" element={<PoliciesPage />} />
+        <Route path="/client-workloads" element={<Placeholder />} />
+        <Route path="/trust-providers" element={<Placeholder />} />
+        <Route path="/access-conditions" element={<Placeholder />} />
+        <Route path="/credential-providers" element={<Placeholder />} />
+        <Route path="/server-workloads" element={<Placeholder />} />
+        <Route path="/reporting" element={<Placeholder />} />
+        <Route path="/edge-components" element={<Placeholder />} />
+        <Route path="/administration" element={<Placeholder />} />
+        <Route path="/help" element={<Placeholder />} />
       </Routes>
     </Layout>
   )
