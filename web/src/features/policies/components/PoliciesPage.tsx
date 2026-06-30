@@ -33,7 +33,7 @@ export function PoliciesPage() {
                 setSearchQuery(e.target.value)
                 setCurrentPage(1)
               }}
-              className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400"
+              className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
           <Link

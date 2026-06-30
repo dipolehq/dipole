@@ -3,6 +3,7 @@ import { Layout } from '@/shared/components/Layout'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { DashboardPage } from '@/features/dashboard/components/DashboardPage'
 import { PoliciesPage } from '@/features/policies/components/PoliciesPage'
+import { CreatePolicyPage } from '@/features/policies/components/CreatePolicyPage'
 
 function Placeholder() {
   return (
@@ -18,6 +19,7 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<PoliciesPage />} />
+        <Route path="/access-policies/new" element={<CreatePolicyPage />} />
         <Route path="/client-workloads" element={<Placeholder />} />
         <Route path="/trust-providers" element={<Placeholder />} />
         <Route path="/access-conditions" element={<Placeholder />} />
