@@ -4,6 +4,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { DashboardPage } from '@/features/dashboard/components/DashboardPage'
 import { PoliciesPage } from '@/features/policies/components/PoliciesPage'
 import { CreatePolicyPage } from '@/features/policies/components/CreatePolicyPage'
+import { PolicyDetailPage } from '@/features/policies/components/PolicyDetailPage'
 
 function Placeholder() {
   return (
@@ -20,6 +21,7 @@ export function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<PoliciesPage />} />
         <Route path="/access-policies/new" element={<CreatePolicyPage />} />
+        <Route path="/access-policies/:id" element={<PolicyDetailPage />} />
         <Route path="/client-workloads" element={<Placeholder />} />
         <Route path="/trust-providers" element={<Placeholder />} />
         <Route path="/access-conditions" element={<Placeholder />} />

@@ -64,7 +64,7 @@ export function ExistingAccessConditionSelector({ selectedIds, onToggle, onCance
                   <input type="checkbox" checked={selectedIds.includes(w.id)} onChange={() => onToggle(w.id)} className="w-3.5 h-3.5 rounded border-gray-300 text-orange-500 focus:ring-orange-200" />
                 </td>
                 <td className="px-3 py-2.5 text-gray-900 font-medium truncate">{w.name}</td>
-                <td className="px-3 py-2.5 text-gray-600 truncate">{w.type}</td>
+                <td className="px-3 py-2.5 text-gray-600 truncate">{w.integration === 'geoip' ? 'Dipole GeoIP Condition' : w.integration === 'time' ? 'Dipole Time Condition' : w.integration}</td>
                 <td className="px-3 py-2.5 text-gray-500 truncate">{w.description || '—'}</td>
                 <td className="px-3 py-2.5 text-center">
                   <span className="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-medium rounded">{w.tags}</span>

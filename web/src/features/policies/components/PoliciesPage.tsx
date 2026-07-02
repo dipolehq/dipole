@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { POLICY_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/features/policies/config'
+import { POLICY_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/data/policies/config'
 import { policiesData } from '@/data/policies'
 
 export function PoliciesPage() {
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
@@ -63,7 +64,7 @@ export function PoliciesPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {paginated.map((policy, idx) => (
-              <tr key={policy.id} className="hover:bg-gray-50 transition-colors">
+              <tr key={policy.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/access-policies/${policy.id}`)}>
                 <td className="px-3 py-3 text-gray-400 text-center w-10">{(currentPage - 1) * pageSize + idx + 1}</td>
                 <td className="px-4 py-3 font-medium text-gray-900 truncate max-w-[220px]">
                   <Link to={`/access-policies/${policy.id}`} className="hover:text-blue-700 transition-colors">
@@ -76,7 +77,7 @@ export function PoliciesPage() {
                   {policy.accessCondition ? (
                     <span className="text-gray-700">{policy.accessCondition}</span>
                   ) : (
-                    <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-xs rounded font-medium">Optional</span>
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded font-medium">Optional</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">{policy.credentialProvider}</td>

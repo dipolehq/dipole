@@ -1,8 +1,23 @@
 import { useState } from 'react'
 import { Dropdown } from '@/shared/components/Dropdown'
+import type { TrustProviderMatchRule } from '@/shared/components/forms/types'
 
 interface TrustProviderConfigProps {
   type: string
+  matchRules: TrustProviderMatchRule[]
+  onMatchRulesChange: (rules: TrustProviderMatchRule[]) => void
+  certificate: string
+  onCertificateChange: (v: string) => void
+  thumbprint: string
+  onThumbprintChange: (v: string) => void
+  subject: string
+  onSubjectChange: (v: string) => void
+  expiresAt: string
+  onExpiresAtChange: (v: string) => void
+  oidcEndpoint: string
+  onOidcEndpointChange: (v: string) => void
+  attestationMethod: string
+  onAttestationMethodChange: (v: string) => void
 }
 
 const MATCH_RULES: Record<string, { value: string; label: string }[]> = {
@@ -87,30 +102,36 @@ const ATTESTATION_METHODS = [
   { value: 'tenant_oidc_id_token', label: 'Dipole Tenant OIDC ID Token' },
 ]
 
-export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
-  const [matchRules, setMatchRules] = useState<{ attribute: string; value: string }[]>([
-    { attribute: '', value: '' },
-  ])
-  const [certificate, setCertificate] = useState('')
-  const [thumbprint, setThumbprint] = useState('')
-  const [subject, setSubject] = useState('')
-  const [expiresAt, setExpiresAt] = useState('')
-  const [oidcEndpoint, setOidcEndpoint] = useState('')
-  const [attestationMethod, setAttestationMethod] = useState('oidc_discovery')
-
+export function TrustProviderConfig({
+  type,
+  matchRules,
+  onMatchRulesChange,
+  certificate,
+  onCertificateChange,
+  thumbprint,
+  onThumbprintChange,
+  subject,
+  onSubjectChange,
+  expiresAt,
+  onExpiresAtChange,
+  oidcEndpoint,
+  onOidcEndpointChange,
+  attestationMethod,
+  onAttestationMethodChange,
+}: TrustProviderConfigProps) {
   const rules = MATCH_RULES[type] || []
 
   function addMatchRule() {
-    setMatchRules([...matchRules, { attribute: '', value: '' }])
+    onMatchRulesChange([...matchRules, { attribute: '', value: '' }])
   }
 
   function updateMatchRule(idx: number, field: 'attribute' | 'value', val: string) {
-    setMatchRules(matchRules.map((r, i) => i === idx ? { ...r, [field]: val } : r))
+    onMatchRulesChange(matchRules.map((r, i) => i === idx ? { ...r, [field]: val } : r))
   }
 
   function removeMatchRule(idx: number) {
     if (matchRules.length > 1) {
-      setMatchRules(matchRules.filter((_, i) => i !== idx))
+      onMatchRulesChange(matchRules.filter((_, i) => i !== idx))
     }
   }
 
@@ -224,7 +245,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
               <textarea
                 placeholder="Certificate"
                 value={certificate}
-                onChange={(e) => setCertificate(e.target.value)}
+                onChange={(e) => onCertificateChange(e.target.value)}
                 rows={5}
                 className="flex-1 px-3 py-2 border border-border rounded-md text-sm resize-y focus:outline-none focus:ring-1 focus:ring-gray-300"
               />
@@ -234,13 +255,13 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
                     const file = e.target.files?.[0]
                     if (file) {
                       const reader = new FileReader()
-                      reader.onload = (ev) => setCertificate(ev.target?.result as string || '')
+                      reader.onload = (ev) => onCertificateChange(ev.target?.result as string || '')
                       reader.readAsText(file)
                     }
                   }} />
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                 </label>
-                <button onClick={() => setCertificate('')} className="text-orange-500 hover:text-red-500" title="Clear certificate">
+                <button onClick={() => onCertificateChange('')} className="text-orange-500 hover:text-red-500" title="Clear certificate">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               </div>
@@ -252,7 +273,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
               type="text"
               placeholder="Thumbprint"
               value={thumbprint}
-              onChange={(e) => setThumbprint(e.target.value)}
+              onChange={(e) => onThumbprintChange(e.target.value)}
               className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
             />
           </div>
@@ -262,7 +283,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
               type="text"
               placeholder="Subject"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => onSubjectChange(e.target.value)}
               className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
             />
           </div>
@@ -272,7 +293,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
               type="text"
               placeholder="Expires At"
               value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
+              onChange={(e) => onExpiresAtChange(e.target.value)}
               className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
             />
           </div>
@@ -287,7 +308,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
             type="text"
             placeholder={type === 'gitlab_job' ? 'https://gitlab.com' : 'https://oidc.eks.us-east-2.amazonaws.com/id/...'}
             value={oidcEndpoint}
-            onChange={(e) => setOidcEndpoint(e.target.value)}
+            onChange={(e) => onOidcEndpointChange(e.target.value)}
             className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
           />
         </div>
@@ -300,7 +321,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
           <Dropdown
             options={ATTESTATION_METHODS}
             value={attestationMethod}
-            onChange={setAttestationMethod}
+            onChange={onAttestationMethodChange}
             placeholder="Select method..."
           />
           {attestationMethod === 'oidc_discovery' && (
@@ -310,7 +331,7 @@ export function TrustProviderConfig({ type }: TrustProviderConfigProps) {
                 type="text"
                 placeholder="https://identity-provider.example.com"
                 value={oidcEndpoint}
-                onChange={(e) => setOidcEndpoint(e.target.value)}
+                onChange={(e) => onOidcEndpointChange(e.target.value)}
                 className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
               />
             </div>
