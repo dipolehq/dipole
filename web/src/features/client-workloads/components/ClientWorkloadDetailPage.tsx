@@ -37,12 +37,7 @@ export function ClientWorkloadDetailPage() {
   }
 
   if (isLoading || !data) {
-    return (
-      <div className="p-6">
-        <PageHeader />
-        <p className="mt-6 text-sm text-gray-500">Loading client workload…</p>
-      </div>
-    )
+    return null
   }
 
   const currentValues = localValues ?? data.values
@@ -75,7 +70,7 @@ export function ClientWorkloadDetailPage() {
   }
 
   return (
-    <div className="p-6 flex flex-col h-screen overflow-hidden">
+    <div className="p-6 flex flex-col h-full">
       <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
         <PageHeader />
       </div>

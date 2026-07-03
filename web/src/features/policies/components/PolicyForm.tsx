@@ -104,19 +104,14 @@ export function PolicyForm({
   }
 
   if (isLoading) {
-    return (
-      <div className="p-6">
-        <PageHeader />
-        <p className="mt-6 text-sm text-gray-500">Loading policy…</p>
-      </div>
-    )
+    return null
   }
 
   return (
     <FormProvider {...form}>
       <form
         onSubmit={handleSubmit((values) => onSubmit(values))}
-        className="p-6 flex flex-col h-screen overflow-hidden"
+        className="p-6 flex flex-col h-full"
       >
         <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
           <PageHeader />
