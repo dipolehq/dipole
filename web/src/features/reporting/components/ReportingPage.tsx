@@ -3,11 +3,13 @@ import { Search, FileText, Filter } from 'lucide-react'
 import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
+import { TimespanPicker } from '@/shared/components/TimespanPicker'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
 import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
 import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
-import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_TIMESPAN_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS } from '@/data/reporting'
+import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
+import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
 export function ReportingPage() {
@@ -24,6 +26,8 @@ export function ReportingPage() {
   const [category, setCategory] = useState('')
   const [complianceStatus, setComplianceStatus] = useState('')
   const [resourceSet, setResourceSet] = useState('')
+  const [appProtocol, setAppProtocol] = useState('')
+  const [mcpUser, setMcpUser] = useState('')
 
   void currentPage
 
@@ -36,6 +40,8 @@ export function ReportingPage() {
     setCategory('')
     setComplianceStatus('')
     setResourceSet('')
+    setAppProtocol('')
+    setMcpUser('')
   }
 
   return (
@@ -98,11 +104,9 @@ export function ReportingPage() {
                   {selectedLogType !== 'global_policy_compliance' && selectedLogType !== 'mcp_authorization_tracing' && (
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
-                      <Dropdown
-                        options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_TIMESPAN_OPTIONS : TIME_RANGES).map((t) => ({ value: t.value, label: t.label }))}
+                      <TimespanPicker
                         value={timeRange}
                         onChange={setTimeRange}
-                        placeholder="Select timespan..."
                       />
                     </div>
                   )}
@@ -136,6 +140,29 @@ export function ReportingPage() {
                         value={eventType}
                         onChange={setEventType}
                         placeholder="Event Type"
+                      />
+                    </div>
+                  )}
+                  {selectedLogType === 'workload_events' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Application Protocol</label>
+                      <Dropdown
+                        options={WORKLOAD_PROTOCOL_OPTIONS.map((p) => ({ value: p.value, label: p.label }))}
+                        value={appProtocol}
+                        onChange={setAppProtocol}
+                        placeholder="Application Protocol"
+                      />
+                    </div>
+                  )}
+                  {selectedLogType === 'workload_events' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">User (MCP App Protocol only)</label>
+                      <input
+                        type="text"
+                        value={mcpUser}
+                        onChange={(e) => setMcpUser(e.target.value)}
+                        placeholder="User (MCP App Protocol only)"
+                        className="w-full px-3 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
                       />
                     </div>
                   )}
@@ -202,6 +229,14 @@ export function ReportingPage() {
           <McpAuthorizationTracingTable
             searchQuery={searchQuery}
             severity={severity}
+          />
+        ) : selectedLogType === 'workload_events' ? (
+          <WorkloadEventsTable
+            searchQuery={searchQuery}
+            timeRange={timeRange}
+            severity={severity}
+            appProtocol={appProtocol}
+            mcpUser={mcpUser}
           />
         ) : (
           <div className="flex items-center justify-center h-full">

@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { globalPolicyComplianceData } from '@/data/reporting/globalPolicyCompliance'
 import type { ComplianceLevel } from '@/data/reporting/globalPolicyCompliance'
@@ -66,7 +66,11 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-2 py-3" />
+          <th className="px-2 py-3">
+            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+              <RefreshCw size={15} strokeWidth={2.5} />
+            </button>
+          </th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Policy Name</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client Workload</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Trust Provider</th>

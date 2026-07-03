@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, RefreshCw } from 'lucide-react'
 import { auditLogsData } from '@/data/reporting/auditLogs'
 import type { AuditLog } from '@/data/reporting/auditLogs'
 
@@ -79,7 +79,11 @@ export function AuditLogsTable({ searchQuery, severity, category }: AuditLogsTab
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-2 py-3" />
+          <th className="px-2 py-3">
+            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+              <RefreshCw size={15} strokeWidth={2.5} />
+            </button>
+          </th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Timestamp</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Category</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Actor</th>
