@@ -6,6 +6,7 @@ import { Dropdown } from '@/shared/components/Dropdown'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
 import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
+import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
 import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_TIMESPAN_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
@@ -94,7 +95,7 @@ export function ReportingPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {selectedLogType !== 'global_policy_compliance' && (
+                  {selectedLogType !== 'global_policy_compliance' && selectedLogType !== 'mcp_authorization_tracing' && (
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
                       <Dropdown
@@ -196,6 +197,11 @@ export function ReportingPage() {
             searchQuery={searchQuery}
             complianceStatus={complianceStatus}
             resourceSet={resourceSet}
+          />
+        ) : selectedLogType === 'mcp_authorization_tracing' ? (
+          <McpAuthorizationTracingTable
+            searchQuery={searchQuery}
+            severity={severity}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
