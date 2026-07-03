@@ -5,6 +5,7 @@ import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useAccessConditions } from '@/features/access-conditions/hooks/useAccessConditions'
 import { ACCESS_CONDITION_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/data/access-conditions'
+import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
 
 export function AccessConditionsPage() {
   const navigate = useNavigate()
@@ -61,13 +62,13 @@ export function AccessConditionsPage() {
       ) : (
         <>
           <div className="bg-white rounded-t-lg border border-b-0 border-border flex-1 overflow-y-auto min-h-0">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs table-fixed">
               <thead className="sticky top-0 bg-gray-50 z-10">
                 <tr className="border-b border-border">
                   {ACCESS_CONDITION_TABLE_COLUMNS.map((col) => (
                     <th
                       key={col.key}
-                      className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${
+                      className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${ENTITY_TABLE_COL_WIDTHS[col.key] ?? ''} ${
                         col.key === 'tags' || col.key === 'policies' || col.key === 'status' || col.key === 'number' ? 'text-center' : 'text-left'
                       }`}
                     >

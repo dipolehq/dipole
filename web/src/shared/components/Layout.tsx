@@ -9,7 +9,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="h-screen bg-surface-secondary overflow-hidden">
       <Sidebar />
-      <main className="ml-[204px] h-full overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>{children}</main>
+      <main className="ml-[204px] h-full overflow-hidden">{children}</main>
     </div>
   )
 }

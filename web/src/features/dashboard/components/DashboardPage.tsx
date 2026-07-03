@@ -19,7 +19,7 @@ export function DashboardPage() {
   const { stats } = dashboardData
 
   return (
-    <div className="px-4 py-3 space-y-4">
+    <div className="px-4 py-3 space-y-4 h-full overflow-y-auto">
       <div className="flex items-center justify-between min-h-[36px]">
         <PageHeader />
         <div className="flex items-center gap-3">
