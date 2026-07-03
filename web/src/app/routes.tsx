@@ -10,6 +10,7 @@ import { ServerWorkloadsPage, CreateServerWorkloadPage, ServerWorkloadDetailPage
 import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } from '@/features/trust-providers'
 import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
 import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProviderDetailPage } from '@/features/credential-providers'
+import { ReportingPage } from '@/features/reporting'
 
 function Placeholder() {
   return (
@@ -42,7 +43,7 @@ export function AppRoutes() {
         <Route path="/server-workloads" element={<ServerWorkloadsPage />} />
         <Route path="/server-workloads/new" element={<CreateServerWorkloadPage />} />
         <Route path="/server-workloads/:id" element={<ServerWorkloadDetailPage />} />
-        <Route path="/reporting" element={<Placeholder />} />
+        <Route path="/reporting" element={<ReportingPage />} />
         <Route path="/edge-components" element={<Placeholder />} />
         <Route path="/administration" element={<Placeholder />} />
         <Route path="/help" element={<Placeholder />} />

@@ -126,7 +126,7 @@ export function TrustProvidersPage() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3 border border-border rounded-b-lg bg-gray-50 shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border border-border rounded-b-lg bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
               <select
                 value={pageSize}
