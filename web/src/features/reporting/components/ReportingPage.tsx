@@ -5,7 +5,8 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
-import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_TIMESPAN_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS } from '@/data/reporting'
+import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
+import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_TIMESPAN_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
 export function ReportingPage() {
@@ -20,6 +21,8 @@ export function ReportingPage() {
   const [severity, setSeverity] = useState('')
   const [eventType, setEventType] = useState('')
   const [category, setCategory] = useState('')
+  const [complianceStatus, setComplianceStatus] = useState('')
+  const [resourceSet, setResourceSet] = useState('')
 
   void currentPage
 
@@ -30,6 +33,8 @@ export function ReportingPage() {
     setSeverity('')
     setEventType('')
     setCategory('')
+    setComplianceStatus('')
+    setResourceSet('')
   }
 
   return (
@@ -89,15 +94,17 @@ export function ReportingPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
-                    <Dropdown
-                      options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_TIMESPAN_OPTIONS : TIME_RANGES).map((t) => ({ value: t.value, label: t.label }))}
-                      value={timeRange}
-                      onChange={setTimeRange}
-                      placeholder="Select timespan..."
-                    />
-                  </div>
+                  {selectedLogType !== 'global_policy_compliance' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
+                      <Dropdown
+                        options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_TIMESPAN_OPTIONS : TIME_RANGES).map((t) => ({ value: t.value, label: t.label }))}
+                        value={timeRange}
+                        onChange={setTimeRange}
+                        placeholder="Select timespan..."
+                      />
+                    </div>
+                  )}
                   {selectedLogType === 'audit_logs' && (
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">Category</label>
@@ -109,15 +116,17 @@ export function ReportingPage() {
                       />
                     </div>
                   )}
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
-                    <Dropdown
-                      options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_SEVERITY_OPTIONS : SEVERITY_OPTIONS).map((s) => ({ value: s.value, label: s.label }))}
-                      value={severity}
-                      onChange={setSeverity}
-                      placeholder="Severity"
-                    />
-                  </div>
+                  {selectedLogType !== 'global_policy_compliance' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
+                      <Dropdown
+                        options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_SEVERITY_OPTIONS : SEVERITY_OPTIONS).map((s) => ({ value: s.value, label: s.label }))}
+                        value={severity}
+                        onChange={setSeverity}
+                        placeholder="Severity"
+                      />
+                    </div>
+                  )}
                   {selectedLogType === 'access_authorization' && (
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">Event Type</label>
@@ -126,6 +135,28 @@ export function ReportingPage() {
                         value={eventType}
                         onChange={setEventType}
                         placeholder="Event Type"
+                      />
+                    </div>
+                  )}
+                  {selectedLogType === 'global_policy_compliance' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Resource Set</label>
+                      <Dropdown
+                        options={RESOURCE_SET_OPTIONS.map((r) => ({ value: r.value, label: r.label }))}
+                        value={resourceSet}
+                        onChange={setResourceSet}
+                        placeholder="Resource Set"
+                      />
+                    </div>
+                  )}
+                  {selectedLogType === 'global_policy_compliance' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Compliance Status</label>
+                      <Dropdown
+                        options={COMPLIANCE_STATUS_OPTIONS.map((c) => ({ value: c.value, label: c.label }))}
+                        value={complianceStatus}
+                        onChange={setComplianceStatus}
+                        placeholder="Compliance Status"
                       />
                     </div>
                   )}
@@ -159,6 +190,12 @@ export function ReportingPage() {
             timeRange={timeRange}
             severity={severity}
             category={category}
+          />
+        ) : selectedLogType === 'global_policy_compliance' ? (
+          <GlobalPolicyComplianceTable
+            searchQuery={searchQuery}
+            complianceStatus={complianceStatus}
+            resourceSet={resourceSet}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
