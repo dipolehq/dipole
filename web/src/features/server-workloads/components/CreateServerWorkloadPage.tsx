@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { Dropdown } from '@/shared/components/Dropdown'
 import { ServerWorkloadForm } from '@/shared/components/forms/ServerWorkloadForm'
 import { EMPTY_SERVER_WORKLOAD } from '@/shared/components/forms/types'
 import type { ServerWorkloadFormValues } from '@/shared/components/forms/types'
@@ -15,6 +16,7 @@ export function CreateServerWorkloadPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabKey>('details')
   const [values, setValues] = useState<ServerWorkloadFormValues>({ ...EMPTY_SERVER_WORKLOAD })
+  const [status, setStatus] = useState('active')
 
   function handleSave() {
     console.info('[create-server-workload] submitted', values)
@@ -85,7 +87,21 @@ export function CreateServerWorkloadPage() {
                   </button>
                 </div>
                 <div className="border-b border-border mb-6" />
-                <ServerWorkloadForm values={values} onChange={setValues} />
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                    <Dropdown
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' },
+                      ]}
+                      value={status}
+                      onChange={setStatus}
+                      placeholder="Select status..."
+                    />
+                  </div>
+                  <ServerWorkloadForm values={values} onChange={setValues} />
+                </div>
               </>
             )}
           </div>

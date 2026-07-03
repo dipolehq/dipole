@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { Dropdown } from '@/shared/components/Dropdown'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
 import { EMPTY_CLIENT_WORKLOAD } from '@/shared/components/forms/types'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
@@ -15,6 +16,7 @@ export function CreateClientWorkloadPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabKey>('details')
   const [values, setValues] = useState<ClientWorkloadFormValues>({ ...EMPTY_CLIENT_WORKLOAD })
+  const [status, setStatus] = useState('active')
 
   function handleSave() {
     // TODO: wire to createClientWorkload mutation
@@ -86,7 +88,21 @@ export function CreateClientWorkloadPage() {
                   </button>
                 </div>
                 <div className="border-b border-border mb-6" />
-                <ClientWorkloadForm values={values} onChange={setValues} />
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                    <Dropdown
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' },
+                      ]}
+                      value={status}
+                      onChange={setStatus}
+                      placeholder="Select status..."
+                    />
+                  </div>
+                  <ClientWorkloadForm values={values} onChange={setValues} />
+                </div>
               </>
             )}
           </div>

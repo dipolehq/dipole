@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { EntityMetadata } from '@/shared/components/EntityMetadata'
+import { Dropdown } from '@/shared/components/Dropdown'
 import { ServerWorkloadForm } from '@/shared/components/forms/ServerWorkloadForm'
 import { useServerWorkload, useSaveServerWorkload } from '@/features/server-workloads/hooks/useServerWorkloads'
 import type { ServerWorkloadFormValues } from '@/shared/components/forms/types'
@@ -20,6 +22,7 @@ export function ServerWorkloadDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('details')
   const [isEditing, setIsEditing] = useState(false)
   const [localValues, setLocalValues] = useState<ServerWorkloadFormValues | null>(null)
+  const [localStatus, setLocalStatus] = useState<string | null>(null)
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -41,6 +44,7 @@ export function ServerWorkloadDetailPage() {
   }
 
   const currentValues = localValues ?? data.values
+  const status = localStatus ?? (data.metadata.isActive ? 'active' : 'inactive')
   const disabled = !isEditing
 
   function handleEditToggle() {
@@ -48,9 +52,11 @@ export function ServerWorkloadDetailPage() {
       void saveMutation.mutateAsync(currentValues).then(() => {
         setIsEditing(false)
         setLocalValues(null)
+        setLocalStatus(null)
       })
     } else {
       if (data) setLocalValues({ ...data.values })
+      setLocalStatus(data?.metadata.isActive ? 'active' : 'inactive')
       setIsEditing(true)
     }
   }
@@ -58,6 +64,7 @@ export function ServerWorkloadDetailPage() {
   function handleCancel() {
     if (isEditing) {
       setLocalValues(null)
+      setLocalStatus(null)
       setIsEditing(false)
     } else {
       navigate('/server-workloads')
@@ -130,11 +137,40 @@ export function ServerWorkloadDetailPage() {
                   )}
                 </div>
                 <div className="border-b border-border mb-6" />
-                <ServerWorkloadForm
-                  values={currentValues}
-                  onChange={handleValuesChange}
-                  disabled={disabled}
-                />
+
+                <div className="space-y-6">
+                  <EntityMetadata
+                    entityId={data.metadata.entityId}
+                    entityLabel="Server Workload"
+                    createdAt={data.metadata.createdAt}
+                    createdBy={data.metadata.createdBy}
+                    lastModifiedAt={data.metadata.lastModifiedAt}
+                    lastModifiedBy={data.metadata.lastModifiedBy}
+                  />
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                    {disabled ? (
+                      <div className="px-3 py-2 border border-border rounded-md text-sm text-gray-600 bg-gray-50 capitalize">{status}</div>
+                    ) : (
+                      <Dropdown
+                        options={[
+                          { value: 'active', label: 'Active' },
+                          { value: 'inactive', label: 'Inactive' },
+                        ]}
+                        value={status}
+                        onChange={setLocalStatus}
+                        placeholder="Select status..."
+                      />
+                    )}
+                  </div>
+
+                  <ServerWorkloadForm
+                    values={currentValues}
+                    onChange={handleValuesChange}
+                    disabled={disabled}
+                  />
+                </div>
               </>
             )}
           </div>

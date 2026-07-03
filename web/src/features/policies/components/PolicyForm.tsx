@@ -109,8 +109,7 @@ export function PolicyForm({
 
   return (
     <FormProvider {...form}>
-      <form
-        onSubmit={handleSubmit((values) => onSubmit(values))}
+      <div
         className="p-6 flex flex-col h-full"
       >
         <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
@@ -313,7 +312,7 @@ export function PolicyForm({
             </div>
           </div>
         </div>
-      </form>
+      </div>
     </FormProvider>
   )
 }

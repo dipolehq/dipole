@@ -26,6 +26,7 @@ export function Dropdown({ options, value, onChange, placeholder = 'Please selec
   return (
     <div ref={ref} className={`relative ${className}`}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm transition-colors ${
           open ? 'border-orange-400 ring-2 ring-orange-100' : 'border-border'
@@ -40,6 +41,7 @@ export function Dropdown({ options, value, onChange, placeholder = 'Please selec
           {options.map((opt) => (
             <button
               key={opt.value}
+              type="button"
               onClick={() => {
                 onChange(opt.value)
                 setOpen(false)

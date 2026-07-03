@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { EntityMetadata } from '@/shared/components/EntityMetadata'
+import { Dropdown } from '@/shared/components/Dropdown'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
 import { useClientWorkload, useSaveClientWorkload } from '@/features/client-workloads/hooks/useClientWorkloads'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
@@ -20,6 +22,7 @@ export function ClientWorkloadDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('details')
   const [isEditing, setIsEditing] = useState(false)
   const [localValues, setLocalValues] = useState<ClientWorkloadFormValues | null>(null)
+  const [localStatus, setLocalStatus] = useState<string | null>(null)
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -41,17 +44,19 @@ export function ClientWorkloadDetailPage() {
   }
 
   const currentValues = localValues ?? data.values
+  const status = localStatus ?? (data.metadata.isActive ? 'active' : 'inactive')
   const disabled = !isEditing
 
   function handleEditToggle() {
     if (isEditing) {
-      // Save
       void saveMutation.mutateAsync(currentValues).then(() => {
         setIsEditing(false)
         setLocalValues(null)
+        setLocalStatus(null)
       })
     } else {
       if (data) setLocalValues({ ...data.values })
+      setLocalStatus(data?.metadata.isActive ? 'active' : 'inactive')
       setIsEditing(true)
     }
   }
@@ -59,6 +64,7 @@ export function ClientWorkloadDetailPage() {
   function handleCancel() {
     if (isEditing) {
       setLocalValues(null)
+      setLocalStatus(null)
       setIsEditing(false)
     } else {
       navigate('/client-workloads')
@@ -131,11 +137,40 @@ export function ClientWorkloadDetailPage() {
                   )}
                 </div>
                 <div className="border-b border-border mb-6" />
-                <ClientWorkloadForm
-                  values={currentValues}
-                  onChange={handleValuesChange}
-                  disabled={disabled}
-                />
+
+                <div className="space-y-6">
+                  <EntityMetadata
+                    entityId={data.metadata.entityId}
+                    entityLabel="Client Workload"
+                    createdAt={data.metadata.createdAt}
+                    createdBy={data.metadata.createdBy}
+                    lastModifiedAt={data.metadata.lastModifiedAt}
+                    lastModifiedBy={data.metadata.lastModifiedBy}
+                  />
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                    {disabled ? (
+                      <div className="px-3 py-2 border border-border rounded-md text-sm text-gray-600 bg-gray-50 capitalize">{status}</div>
+                    ) : (
+                      <Dropdown
+                        options={[
+                          { value: 'active', label: 'Active' },
+                          { value: 'inactive', label: 'Inactive' },
+                        ]}
+                        value={status}
+                        onChange={setLocalStatus}
+                        placeholder="Select status..."
+                      />
+                    )}
+                  </div>
+
+                  <ClientWorkloadForm
+                    values={currentValues}
+                    onChange={handleValuesChange}
+                    disabled={disabled}
+                  />
+                </div>
               </>
             )}
           </div>

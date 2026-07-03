@@ -24,8 +24,12 @@ export async function fetchClientWorkloads(): Promise<FetchClientWorkloadsResult
 }
 
 export interface ClientWorkloadMetadata {
+  entityId: string
   createdAt: string
   createdBy: string
+  lastModifiedAt: string
+  lastModifiedBy: string
+  isActive: boolean
 }
 
 export interface FetchClientWorkloadDetailResult {
@@ -41,8 +45,12 @@ export async function fetchClientWorkload(id: string): Promise<FetchClientWorklo
   return {
     values: buildClientWorkloadValues(id),
     metadata: {
+      entityId: cw.id,
       createdAt: cw.createdAt,
       createdBy: cw.createdBy,
+      lastModifiedAt: cw.createdAt,
+      lastModifiedBy: cw.createdBy,
+      isActive: cw.isActive,
     },
   }
 }

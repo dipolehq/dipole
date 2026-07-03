@@ -18,7 +18,7 @@ export function ServerWorkloadsPage() {
 
   const filtered = items.filter((w) =>
     w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    w.host.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    w.appProtocol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     w.description.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
