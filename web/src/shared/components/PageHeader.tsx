@@ -21,6 +21,10 @@ export function PageHeader() {
 }
 
 function formatSegment(segment: string): string {
+  // Don't format UUIDs — leave them as-is
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)) {
+    return segment
+  }
   return segment
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

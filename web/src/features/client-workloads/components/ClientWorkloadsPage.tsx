@@ -26,8 +26,8 @@ export function ClientWorkloadsPage() {
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
-    <div className="p-6 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
+    <div className="px-4 py-3 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4 shrink-0 min-h-[36px]">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -67,7 +67,7 @@ export function ClientWorkloadsPage() {
                   {CLIENT_WORKLOAD_TABLE_COLUMNS.map((col) => (
                     <th
                       key={col.key}
-                      className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${
+                      className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${
                         col.key === 'tags' || col.key === 'policies' || col.key === 'status' || col.key === 'number' ? 'text-center' : 'text-left'
                       }`}
                     >

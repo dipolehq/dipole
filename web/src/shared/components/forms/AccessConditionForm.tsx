@@ -20,7 +20,7 @@ export function AccessConditionForm({ values, onChange, disabled = false }: Acce
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="px-4 py-4 pb-8 space-y-4">
+      <div className="space-y-4">
         <div>
           <label className="block text-[11px] text-gray-500 mb-1">Display Name</label>
           <input

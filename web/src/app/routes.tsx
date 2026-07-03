@@ -8,6 +8,7 @@ import { PolicyDetailPage } from '@/features/policies/components/PolicyDetailPag
 import { ClientWorkloadsPage, CreateClientWorkloadPage, ClientWorkloadDetailPage } from '@/features/client-workloads'
 import { ServerWorkloadsPage, CreateServerWorkloadPage, ServerWorkloadDetailPage } from '@/features/server-workloads'
 import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } from '@/features/trust-providers'
+import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
 
 function Placeholder() {
   return (
@@ -31,7 +32,9 @@ export function AppRoutes() {
         <Route path="/trust-providers" element={<TrustProvidersPage />} />
         <Route path="/trust-providers/new" element={<CreateTrustProviderPage />} />
         <Route path="/trust-providers/:id" element={<TrustProviderDetailPage />} />
-        <Route path="/access-conditions" element={<Placeholder />} />
+        <Route path="/access-conditions" element={<AccessConditionsPage />} />
+        <Route path="/access-conditions/new" element={<CreateAccessConditionPage />} />
+        <Route path="/access-conditions/:id" element={<AccessConditionDetailPage />} />
         <Route path="/credential-providers" element={<Placeholder />} />
         <Route path="/server-workloads" element={<ServerWorkloadsPage />} />
         <Route path="/server-workloads/new" element={<CreateServerWorkloadPage />} />
