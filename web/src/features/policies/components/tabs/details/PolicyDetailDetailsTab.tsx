@@ -44,8 +44,6 @@ export function PolicyDetailDetailsTab({
 }: PolicyDetailDetailsTabProps) {
   return (
     <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-gray-900">Access Policy Details</h3>
-
       {/* Metadata section */}
       <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-md border border-border">
         <div>

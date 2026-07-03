@@ -20,8 +20,8 @@ export function PoliciesPage() {
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
-    <div className="p-6 flex flex-col h-screen">
-      <div className="flex items-center justify-between mb-6 shrink-0">
+    <div className="p-6 flex flex-col h-screen overflow-hidden">
+      <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">

@@ -118,7 +118,7 @@ export function PolicyForm({
         onSubmit={handleSubmit((values) => onSubmit(values))}
         className="p-6 flex flex-col h-screen overflow-hidden"
       >
-        <div className="flex items-center justify-between mb-6 shrink-0">
+        <div className="flex items-center justify-between mb-6 shrink-0 min-h-[36px]">
           <PageHeader />
         </div>
 
@@ -170,20 +170,28 @@ export function PolicyForm({
 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="pb-12">
-              {!disabled && (
-                <div className="flex justify-end mb-2">
-                  <button
-                    type="button"
-                    onClick={markTabSaved}
-                    className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-                  >
-                    Save
-                  </button>
-                </div>
+              {activeTab !== 'details' && (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      {TABS.find((t) => t.key === activeTab)?.label}
+                    </h3>
+                    {!disabled && (
+                      <button
+                        type="button"
+                        onClick={markTabSaved}
+                        className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                      >
+                        Save
+                      </button>
+                    )}
+                  </div>
+                  <div className="border-b border-border mb-6" />
+                </>
               )}
 
               {activeTab === 'details' && (
-                <DetailsSection mode={mode} disabled={disabled} metadata={metadata} />
+                <DetailsSection mode={mode} disabled={disabled} metadata={metadata} onSave={markTabSaved} />
               )}
 
               {activeTab === 'client' && (
@@ -319,11 +327,61 @@ interface DetailsSectionProps {
   mode: PolicyFormMode
   disabled: boolean
   metadata?: PolicyMetadata
+  onSave: () => void
 }
 
-function DetailsSection({ mode, disabled, metadata }: DetailsSectionProps) {
+function DetailsSection({ mode, disabled, metadata, onSave }: DetailsSectionProps) {
+  const header = (
+    <div className="flex items-center justify-between mb-4">
+      <h3 className="text-sm font-semibold text-gray-900">Access Policy Details</h3>
+      {!disabled && (
+        <button
+          type="button"
+          onClick={onSave}
+          className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+        >
+          Save
+        </button>
+      )}
+    </div>
+  )
+
   if (mode === 'create') {
     return (
+      <>
+        {header}
+        <div className="border-b border-border mb-6" />
+        <Controller
+          name="name"
+          render={({ field: nameField }) => (
+            <Controller
+              name="description"
+              render={({ field: descField }) => (
+                <Controller
+                  name="status"
+                  render={({ field: statusField }) => (
+                    <DetailsTab
+                      name={nameField.value}
+                      description={descField.value}
+                      isActive={statusField.value === 'active'}
+                      onNameChange={nameField.onChange}
+                      onDescriptionChange={descField.onChange}
+                      onActiveChange={(v) => statusField.onChange(v ? 'active' : 'inactive')}
+                    />
+                  )}
+                />
+              )}
+            />
+          )}
+        />
+      </>
+    )
+  }
+
+  return (
+    <>
+      {header}
+      <div className="border-b border-border mb-6" />
       <Controller
         name="name"
         render={({ field: nameField }) => (
@@ -333,13 +391,19 @@ function DetailsSection({ mode, disabled, metadata }: DetailsSectionProps) {
               <Controller
                 name="status"
                 render={({ field: statusField }) => (
-                  <DetailsTab
+                  <PolicyDetailDetailsTab
                     name={nameField.value}
                     description={descField.value}
-                    isActive={statusField.value === 'active'}
+                    status={statusField.value}
+                    policyId={metadata?.policyId ?? ''}
+                    createdAt={metadata?.createdAt ?? ''}
+                    createdBy={metadata?.createdBy ?? ''}
+                    lastModifiedAt={metadata?.lastModifiedAt ?? ''}
+                    lastModifiedBy={metadata?.lastModifiedBy ?? ''}
+                    disabled={disabled}
                     onNameChange={nameField.onChange}
                     onDescriptionChange={descField.onChange}
-                    onActiveChange={(v) => statusField.onChange(v ? 'active' : 'inactive')}
+                    onStatusChange={statusField.onChange}
                   />
                 )}
               />
@@ -347,38 +411,6 @@ function DetailsSection({ mode, disabled, metadata }: DetailsSectionProps) {
           />
         )}
       />
-    )
-  }
-
-  return (
-    <Controller
-      name="name"
-      render={({ field: nameField }) => (
-        <Controller
-          name="description"
-          render={({ field: descField }) => (
-            <Controller
-              name="status"
-              render={({ field: statusField }) => (
-                <PolicyDetailDetailsTab
-                  name={nameField.value}
-                  description={descField.value}
-                  status={statusField.value}
-                  policyId={metadata?.policyId ?? ''}
-                  createdAt={metadata?.createdAt ?? ''}
-                  createdBy={metadata?.createdBy ?? ''}
-                  lastModifiedAt={metadata?.lastModifiedAt ?? ''}
-                  lastModifiedBy={metadata?.lastModifiedBy ?? ''}
-                  disabled={disabled}
-                  onNameChange={nameField.onChange}
-                  onDescriptionChange={descField.onChange}
-                  onStatusChange={statusField.onChange}
-                />
-              )}
-            />
-          )}
-        />
-      )}
-    />
+    </>
   )
 }

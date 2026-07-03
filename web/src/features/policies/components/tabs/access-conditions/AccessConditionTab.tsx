@@ -59,8 +59,6 @@ export function AccessConditionTab({
 
   return (
     <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-gray-900">Access Conditions</h3>
-
       {!disabled && (
         <div className="flex items-center gap-4 border-b border-border pb-3">
           <button

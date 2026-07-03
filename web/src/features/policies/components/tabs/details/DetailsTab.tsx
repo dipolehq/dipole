@@ -19,8 +19,6 @@ export function DetailsTab({ name, description, isActive, onNameChange, onDescri
 
   return (
     <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-gray-900">Access Policy Details</h3>
-
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
         <Dropdown
