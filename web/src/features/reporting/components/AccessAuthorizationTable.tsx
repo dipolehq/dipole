@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { accessAuthorizationEventsData, ACCESS_AUTH_EVENT_TABLE_COLUMNS } from '@/data/reporting/accessAuthorizationEvents'
+import { accessAuthorizationEventsData } from '@/data/reporting/accessAuthorizationEvents'
 import type { AccessAuthorizationEvent } from '@/data/reporting/accessAuthorizationEvents'
 
 function formatTimestamp(iso: string): string {
@@ -56,24 +56,31 @@ export function AccessAuthorizationTable({ searchQuery, severity, eventType }: A
   }
 
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs table-fixed">
+      <colgroup>
+        <col className="w-[36px]" />
+        <col className="w-[17%]" />
+        <col className="w-[10%]" />
+        <col className="w-[28%]" />
+        <col className="w-[16%]" />
+        <col className="w-[18%]" />
+        <col className="w-[8%]" />
+      </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="w-6 px-2 py-3" />
-          {ACCESS_AUTH_EVENT_TABLE_COLUMNS.map((col) => (
-            <th
-              key={col.key}
-              className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left`}
-            >
-              {col.label}
-            </th>
-          ))}
+          <th className="px-2 py-3" />
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Timestamp</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client IP</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Context ID</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client Workload</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Server Workload</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Severity</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
         {filtered.length === 0 && (
           <tr>
-            <td colSpan={ACCESS_AUTH_EVENT_TABLE_COLUMNS.length + 1} className="px-4 py-12 text-center text-gray-400 text-sm">
+            <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">
               No access authorization events found.
             </td>
           </tr>
@@ -98,25 +105,25 @@ function EventRow({ event, isExpanded, onToggle }: { event: AccessAuthorizationE
         className="hover:bg-gray-50 transition-colors cursor-pointer"
         onClick={onToggle}
       >
-        <td className="px-2 py-3 text-center w-6">
+        <td className="px-2 py-3 text-center">
           <ChevronDown
             size={14}
             className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
           />
         </td>
-        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+        <td className="px-4 py-3 text-gray-700 whitespace-nowrap truncate">
           {formatTimestamp(event.meta.timestamp)}
         </td>
-        <td className="px-4 py-3 text-gray-700">
+        <td className="px-4 py-3 text-gray-700 truncate">
           {event.meta.clientIP}
         </td>
-        <td className="px-4 py-3 text-gray-700">
+        <td className="px-4 py-3 text-gray-700 truncate">
           {event.meta.contextId}
         </td>
-        <td className="px-4 py-3 text-gray-700 truncate max-w-[140px]">
+        <td className="px-4 py-3 text-gray-700 truncate">
           {event.clientWorkload?.name ?? '—'}
         </td>
-        <td className="px-4 py-3 text-gray-700 truncate max-w-[140px]">
+        <td className="px-4 py-3 text-gray-700 truncate">
           {event.serverWorkload?.name ?? '—'}
         </td>
         <td className="px-4 py-3">
@@ -125,7 +132,7 @@ function EventRow({ event, isExpanded, onToggle }: { event: AccessAuthorizationE
       </tr>
       {isExpanded && (
         <tr>
-          <td colSpan={ACCESS_AUTH_EVENT_TABLE_COLUMNS.length + 1} className="p-0">
+          <td colSpan={7} className="p-0">
             <ExpandedDetail event={event} />
           </td>
         </tr>

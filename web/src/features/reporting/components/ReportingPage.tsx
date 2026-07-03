@@ -4,7 +4,8 @@ import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
-import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS } from '@/data/reporting'
+import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
+import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_TIMESPAN_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
 export function ReportingPage() {
@@ -18,6 +19,7 @@ export function ReportingPage() {
   const [timeRange, setTimeRange] = useState('1d')
   const [severity, setSeverity] = useState('')
   const [eventType, setEventType] = useState('')
+  const [category, setCategory] = useState('')
 
   void currentPage
 
@@ -27,6 +29,7 @@ export function ReportingPage() {
     setTimeRange('1d')
     setSeverity('')
     setEventType('')
+    setCategory('')
   }
 
   return (
@@ -89,30 +92,43 @@ export function ReportingPage() {
                   <div>
                     <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
                     <Dropdown
-                      options={TIME_RANGES.map((t) => ({ value: t.value, label: t.label }))}
+                      options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_TIMESPAN_OPTIONS : TIME_RANGES).map((t) => ({ value: t.value, label: t.label }))}
                       value={timeRange}
                       onChange={setTimeRange}
                       placeholder="Select timespan..."
                     />
                   </div>
+                  {selectedLogType === 'audit_logs' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Category</label>
+                      <Dropdown
+                        options={AUDIT_LOG_CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))}
+                        value={category}
+                        onChange={setCategory}
+                        placeholder="Category"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
                     <Dropdown
-                      options={SEVERITY_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
+                      options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_SEVERITY_OPTIONS : SEVERITY_OPTIONS).map((s) => ({ value: s.value, label: s.label }))}
                       value={severity}
                       onChange={setSeverity}
                       placeholder="Severity"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Event Type</label>
-                    <Dropdown
-                      options={EVENT_TYPE_OPTIONS.map((e) => ({ value: e.value, label: e.label }))}
-                      value={eventType}
-                      onChange={setEventType}
-                      placeholder="Event Type"
-                    />
-                  </div>
+                  {selectedLogType === 'access_authorization' && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">Event Type</label>
+                      <Dropdown
+                        options={EVENT_TYPE_OPTIONS.map((e) => ({ value: e.value, label: e.label }))}
+                        value={eventType}
+                        onChange={setEventType}
+                        placeholder="Event Type"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -136,6 +152,13 @@ export function ReportingPage() {
             timeRange={timeRange}
             severity={severity}
             eventType={eventType}
+          />
+        ) : selectedLogType === 'audit_logs' ? (
+          <AuditLogsTable
+            searchQuery={searchQuery}
+            timeRange={timeRange}
+            severity={severity}
+            category={category}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
