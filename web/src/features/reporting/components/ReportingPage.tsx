@@ -3,6 +3,7 @@ import { Search, FileText, Filter } from 'lucide-react'
 import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
+import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { LOG_TYPES, TIME_RANGES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
@@ -129,11 +130,20 @@ export function ReportingPage() {
 
       {/* Table area */}
       <div className="bg-white rounded-t-lg border border-b-0 border-border flex-1 overflow-y-auto min-h-0">
-        <div className="flex items-center justify-center h-full">
-          <p className="text-sm text-gray-400">
-            {selectedLabel} — content coming soon
-          </p>
-        </div>
+        {selectedLogType === 'access_authorization' ? (
+          <AccessAuthorizationTable
+            searchQuery={searchQuery}
+            timeRange={timeRange}
+            severity={severity}
+            eventType={eventType}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-gray-400">
+              {selectedLabel} — content coming soon
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Pagination footer */}
