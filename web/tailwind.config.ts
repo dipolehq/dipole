@@ -24,9 +24,15 @@ export default {
           tertiary: '#f1f3f5',
         },
         border: {
-          DEFAULT: '#e9ecef',
-          strong: '#dee2e6',
+          DEFAULT: '#d1d5db',
+          strong: '#9ca3af',
         },
+      },
+      borderColor: {
+        border: '#d1d5db',
+      },
+      divideColor: {
+        border: '#d1d5db',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

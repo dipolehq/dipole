@@ -1,3 +1,5 @@
 export { AdministrationPage } from './components/AdministrationPage'
 export { CreateUserPage } from './components/CreateUserPage'
 export { UserDetailPage } from './components/UserDetailPage'
+export { CreateRolePage } from './components/CreateRolePage'
+export { RoleDetailPage } from './components/RoleDetailPage'

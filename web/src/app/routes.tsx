@@ -11,7 +11,7 @@ import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } 
 import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
 import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProviderDetailPage } from '@/features/credential-providers'
 import { ReportingPage } from '@/features/reporting'
-import { AdministrationPage, CreateUserPage, UserDetailPage } from '@/features/administration'
+import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage } from '@/features/administration'
 
 function Placeholder() {
   return (
@@ -48,7 +48,10 @@ export function AppRoutes() {
         <Route path="/edge-components" element={<Placeholder />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/new" element={<CreateUserPage />} />
+        <Route path="/administration/users/new" element={<CreateUserPage />} />
         <Route path="/administration/users/:id" element={<UserDetailPage />} />
+        <Route path="/administration/roles/new" element={<CreateRolePage />} />
+        <Route path="/administration/roles/:id" element={<RoleDetailPage />} />
         <Route path="/help" element={<Placeholder />} />
       </Routes>
     </Layout>

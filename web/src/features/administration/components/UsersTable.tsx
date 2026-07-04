@@ -26,11 +26,11 @@ export function UsersTable({ searchQuery }: UsersTableProps) {
     <table className="w-full text-xs table-fixed">
       <colgroup>
         <col className="w-[36px]" />
-        <col className="w-[16%]" />
-        <col className="w-[16%]" />
+        <col className="w-[17%]" />
+        <col className="w-[17%]" />
         <col className="w-[28%]" />
-        <col className="w-[14%]" />
-        <col className="w-[22%]" />
+        <col className="w-[15%]" />
+        <col className="w-[20%]" />
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">

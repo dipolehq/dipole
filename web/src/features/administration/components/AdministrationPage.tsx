@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { Plus, Search, FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { UsersTable } from '@/features/administration/components/UsersTable'
+import { RolesTable } from '@/features/administration/components/RolesTable'
 import { usersData } from '@/data/administration/users'
+import { rolesData } from '@/data/administration/roles'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
@@ -33,6 +35,12 @@ export function AdministrationPage() {
         const q = searchQuery.toLowerCase()
         return u.firstName.toLowerCase().includes(q) || u.lastName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
       }).length
+    : selectedSection === 'roles'
+    ? rolesData.filter((r) => {
+        if (!searchQuery) return true
+        const q = searchQuery.toLowerCase()
+        return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
+      }).length
     : 0
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
 
@@ -52,7 +60,7 @@ export function AdministrationPage() {
             />
           </div>
           <Link
-            to="/administration/new"
+            to={`/administration/${selectedSection}/new`}
             className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
           >
             <Plus size={14} />
@@ -105,6 +113,8 @@ export function AdministrationPage() {
       <div className="bg-white rounded-t-lg border border-b-0 border-border flex-1 overflow-y-auto min-h-0">
         {selectedSection === 'users' ? (
           <UsersTable searchQuery={searchQuery} />
+        ) : selectedSection === 'roles' ? (
+          <RolesTable searchQuery={searchQuery} />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">{selectedLabel} — content coming soon</p>
