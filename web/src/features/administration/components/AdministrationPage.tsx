@@ -4,8 +4,10 @@ import { Plus, Search, FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { UsersTable } from '@/features/administration/components/UsersTable'
 import { RolesTable } from '@/features/administration/components/RolesTable'
+import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
 import { usersData } from '@/data/administration/users'
 import { rolesData } from '@/data/administration/roles'
+import { resourceSetsData } from '@/data/administration/resourceSets'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
@@ -40,6 +42,11 @@ export function AdministrationPage() {
         if (!searchQuery) return true
         const q = searchQuery.toLowerCase()
         return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
+      }).length
+    : selectedSection === 'resource_sets'
+    ? resourceSetsData.filter((rs) => {
+        if (!searchQuery) return true
+        return rs.name.toLowerCase().includes(searchQuery.toLowerCase())
       }).length
     : 0
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -115,6 +122,8 @@ export function AdministrationPage() {
           <UsersTable searchQuery={searchQuery} />
         ) : selectedSection === 'roles' ? (
           <RolesTable searchQuery={searchQuery} />
+        ) : selectedSection === 'resource_sets' ? (
+          <ResourceSetsTable searchQuery={searchQuery} />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">{selectedLabel} — content coming soon</p>
