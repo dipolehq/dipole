@@ -6,12 +6,14 @@ import { UsersTable } from '@/features/administration/components/UsersTable'
 import { RolesTable } from '@/features/administration/components/RolesTable'
 import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
 import { IdentityProvidersTable } from '@/features/administration/components/IdentityProvidersTable'
+import { LogStreamsTable } from '@/features/administration/components/LogStreamsTable'
 import { GlobalPolicySettingsPanel } from '@/features/administration/components/GlobalPolicySettingsPanel'
 import { SignOnPolicyPanel } from '@/features/administration/components/SignOnPolicyPanel'
 import { usersData } from '@/data/administration/users'
 import { rolesData } from '@/data/administration/roles'
 import { resourceSetsData } from '@/data/administration/resourceSets'
 import { identityProvidersData } from '@/data/administration/identityProviders'
+import { logStreamsData } from '@/data/administration/logStreams'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
@@ -57,6 +59,12 @@ export function AdministrationPage() {
         if (!searchQuery) return true
         const q = searchQuery.toLowerCase()
         return idp.name.toLowerCase().includes(q) || idp.description.toLowerCase().includes(q)
+      }).length
+    : selectedSection === 'log_streams'
+    ? logStreamsData.filter((ls) => {
+        if (!searchQuery) return true
+        const q = searchQuery.toLowerCase()
+        return ls.name.toLowerCase().includes(q) || ls.description.toLowerCase().includes(q)
       }).length
     : 0
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -138,6 +146,8 @@ export function AdministrationPage() {
           <ResourceSetsTable searchQuery={searchQuery} />
         ) : selectedSection === 'identity_providers' ? (
           <IdentityProvidersTable searchQuery={searchQuery} />
+        ) : selectedSection === 'log_streams' ? (
+          <LogStreamsTable searchQuery={searchQuery} />
         ) : selectedSection === 'global_policy_compliance' ? (
           <GlobalPolicySettingsPanel />
         ) : selectedSection === 'sign_on_policy' ? (
