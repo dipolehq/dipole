@@ -6,6 +6,7 @@ import { UsersTable } from '@/features/administration/components/UsersTable'
 import { RolesTable } from '@/features/administration/components/RolesTable'
 import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
 import { IdentityProvidersTable } from '@/features/administration/components/IdentityProvidersTable'
+import { GlobalPolicySettingsPanel } from '@/features/administration/components/GlobalPolicySettingsPanel'
 import { usersData } from '@/data/administration/users'
 import { rolesData } from '@/data/administration/roles'
 import { resourceSetsData } from '@/data/administration/resourceSets'
@@ -74,13 +75,15 @@ export function AdministrationPage() {
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
-          <Link
-            to={`/administration/${selectedSection}/new`}
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
-          >
-            <Plus size={14} />
-            New
-          </Link>
+          {selectedSection !== 'global_policy_compliance' && selectedSection !== 'sign_on_policy' && (
+            <Link
+              to={`/administration/${selectedSection}/new`}
+              className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            >
+              <Plus size={14} />
+              New
+            </Link>
+          )}
           <div className="relative">
             <button
               type="button"
@@ -125,7 +128,7 @@ export function AdministrationPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-t-lg border border-b-0 border-border flex-1 overflow-y-auto min-h-0">
+      <div className={`bg-white border border-border flex-1 overflow-y-auto min-h-0 ${selectedSection === 'global_policy_compliance' || selectedSection === 'sign_on_policy' ? 'rounded-lg' : 'rounded-t-lg border-b-0'}`}>
         {selectedSection === 'users' ? (
           <UsersTable searchQuery={searchQuery} />
         ) : selectedSection === 'roles' ? (
@@ -134,6 +137,8 @@ export function AdministrationPage() {
           <ResourceSetsTable searchQuery={searchQuery} />
         ) : selectedSection === 'identity_providers' ? (
           <IdentityProvidersTable searchQuery={searchQuery} />
+        ) : selectedSection === 'global_policy_compliance' ? (
+          <GlobalPolicySettingsPanel />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">{selectedLabel} — content coming soon</p>
@@ -141,6 +146,7 @@ export function AdministrationPage() {
         )}
       </div>
 
+      {selectedSection !== 'global_policy_compliance' && selectedSection !== 'sign_on_policy' && (
       <div className="flex items-center justify-between px-4 py-2 border border-border rounded-b-lg bg-gray-50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-gray-600">
           <select
@@ -189,6 +195,7 @@ export function AdministrationPage() {
           </button>
         </div>
       </div>
+      )}
     </div>
   )
 }
