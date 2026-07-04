@@ -5,9 +5,11 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { UsersTable } from '@/features/administration/components/UsersTable'
 import { RolesTable } from '@/features/administration/components/RolesTable'
 import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
+import { IdentityProvidersTable } from '@/features/administration/components/IdentityProvidersTable'
 import { usersData } from '@/data/administration/users'
 import { rolesData } from '@/data/administration/roles'
 import { resourceSetsData } from '@/data/administration/resourceSets'
+import { identityProvidersData } from '@/data/administration/identityProviders'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
@@ -47,6 +49,12 @@ export function AdministrationPage() {
     ? resourceSetsData.filter((rs) => {
         if (!searchQuery) return true
         return rs.name.toLowerCase().includes(searchQuery.toLowerCase())
+      }).length
+    : selectedSection === 'identity_providers'
+    ? identityProvidersData.filter((idp) => {
+        if (!searchQuery) return true
+        const q = searchQuery.toLowerCase()
+        return idp.name.toLowerCase().includes(q) || idp.description.toLowerCase().includes(q)
       }).length
     : 0
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
@@ -124,6 +132,8 @@ export function AdministrationPage() {
           <RolesTable searchQuery={searchQuery} />
         ) : selectedSection === 'resource_sets' ? (
           <ResourceSetsTable searchQuery={searchQuery} />
+        ) : selectedSection === 'identity_providers' ? (
+          <IdentityProvidersTable searchQuery={searchQuery} />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">{selectedLabel} — content coming soon</p>

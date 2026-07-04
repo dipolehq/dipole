@@ -11,7 +11,7 @@ import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } 
 import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
 import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProviderDetailPage } from '@/features/credential-providers'
 import { ReportingPage } from '@/features/reporting'
-import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage, CreateResourceSetPage, ResourceSetDetailPage } from '@/features/administration'
+import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage, CreateResourceSetPage, ResourceSetDetailPage, CreateIdentityProviderPage, IdentityProviderDetailPage } from '@/features/administration'
 
 function Placeholder() {
   return (
@@ -54,6 +54,8 @@ export function AppRoutes() {
         <Route path="/administration/roles/:id" element={<RoleDetailPage />} />
         <Route path="/administration/resource_sets/new" element={<CreateResourceSetPage />} />
         <Route path="/administration/resource_sets/:id" element={<ResourceSetDetailPage />} />
+        <Route path="/administration/identity_providers/new" element={<CreateIdentityProviderPage />} />
+        <Route path="/administration/identity_providers/:id" element={<IdentityProviderDetailPage />} />
         <Route path="/help" element={<Placeholder />} />
       </Routes>
     </Layout>
