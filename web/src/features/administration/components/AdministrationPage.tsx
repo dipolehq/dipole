@@ -7,6 +7,7 @@ import { RolesTable } from '@/features/administration/components/RolesTable'
 import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
 import { IdentityProvidersTable } from '@/features/administration/components/IdentityProvidersTable'
 import { GlobalPolicySettingsPanel } from '@/features/administration/components/GlobalPolicySettingsPanel'
+import { SignOnPolicyPanel } from '@/features/administration/components/SignOnPolicyPanel'
 import { usersData } from '@/data/administration/users'
 import { rolesData } from '@/data/administration/roles'
 import { resourceSetsData } from '@/data/administration/resourceSets'
@@ -139,6 +140,8 @@ export function AdministrationPage() {
           <IdentityProvidersTable searchQuery={searchQuery} />
         ) : selectedSection === 'global_policy_compliance' ? (
           <GlobalPolicySettingsPanel />
+        ) : selectedSection === 'sign_on_policy' ? (
+          <SignOnPolicyPanel />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">{selectedLabel} — content coming soon</p>
