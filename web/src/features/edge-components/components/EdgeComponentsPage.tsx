@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Plus, Search, FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { AgentControllersTable } from '@/features/edge-components/components/AgentControllersTable'
+import { DeployEdgePanel } from '@/features/edge-components/components/DeployEdgePanel'
+import { TlsDecryptPanel } from '@/features/edge-components/components/TlsDecryptPanel'
 import { agentControllersData } from '@/data/edge-components/agentControllers'
 
 const EDGE_SECTIONS = [
@@ -23,6 +25,7 @@ export function EdgeComponentsPage() {
   const selectedLabel = EDGE_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   const showPagination = selectedSection === 'agent_controllers'
+  const showNewButton = selectedSection === 'agent_controllers'
 
   const totalItems = selectedSection === 'agent_controllers'
     ? agentControllersData.filter((ac) => {
@@ -48,7 +51,7 @@ export function EdgeComponentsPage() {
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
-          {selectedSection === 'agent_controllers' && (
+          {showNewButton && (
             <Link
               to="/edge-components/agent_controllers/new"
               className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
@@ -105,13 +108,9 @@ export function EdgeComponentsPage() {
         {selectedSection === 'agent_controllers' ? (
           <AgentControllersTable searchQuery={searchQuery} />
         ) : selectedSection === 'deploy_edge' ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-gray-400">Deploy Dipole Edge — coming soon</p>
-          </div>
+          <DeployEdgePanel />
         ) : selectedSection === 'tls_decrypt' ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-gray-400">TLS Decrypt — coming soon</p>
-          </div>
+          <TlsDecryptPanel />
         ) : null}
       </div>
 
