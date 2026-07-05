@@ -11,6 +11,7 @@ import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } 
 import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
 import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProviderDetailPage } from '@/features/credential-providers'
 import { ReportingPage } from '@/features/reporting'
+import { EdgeComponentsPage, CreateAgentControllerPage, AgentControllerDetailPage } from '@/features/edge-components'
 import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage, CreateResourceSetPage, ResourceSetDetailPage, CreateIdentityProviderPage, IdentityProviderDetailPage, CreateLogStreamPage, LogStreamDetailPage } from '@/features/administration'
 
 function Placeholder() {
@@ -45,7 +46,9 @@ export function AppRoutes() {
         <Route path="/server-workloads/new" element={<CreateServerWorkloadPage />} />
         <Route path="/server-workloads/:id" element={<ServerWorkloadDetailPage />} />
         <Route path="/reporting" element={<ReportingPage />} />
-        <Route path="/edge-components" element={<Placeholder />} />
+        <Route path="/edge-components" element={<EdgeComponentsPage />} />
+        <Route path="/edge-components/agent_controllers/new" element={<CreateAgentControllerPage />} />
+        <Route path="/edge-components/agent_controllers/:id" element={<AgentControllerDetailPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/new" element={<CreateUserPage />} />
         <Route path="/administration/users/new" element={<CreateUserPage />} />
