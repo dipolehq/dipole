@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FloatingInput } from '@/shared/components/FloatingInput'
 
 export function TagsField() {
   const [tags, setTags] = useState<{ key: string; value: string }[]>([])
@@ -21,20 +22,12 @@ export function TagsField() {
         <div className="space-y-2 mb-3">
           {tags.map((tag, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Key"
-                value={tag.key}
-                onChange={(e) => updateTag(idx, 'key', e.target.value)}
-                className="flex-1 px-3 py-2 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
-              />
-              <input
-                type="text"
-                placeholder="Value"
-                value={tag.value}
-                onChange={(e) => updateTag(idx, 'value', e.target.value)}
-                className="flex-1 px-3 py-2 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
-              />
+              <div className="flex-1">
+                <FloatingInput label="Key" value={tag.key} onChange={(v) => updateTag(idx, 'key', v)} />
+              </div>
+              <div className="flex-1">
+                <FloatingInput label="Value" value={tag.value} onChange={(v) => updateTag(idx, 'value', v)} />
+              </div>
               <button onClick={() => removeTag(idx)} className="text-gray-400 hover:text-red-500 text-sm">×</button>
             </div>
           ))}

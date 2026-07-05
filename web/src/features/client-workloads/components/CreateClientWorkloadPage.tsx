@@ -1,25 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { Dropdown } from '@/shared/components/Dropdown'
+import { FloatingDropdown } from '@/shared/components/FloatingInput'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
 import { EMPTY_CLIENT_WORKLOAD } from '@/shared/components/forms/types'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
-const TABS = [
-  { key: 'details', label: 'Client Workload' },
-] as const
-
-type TabKey = (typeof TABS)[number]['key']
-
 export function CreateClientWorkloadPage() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('details')
   const [values, setValues] = useState<ClientWorkloadFormValues>({ ...EMPTY_CLIENT_WORKLOAD })
-  const [status, setStatus] = useState('active')
+  const [status, setStatus] = useState('')
 
   function handleSave() {
-    // TODO: wire to createClientWorkload mutation
     console.info('[create-client-workload] submitted', values)
     navigate('/client-workloads')
   }
@@ -29,82 +21,65 @@ export function CreateClientWorkloadPage() {
   }
 
   return (
-    <div className="px-4 py-3 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 shrink-0 min-h-[36px]">
+    <div className="flex flex-col h-full">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-border flex-1 flex min-h-0">
-        <nav className="w-48 border-r border-border py-3 shrink-0 flex flex-col">
-          <div className="flex-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`w-full text-left px-5 py-2.5 text-xs font-medium transition-colors relative ${
-                  activeTab === tab.key
-                    ? 'text-orange-600 bg-orange-50'
-                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                }`}
-              >
-                {activeTab === tab.key && (
-                  <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-orange-500 rounded-r" />
-                )}
-                <span>{tab.label}</span>
-              </button>
-            ))}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex h-full">
+          {/* Form — left 60% */}
+          <div className="w-[60%] px-6 py-6 overflow-y-auto">
+            <div className="space-y-6">
+              <ClientWorkloadForm
+                values={values}
+                onChange={setValues}
+                statusSlot={
+                  <FloatingDropdown
+                    label="Status"
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ]}
+                    value={status}
+                    onChange={setStatus}
+                  />
+                }
+              />
+            </div>
           </div>
-          <div className="px-4 py-3 border-t border-border space-y-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              className="w-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-            >
-              Save Client Workload
-            </button>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="w-full px-4 py-2 border border-gray-300 text-xs font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </nav>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="pb-12">
-            {activeTab === 'details' && (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Client Workload</h3>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-                  >
-                    Save
-                  </button>
-                </div>
-                <div className="border-b border-border mb-6" />
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                    <Dropdown
-                      options={[
-                        { value: 'active', label: 'Active' },
-                        { value: 'inactive', label: 'Inactive' },
-                      ]}
-                      value={status}
-                      onChange={setStatus}
-                      placeholder="Select status..."
-                    />
-                  </div>
-                  <ClientWorkloadForm values={values} onChange={setValues} />
-                </div>
-              </>
-            )}
+          {/* Help panel — right 40% */}
+          <div className="w-[40%] px-6 py-6 overflow-y-auto">
+            <div className="border border-border rounded-lg p-5 sticky top-0">
+              <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                <span className="font-semibold text-orange-600">Client Workloads</span> are software applications that access services provided by Server Workloads. Examples include custom applications, daemons, ETL processors, one-off or batch jobs, and deployment scripts. Typically, Client Workloads run in the background and must access services on their own behalf, without user intervention.
+              </p>
+              <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                A <span className="font-semibold">Client Identifier</span> is a bit like the Client Workload's username. Dipole uses it to identify the workload but not to authenticate it. If you deploy your workload in Kubernetes, we recommend using its Kubernetes Pod Name Prefix as its identifier.
+              </p>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                Dipole supports identifying <span className="font-semibold">Client Workloads</span> by using multiple Client Identifiers and typically requires all of the values be matched. Multiple values within a Client Identifier type can be used in an either OR combination, though at least one of the values for each Client Identifier type will be required.
+              </p>
+            </div>
           </div>
         </div>
       </div>

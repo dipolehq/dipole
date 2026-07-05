@@ -27,8 +27,9 @@ export function ClientWorkloadsPage() {
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
-    <div className="px-4 py-3 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 shrink-0 min-h-[36px]">
+    <div className="flex flex-col h-full">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -55,13 +56,15 @@ export function ClientWorkloadsPage() {
         </div>
       </div>
 
+      {/* Content */}
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">Loading client workloads…</p>
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-t-lg border border-b-0 border-border flex-1 overflow-y-auto min-h-0">
+          {/* Table — full bleed */}
+          <div className="flex-1 overflow-y-auto min-h-0">
             <table className="w-full text-xs table-fixed">
               <thead className="sticky top-0 bg-gray-50 z-10">
                 <tr className="border-b border-border">
@@ -77,7 +80,7 @@ export function ClientWorkloadsPage() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border bg-white">
                 {paginated.length === 0 && (
                   <tr>
                     <td colSpan={CLIENT_WORKLOAD_TABLE_COLUMNS.length} className="px-4 py-12 text-center text-gray-400 text-sm">
@@ -126,7 +129,8 @@ export function ClientWorkloadsPage() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between px-4 py-2 border border-border rounded-b-lg bg-gray-50 shrink-0">
+          {/* Pagination footer */}
+          <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
               <select
                 value={pageSize}
