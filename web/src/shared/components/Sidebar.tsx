@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid,
   Shield,
@@ -45,6 +45,8 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 export function Sidebar() {
+  const navigate = useNavigate()
+
   return (
     <aside className="fixed left-0 top-0 h-screen w-51 bg-[#28282B] flex flex-col">
       <div className="px-4 pt-5 pb-6 flex items-center gap-2">
@@ -88,7 +90,7 @@ export function Sidebar() {
             <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
               Sign out
             </button>
-            <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+            <button onClick={() => navigate('/profile')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
               Profile
             </button>
           </div>

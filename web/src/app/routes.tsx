@@ -13,6 +13,7 @@ import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProvid
 import { ReportingPage } from '@/features/reporting'
 import { EdgeComponentsPage, CreateAgentControllerPage, AgentControllerDetailPage } from '@/features/edge-components'
 import { HelpPage } from '@/features/help'
+import { ProfilePage } from '@/features/profile'
 import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage, CreateResourceSetPage, ResourceSetDetailPage, CreateIdentityProviderPage, IdentityProviderDetailPage, CreateLogStreamPage, LogStreamDetailPage } from '@/features/administration'
 
 function Placeholder() {
@@ -63,6 +64,7 @@ export function AppRoutes() {
         <Route path="/administration/log_streams/new" element={<CreateLogStreamPage />} />
         <Route path="/administration/log_streams/:id" element={<LogStreamDetailPage />} />
         <Route path="/help" element={<HelpPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </Layout>
   )
