@@ -65,6 +65,8 @@ export function CredentialProviderTab({
 // Credential Type Config — fully controlled, renders type-specific fields
 // ---------------------------------------------------------------------------
 
+import { FloatingInput } from '@/shared/components/FloatingInput'
+
 interface CredentialTypeConfigProps {
   type: string
   values: CredentialProviderFormValues
@@ -79,140 +81,90 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
   switch (type) {
     case 'api_key':
       return (
-        <div className="space-y-3">
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">API Key</label>
-            <input
-              type="password"
-              placeholder="Enter API key"
-              value={values.apiKey}
-              onChange={(e) => update({ apiKey: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
+        <div className="space-y-4">
+          <FloatingInput
+            label="API Key"
+            value={values.apiKey}
+            onChange={(v) => update({ apiKey: v })}
+            type="password"
+          />
         </div>
       )
 
     case 'username_password':
       return (
-        <div className="space-y-3">
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Username</label>
-            <input
-              type="text"
-              placeholder="Username"
-              value={values.username}
-              onChange={(e) => update({ username: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Password</label>
-            <input
-              type="password"
-              placeholder="Password"
-              value={values.password}
-              onChange={(e) => update({ password: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
+        <div className="space-y-4">
+          <FloatingInput
+            label="Username"
+            value={values.username}
+            onChange={(v) => update({ username: v })}
+          />
+          <FloatingInput
+            label="Password"
+            value={values.password}
+            onChange={(v) => update({ password: v })}
+            type="password"
+          />
         </div>
       )
 
     case 'aws_sts_federation':
       return (
         <div className="space-y-4">
-          <ReadOnlyField label="OIDC Issuer URL" value="https://<tenant>.id.ap-south-1.dipolehq.com" />
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">AWS IAM Role ARN</label>
-            <input
-              type="text"
-              placeholder="arn:aws:iam::123456789012:role/example"
-              value={values.awsIamRoleArn}
-              onChange={(e) => update({ awsIamRoleArn: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Audience</label>
-            <input
-              type="text"
-              placeholder="sts.amazonaws.com"
-              value={values.audience}
-              onChange={(e) => update({ audience: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Lifetime</label>
-            <div className="flex items-center border border-border rounded-md overflow-visible w-64">
-              <input
-                type="number"
-                value={values.lifetimeSeconds}
-                onChange={(e) => update({ lifetimeSeconds: Number(e.target.value) })}
-                className="flex-1 px-3 py-2 text-sm focus:outline-none min-w-0"
-              />
-              <span className="px-4 py-2 text-sm text-gray-500 bg-gray-50 border-l border-border whitespace-nowrap">Seconds</span>
-            </div>
-          </div>
+          <FloatingInput
+            label="OIDC Issuer URL"
+            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            disabled
+          />
+          <FloatingInput
+            label="AWS IAM Role ARN"
+            value={values.awsIamRoleArn}
+            onChange={(v) => update({ awsIamRoleArn: v })}
+          />
+          <FloatingInput
+            label="Audience"
+            value={values.audience}
+            onChange={(v) => update({ audience: v })}
+          />
+          <FloatingInput
+            label="Lifetime (Seconds)"
+            value={String(values.lifetimeSeconds)}
+            onChange={(v) => update({ lifetimeSeconds: Number(v) || 0 })}
+            type="number"
+          />
         </div>
       )
 
     case 'oauth_client_credentials':
       return (
         <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Token Endpoint URL</label>
-            <input
-              type="text"
-              placeholder="https://provider.com/oauth/token"
-              value={values.tokenEndpointUrl}
-              onChange={(e) => update({ tokenEndpointUrl: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Client ID</label>
-            <input
-              type="text"
-              placeholder="Client ID"
-              value={values.clientId}
-              onChange={(e) => update({ clientId: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Client Secret</label>
-            <input
-              type="password"
-              placeholder="Client Secret"
-              value={values.clientSecret}
-              onChange={(e) => update({ clientSecret: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Scopes (Optional)</label>
-            <input
-              type="text"
-              placeholder="read write"
-              value={values.scopes}
-              onChange={(e) => update({ scopes: e.target.value })}
-              className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Lifetime</label>
-            <div className="flex items-center border border-border rounded-md overflow-visible w-64">
-              <input
-                type="number"
-                value={values.lifetimeSeconds}
-                onChange={(e) => update({ lifetimeSeconds: Number(e.target.value) })}
-                className="flex-1 px-3 py-2 text-sm focus:outline-none min-w-0"
-              />
-              <span className="px-4 py-2 text-sm text-gray-500 bg-gray-50 border-l border-border whitespace-nowrap">Seconds</span>
-            </div>
-          </div>
+          <FloatingInput
+            label="Token Endpoint URL"
+            value={values.tokenEndpointUrl}
+            onChange={(v) => update({ tokenEndpointUrl: v })}
+          />
+          <FloatingInput
+            label="Client ID"
+            value={values.clientId}
+            onChange={(v) => update({ clientId: v })}
+          />
+          <FloatingInput
+            label="Client Secret"
+            value={values.clientSecret}
+            onChange={(v) => update({ clientSecret: v })}
+            type="password"
+          />
+          <FloatingInput
+            label="Scopes (Optional)"
+            value={values.scopes}
+            onChange={(v) => update({ scopes: v })}
+          />
+          <FloatingInput
+            label="Lifetime (Seconds)"
+            value={String(values.lifetimeSeconds)}
+            onChange={(v) => update({ lifetimeSeconds: Number(v) || 0 })}
+            type="number"
+          />
         </div>
       )
 

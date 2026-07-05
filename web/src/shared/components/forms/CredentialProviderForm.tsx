@@ -1,5 +1,6 @@
-import { Dropdown } from '@/shared/components/Dropdown'
+import { type ReactNode } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
+import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { CredentialTypeConfig } from '@/features/policies/components/tabs/credential-provider/CredentialProviderTab'
 import { CREDENTIAL_TYPES } from '@/data/policies/geoData'
 import type { CredentialProviderFormValues } from '@/shared/components/forms/types'
@@ -8,9 +9,10 @@ interface CredentialProviderFormProps {
   values: CredentialProviderFormValues
   onChange: (values: CredentialProviderFormValues) => void
   disabled?: boolean
+  statusSlot?: ReactNode
 }
 
-export function CredentialProviderForm({ values, onChange, disabled = false }: CredentialProviderFormProps) {
+export function CredentialProviderForm({ values, onChange, disabled = false, statusSlot }: CredentialProviderFormProps) {
   function update(partial: Partial<CredentialProviderFormValues>) {
     onChange({ ...values, ...partial })
   }
@@ -20,48 +22,50 @@ export function CredentialProviderForm({ values, onChange, disabled = false }: C
   return (
     <fieldset disabled={disabled} className={disabledClass}>
       <div className="space-y-5">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Name</label>
-          <input
-            type="text"
-            placeholder="Name"
-            value={values.name}
-            onChange={(e) => update({ name: e.target.value })}
-            className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"
-          />
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+          <div className="space-y-4">
+            {statusSlot}
+            <FloatingInput
+              label="Name"
+              value={values.name}
+              onChange={(v) => update({ name: v })}
+              disabled={disabled}
+              required
+            />
+            <FloatingTextarea
+              label="Description (Optional)"
+              value={values.description}
+              onChange={(v) => update({ description: v })}
+              disabled={disabled}
+              rows={2}
+            />
+          </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
-          <textarea
-            placeholder="Description (Optional)"
-            value={values.description}
-            onChange={(e) => update({ description: e.target.value })}
-            rows={2}
-            className="w-full px-3 py-2 border border-border rounded-md text-sm resize-y focus:outline-none focus:ring-1 focus:ring-gray-300"
-          />
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Credential Configuration</h4>
+          <div className="space-y-4">
+            <FloatingDropdown
+              label="Credential Type"
+              options={CREDENTIAL_TYPES}
+              value={values.credentialType}
+              onChange={(v) => update({ credentialType: v })}
+              disabled={disabled}
+            />
+
+            {values.credentialType && (
+              <CredentialTypeConfig
+                type={values.credentialType}
+                values={values}
+                onChange={onChange}
+              />
+            )}
+          </div>
         </div>
 
-        <div>
-          <h4 className="text-xs font-semibold text-gray-800 mb-2">Credential Type</h4>
-          <Dropdown
-            options={CREDENTIAL_TYPES}
-            value={values.credentialType}
-            onChange={(v) => update({ credentialType: v })}
-            placeholder=""
-          />
-        </div>
-
-        {values.credentialType && (
-          <CredentialTypeConfig
-            type={values.credentialType}
-            values={values}
-            onChange={onChange}
-          />
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Tags</label>
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
           <TagsField />
         </div>
       </div>
