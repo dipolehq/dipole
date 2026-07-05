@@ -25,7 +25,7 @@ export function UsersTable({ searchQuery }: UsersTableProps) {
   return (
     <table className="w-full text-xs table-fixed">
       <colgroup>
-        <col className="w-[36px]" />
+        <col className="w-[4%]" />
         <col className="w-[17%]" />
         <col className="w-[17%]" />
         <col className="w-[28%]" />
@@ -34,7 +34,7 @@ export function UsersTable({ searchQuery }: UsersTableProps) {
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-2 py-3" />
+          <th className="px-3 py-3" />
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">First Name</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Last Name</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Company Email</th>
@@ -52,7 +52,7 @@ export function UsersTable({ searchQuery }: UsersTableProps) {
         )}
         {filtered.map((user) => (
           <tr key={user.id} className="hover:bg-gray-50 transition-colors cursor-pointer h-[42px]" onClick={() => navigate(`/administration/users/${user.id}`)}>
-            <td className="px-2 py-3 text-center">
+            <td className="px-3 py-3 text-center">
               <User size={14} className="text-gray-400" />
             </td>
             <td className="px-4 py-3 text-gray-700 truncate">{user.firstName}</td>

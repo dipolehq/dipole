@@ -18,8 +18,8 @@ export function HelpPage() {
   const selectedLabel = HELP_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   return (
-    <div className="px-4 py-3 h-full overflow-y-auto">
-      <div className="flex items-center justify-between mb-3 min-h-[36px]">
+    <div className="px-4 py-3 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-4 min-h-[36px]">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -66,11 +66,13 @@ export function HelpPage() {
         </div>
       </div>
 
-      {selectedSection === 'getting_started' ? (
-        <GettingStartedPanel />
-      ) : selectedSection === 'troubleshoot' ? (
-        <TroubleshootPanel />
-      ) : null}
+      <div className="flex-1 min-h-0">
+        {selectedSection === 'getting_started' ? (
+          <GettingStartedPanel />
+        ) : selectedSection === 'troubleshoot' ? (
+          <TroubleshootPanel />
+        ) : null}
+      </div>
     </div>
   )
 }

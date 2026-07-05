@@ -20,7 +20,7 @@ export function ResourceSetsTable({ searchQuery }: ResourceSetsTableProps) {
   return (
     <table className="w-full text-xs table-fixed">
       <colgroup>
-        <col className="w-[36px]" />
+        <col className="w-[4%]" />
         <col className="w-[14%]" />
         <col className="w-[30%]" />
         <col className="w-[35%]" />
@@ -29,7 +29,7 @@ export function ResourceSetsTable({ searchQuery }: ResourceSetsTableProps) {
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-2 py-3" />
+          <th className="px-3 py-3" />
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Name</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">ID</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Resources</th>
@@ -47,7 +47,7 @@ export function ResourceSetsTable({ searchQuery }: ResourceSetsTableProps) {
         )}
         {filtered.map((rs) => (
           <tr key={rs.id} className="hover:bg-gray-50 transition-colors cursor-pointer h-[41px]" onClick={() => navigate(`/administration/resource_sets/${rs.id}`)}>
-            <td className="px-2 py-3 text-center">
+            <td className="px-3 py-3 text-center">
               <Monitor size={14} className="text-gray-400" />
             </td>
             <td className="px-4 py-3 text-gray-900 font-medium truncate">{rs.name}</td>

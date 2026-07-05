@@ -26,7 +26,7 @@ export function AgentControllersTable({ searchQuery }: AgentControllersTableProp
   return (
     <table className="w-full text-xs table-fixed">
       <colgroup>
-        <col className="w-[26px]" />
+        <col className="w-[4%]" />
         <col className="w-[14%]" />
         <col className="w-[19%]" />
         <col className="w-[24%]" />
@@ -38,15 +38,15 @@ export function AgentControllersTable({ searchQuery }: AgentControllersTableProp
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="pl-2 pr-1 py-3" />
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Name</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Description</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">ID</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Version</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left whitespace-nowrap">Modified At</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">Tags</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">TLS</th>
-          <th className="px-2 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">Status</th>
+          <th className="px-3 py-3" />
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Name</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Description</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">ID</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Version</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left whitespace-nowrap">Modified At</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">Tags</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">TLS</th>
+          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center">Status</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
@@ -63,19 +63,19 @@ export function AgentControllersTable({ searchQuery }: AgentControllersTableProp
             className="hover:bg-gray-50 transition-colors cursor-pointer h-[41px]"
             onClick={() => navigate(`/edge-components/agent_controllers/${ac.id}`)}
           >
-            <td className="pl-2 pr-1 py-3 text-center">
+            <td className="px-3 py-3 text-center">
               <Settings size={14} className="text-gray-400" />
             </td>
-            <td className="px-2 py-3 text-gray-900 font-medium truncate">{ac.name}</td>
-            <td className="px-2 py-3 text-gray-700 truncate">{ac.description}</td>
-            <td className="px-2 py-3 text-gray-500 truncate text-[11px] font-mono">{ac.id}</td>
-            <td className="px-2 py-3 text-gray-700 whitespace-nowrap">{ac.version}</td>
-            <td className="px-2 py-3 text-gray-700 whitespace-nowrap">{ac.modifiedAt}</td>
-            <td className="px-2 py-3 text-center text-gray-700">{ac.tags}</td>
-            <td className="px-2 py-3 text-center">
+            <td className="px-4 py-3 text-gray-900 font-medium truncate">{ac.name}</td>
+            <td className="px-4 py-3 text-gray-700 truncate">{ac.description}</td>
+            <td className="px-4 py-3 text-gray-500 truncate text-[11px] font-mono">{ac.id}</td>
+            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{ac.version}</td>
+            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{ac.modifiedAt}</td>
+            <td className="px-4 py-3 text-center text-gray-700">{ac.tags}</td>
+            <td className="px-4 py-3 text-center">
               <TlsIcon controller={ac} />
             </td>
-            <td className="px-2 py-3 text-center whitespace-nowrap">
+            <td className="px-4 py-3 text-center whitespace-nowrap">
               <StatusText status={ac.status} lastReportedUptime={ac.lastReportedUptime} />
             </td>
           </tr>

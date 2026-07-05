@@ -58,7 +58,7 @@ export function AccessAuthorizationTable({ searchQuery, severity, eventType }: A
   return (
     <table className="w-full text-xs table-fixed">
       <colgroup>
-        <col className="w-[36px]" />
+        <col className="w-[4%]" />
         <col className="w-[17%]" />
         <col className="w-[10%]" />
         <col className="w-[28%]" />
@@ -68,7 +68,7 @@ export function AccessAuthorizationTable({ searchQuery, severity, eventType }: A
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-2 py-3">
+          <th className="px-3 py-2.5 leading-none">
             <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>

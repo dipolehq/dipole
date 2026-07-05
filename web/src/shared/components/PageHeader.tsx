@@ -1,19 +1,25 @@
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 
 export function PageHeader() {
   const { pathname } = useLocation()
 
   const segments = pathname === '/'
-    ? ['Dashboard']
-    : pathname.split('/').filter(Boolean).map(formatSegment)
+    ? [{ label: 'Dashboard', path: '/' }]
+    : pathname.split('/').filter(Boolean).map((seg, idx, arr) => ({
+        label: formatSegment(seg),
+        path: '/' + arr.slice(0, idx + 1).join('/'),
+      }))
 
   return (
-    <h1 className="text-sm font-mono font-semibold text-gray-800 tracking-tight">
-      <span className="text-gray-400">/</span>
+    <h1 className="text-[15px] font-semibold tracking-tight leading-[36px]">
       {segments.map((segment, idx) => (
         <span key={idx}>
-          <span className="text-gray-900">{segment}</span>
-          {idx < segments.length - 1 && <span className="text-gray-400">/</span>}
+          {idx < segments.length - 1 ? (
+            <Link to={segment.path} className="text-gray-400 hover:text-orange-500 transition-colors">{segment.label}</Link>
+          ) : (
+            <span className="text-gray-900">{segment.label}</span>
+          )}
+          {idx < segments.length - 1 && <span className="text-gray-300 mx-1.5">/</span>}
         </span>
       ))}
     </h1>
@@ -26,7 +32,7 @@ function formatSegment(segment: string): string {
     return segment
   }
   return segment
-    .split('-')
+    .split(/[-_]/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
