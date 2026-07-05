@@ -117,7 +117,7 @@ function WorkloadEventRow({ event, isExpanded, onToggle }: { event: WorkloadEven
         className="hover:bg-gray-50 transition-colors cursor-pointer"
         onClick={onToggle}
       >
-        <td className="px-2 py-3 text-center">
+        <td className="px-3 py-3 text-center">
           <ChevronDown
             size={14}
             className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}

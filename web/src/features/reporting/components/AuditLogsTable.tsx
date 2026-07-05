@@ -73,7 +73,7 @@ export function AuditLogsTable({ searchQuery, severity, category }: AuditLogsTab
         <col className="w-[13%]" />
         <col className="w-[12%]" />
         <col className="w-[20%]" />
-        <col className="w-[20%]" />
+        <col className="w-[19%]" />
         <col className="w-[8%]" />
         <col className="w-[8%]" />
       </colgroup>
@@ -123,7 +123,7 @@ function AuditLogRow({ log, isExpanded, onToggle }: { log: AuditLog; isExpanded:
         className="hover:bg-gray-50 transition-colors cursor-pointer"
         onClick={onToggle}
       >
-        <td className="px-2 py-3 text-center">
+        <td className="px-3 py-3 text-center">
           <ChevronDown
             size={14}
             className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}

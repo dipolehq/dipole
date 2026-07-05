@@ -47,20 +47,29 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
   })
 
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs table-fixed">
+      <colgroup>
+        <col className="w-[4%]" />
+        <col className="w-[15%]" />
+        <col className="w-[9%]" />
+        <col className="w-[14%]" />
+        <col className="w-[24%]" />
+        <col className="w-[28%]" />
+        <col className="w-[7%]" />
+      </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="w-[36px] px-2 py-3">
+          <th className="px-3 py-2.5 leading-none h-[39.16px]">
             <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>
           </th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left w-[160px]">Timestamp</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left w-[100px]">Client IP</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Access Policy</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Redirect URI / Client Workload</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Resource Server / Server Workload</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left w-[70px]">Severity</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Timestamp</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client IP</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Access Policy</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Redirect URI / Client WL</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Resource Server / Server WL</th>
+          <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Severity</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
@@ -82,33 +91,33 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
 function McpTracingRow({ entry }: { entry: McpAuthorizationTracingEntry }) {
   return (
     <tr className="hover:bg-gray-50 transition-colors align-top">
-      <td className="px-2 py-3 text-center">
+      <td className="px-3 py-2 text-center">
         <Cpu size={14} className="text-gray-400" />
       </td>
-      <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+      <td className="px-4 py-2 text-gray-700 whitespace-nowrap">
         {formatTimestamp(entry.timestamp)}
       </td>
-      <td className="px-4 py-3 text-gray-700">
+      <td className="px-4 py-2 text-gray-700">
         {entry.clientIP}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <PolicyCell name={entry.accessPolicy.name} status={entry.accessPolicy.status} />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <WorkloadCell
           name={entry.clientWorkload.name}
           status={entry.clientWorkload.status}
           uri={entry.redirectUri}
         />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <WorkloadCell
           name={entry.serverWorkload.name}
           status={entry.serverWorkload.status}
           uri={entry.resourceServer}
         />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-2">
         <SeverityBadge severity={entry.severity} />
       </td>
     </tr>

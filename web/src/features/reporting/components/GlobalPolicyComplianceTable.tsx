@@ -90,7 +90,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
         )}
         {filtered.map((entry) => (
           <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
-            <td className="px-2 py-3 text-center">
+            <td className="px-2 py-[10px] text-center">
               <button
                 type="button"
                 onClick={() => navigate(`/access-policies/${entry.id}`)}
@@ -99,17 +99,17 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
                 <ExternalLink size={14} />
               </button>
             </td>
-            <td className="px-4 py-3 text-gray-700 truncate">{entry.policyName}</td>
-            <td className="px-4 py-3 text-gray-700 truncate">{entry.clientWorkload}</td>
-            <td className="px-4 py-3">
+            <td className="px-4 py-[10px] text-gray-700 truncate">{entry.policyName}</td>
+            <td className="px-4 py-[10px] text-gray-700 truncate">{entry.clientWorkload}</td>
+            <td className="px-4 py-[10px]">
               <ComplianceBadge level={entry.trustProvider} />
             </td>
-            <td className="px-4 py-3">
+            <td className="px-4 py-[10px]">
               <ComplianceBadge level={entry.accessCondition} />
             </td>
-            <td className="px-4 py-3 text-gray-700 truncate">{entry.credentialProvider}</td>
-            <td className="px-4 py-3 text-gray-700 truncate">{entry.serverWorkload}</td>
-            <td className="px-4 py-3 text-gray-700 truncate">{entry.resourceSet}</td>
+            <td className="px-4 py-[10px] text-gray-700 truncate">{entry.credentialProvider}</td>
+            <td className="px-4 py-[10px] text-gray-700 truncate">{entry.serverWorkload}</td>
+            <td className="px-4 py-[10px] text-gray-700 truncate">{entry.resourceSet}</td>
           </tr>
         ))}
       </tbody>
