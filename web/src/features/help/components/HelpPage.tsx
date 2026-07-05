@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { GettingStartedPanel } from '@/features/help/components/GettingStartedPanel'
+import { TroubleshootPanel } from '@/features/help/components/TroubleshootPanel'
 
 const HELP_SECTIONS = [
   { value: 'getting_started', label: 'Getting Started' },
@@ -17,7 +18,7 @@ export function HelpPage() {
   const selectedLabel = HELP_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   return (
-    <div className="px-4 py-3 h-full">
+    <div className="px-4 py-3 h-full overflow-y-auto">
       <div className="flex items-center justify-between mb-3 min-h-[36px]">
         <PageHeader />
         <div className="flex items-center gap-3">
@@ -68,9 +69,7 @@ export function HelpPage() {
       {selectedSection === 'getting_started' ? (
         <GettingStartedPanel />
       ) : selectedSection === 'troubleshoot' ? (
-        <div className="flex items-center justify-center h-64 bg-white border border-border rounded-lg">
-          <p className="text-sm text-gray-400">Troubleshoot — coming soon</p>
-        </div>
+        <TroubleshootPanel />
       ) : null}
     </div>
   )
