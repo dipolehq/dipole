@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings } from 'lucide-react'
+import { Settings, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { agentControllersData } from '@/data/edge-components/agentControllers'
 import type { AgentController, AgentControllerStatus, TlsStatus } from '@/data/edge-components/agentControllers'
@@ -38,7 +38,11 @@ export function AgentControllersTable({ searchQuery }: AgentControllersTableProp
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
-          <th className="px-3 py-3" />
+          <th className="px-3 py-2.5 leading-none">
+            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+              <RefreshCw size={15} strokeWidth={2.5} />
+            </button>
+          </th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Name</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Description</th>
           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">ID</th>
@@ -63,7 +67,7 @@ export function AgentControllersTable({ searchQuery }: AgentControllersTableProp
             className="hover:bg-gray-50 transition-colors cursor-pointer h-[41px]"
             onClick={() => navigate(`/edge-components/agent_controllers/${ac.id}`)}
           >
-            <td className="px-3 py-3 text-center">
+            <td className="px-4 py-3 text-center">
               <Settings size={14} className="text-gray-400" />
             </td>
             <td className="px-4 py-3 text-gray-900 font-medium truncate">{ac.name}</td>

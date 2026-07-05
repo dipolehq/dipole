@@ -91,7 +91,7 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
 function McpTracingRow({ entry }: { entry: McpAuthorizationTracingEntry }) {
   return (
     <tr className="hover:bg-gray-50 transition-colors align-top">
-      <td className="px-3 py-2 text-center">
+      <td className="px-4 py-2 text-center">
         <Cpu size={14} className="text-gray-400" />
       </td>
       <td className="px-4 py-2 text-gray-700 whitespace-nowrap">
