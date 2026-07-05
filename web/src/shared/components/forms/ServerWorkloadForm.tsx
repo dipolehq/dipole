@@ -1,5 +1,6 @@
-import { Dropdown } from '@/shared/components/Dropdown'
+import { type ReactNode, useState } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
+import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { APP_PROTOCOLS, TRANSPORT_PROTOCOLS, AUTH_METHODS } from '@/data/policies/config'
 import type { ServerWorkloadFormValues } from '@/shared/components/forms/types'
 
@@ -7,9 +8,10 @@ interface ServerWorkloadFormProps {
   values: ServerWorkloadFormValues
   onChange: (values: ServerWorkloadFormValues) => void
   disabled?: boolean
+  statusSlot?: ReactNode
 }
 
-export function ServerWorkloadForm({ values, onChange, disabled = false }: ServerWorkloadFormProps) {
+export function ServerWorkloadForm({ values, onChange, disabled = false, statusSlot }: ServerWorkloadFormProps) {
   function update(partial: Partial<ServerWorkloadFormValues>) {
     onChange({ ...values, ...partial })
   }
@@ -33,7 +35,7 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
   const showForwardPort = !['MCP'].includes(values.appProtocol)
   const showPortTls = ['HTTP', 'OAuth', 'MCP', 'OracleDatabase', 'Redis', 'Snowflake'].includes(values.appProtocol)
   const showUrlPath = values.appProtocol === 'MCP' || values.appProtocol === 'OAuth'
-  const showAuthScheme = values.authMethod !== ''
+  const showAuthScheme = values.authMethod !== '' && values.authMethod !== 'no_auth'
   const showMcpAuthUrl = values.appProtocol === 'MCP'
   const showStaticHeaders = values.appProtocol === 'HTTP' || values.appProtocol === ''
   const showForwardTlsVerification = ['PostgreSQL', 'MySQL', 'Redis', 'Redshift', 'OracleDatabase'].includes(values.appProtocol)
@@ -54,18 +56,18 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
   function getAuthOptions() {
     switch (values.appProtocol) {
       case 'PostgreSQL': case 'MySQL': case 'Redis': case 'Redshift': case 'OracleDatabase':
-        return [{ value: '', label: 'No Authentication' }, { value: 'password_auth', label: 'Password Authentication' }]
-      case 'Snowflake': return [{ value: '', label: 'No Authentication' }, { value: 'snowflake_jwt', label: 'JWT Token Authentication' }, { value: 'password_auth', label: 'Password Authentication' }]
-      case 'OAuth': return [{ value: '', label: 'No Authentication' }, { value: 'oauth_client', label: 'OAuth Client Authentication' }]
-      case 'MCP': return [{ value: '', label: 'No Authentication' }, { value: 'http_auth', label: 'HTTP Authentication' }]
-      case 'TCP': return [{ value: '', label: 'No Authentication' }]
+        return [{ value: 'password_auth', label: 'Password Authentication' }]
+      case 'Snowflake': return [{ value: 'snowflake_jwt', label: 'JWT Token Authentication' }, { value: 'password_auth', label: 'Password Authentication' }]
+      case 'OAuth': return [{ value: 'oauth_client', label: 'OAuth Client Authentication' }]
+      case 'MCP': return [{ value: 'http_auth', label: 'HTTP Authentication' }]
+      case 'TCP': return []
       default: return AUTH_METHODS.map((m) => ({ value: m.value, label: m.label }))
     }
   }
 
   function handleTlsChange(checked: boolean) {
     const u: Partial<ServerWorkloadFormValues> = { tls: checked }
-    if (values.appProtocol === 'Snowflake' || values.appProtocol === 'Redis' || values.appProtocol === 'MCP' || values.appProtocol === 'OAuth') { /* port stays */ }
+    if (['Snowflake', 'Redis', 'MCP', 'OAuth'].includes(values.appProtocol)) { /* port stays */ }
     else if (values.appProtocol === 'OracleDatabase') { u.port = checked ? '2484' : '1521' }
     else { u.port = checked ? '443' : '80' }
     update(u)
@@ -73,7 +75,7 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
 
   function handleForwardTlsChange(checked: boolean) {
     const u: Partial<ServerWorkloadFormValues> = { forwardTls: checked }
-    if (values.appProtocol === 'Snowflake' || values.appProtocol === 'OAuth') { /* stays */ }
+    if (['Snowflake', 'OAuth'].includes(values.appProtocol)) { /* stays */ }
     else if (values.appProtocol === 'OracleDatabase') { u.forwardToPort = checked ? '2484' : '1521' }
     else if (!showForwardTlsVerification) { u.forwardToPort = checked ? '443' : '80' }
     update(u)
@@ -95,37 +97,29 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
   return (
     <fieldset disabled={disabled} className={disabledClass}>
       <div className="space-y-5">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Name</label>
-          <input type="text" placeholder="e.g. Stripe API" value={values.name} onChange={(e) => update({ name: e.target.value })} className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Description</label>
-          <textarea placeholder="Description (Optional)" value={values.description} onChange={(e) => update({ description: e.target.value })} rows={2} className="w-full px-3 py-2 border border-border rounded-md text-sm resize-y focus:outline-none focus:ring-1 focus:ring-gray-300" />
+        {/* Details */}
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+          <div className="space-y-4">
+            {statusSlot}
+            <FloatingInput label="Name" value={values.name} onChange={(v) => update({ name: v })} disabled={disabled} required />
+            <FloatingTextarea label="Description (Optional)" value={values.description} onChange={(v) => update({ description: v })} disabled={disabled} rows={2} />
+          </div>
         </div>
 
-        <div>
-          <h4 className="text-xs font-medium text-gray-800 mb-3">Service Endpoint</h4>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Host</label>
-              <input type="text" placeholder="e.g. api.stripe.com" value={values.host} onChange={(e) => update({ host: e.target.value })} className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
-            </div>
+        {/* Service Endpoint */}
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Service Endpoint</h4>
+          <div className="space-y-4">
+            <FloatingInput label="Host" value={values.host} onChange={(v) => update({ host: v })} disabled={disabled} />
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Application Protocol</label>
-                <Dropdown options={APP_PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))} value={values.appProtocol} onChange={handleProtocolChange} placeholder="Please select one" />
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Transport Protocol</label>
-                <Dropdown options={TRANSPORT_PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))} value={values.transportProtocol} onChange={(v) => update({ transportProtocol: v })} placeholder="TCP" />
-              </div>
+              <FloatingDropdown label="Application Protocol" options={APP_PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))} value={values.appProtocol} onChange={handleProtocolChange} disabled={disabled} />
+              <FloatingDropdown label="Transport Protocol" options={TRANSPORT_PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))} value={values.transportProtocol} onChange={(v) => update({ transportProtocol: v })} disabled={disabled} />
             </div>
             <div className={`grid gap-3 ${showForwardPort ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Port</label>
                 {showPortTls ? (
-                  <div className="flex items-center border border-border rounded-md overflow-hidden">
+                  <div className="flex items-center border border-border rounded-md overflow-hidden h-[44px]">
                     <input type="text" placeholder="443" value={values.port} onChange={(e) => update({ port: e.target.value })} className="flex-1 px-3 py-2 text-sm focus:outline-none" />
                     <label className="flex items-center gap-1.5 px-3 border-l border-border cursor-pointer">
                       <input type="checkbox" checked={values.tls} onChange={(e) => handleTlsChange(e.target.checked)} className="w-3.5 h-3.5 rounded border-gray-300" />
@@ -133,90 +127,71 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
                     </label>
                   </div>
                 ) : (
-                  <input type="text" placeholder="443" value={values.port} onChange={(e) => update({ port: e.target.value })} className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                  <FloatingInput label="Port" value={values.port} onChange={(v) => update({ port: v })} disabled={disabled} />
                 )}
               </div>
               {showForwardPort && (
                 <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">Forward to Port</label>
-                  <div className="flex items-center border border-border rounded-md overflow-hidden">
-                    <input type="text" value={values.forwardToPort} onChange={(e) => update({ forwardToPort: e.target.value })} className="flex-1 px-3 py-2 text-sm focus:outline-none" />
+                  <div className="flex items-center border border-border rounded-md overflow-hidden h-[44px]">
+                    <input type="text" value={values.forwardToPort} onChange={(e) => update({ forwardToPort: e.target.value })} className="flex-1 px-3 py-2 text-sm focus:outline-none" placeholder="Forward to Port" />
                     <label className="flex items-center gap-1.5 px-3 border-l border-border cursor-pointer">
                       <input type="checkbox" checked={values.forwardTls} onChange={(e) => handleForwardTlsChange(e.target.checked)} className="w-3.5 h-3.5 rounded border-gray-300" />
                       <span className="text-xs text-gray-600">TLS</span>
                     </label>
                   </div>
                   {values.forwardTls && showForwardTlsVerification && (
-                    <div className="mt-2">
-                      <label className="block text-[11px] text-gray-500 mb-1">Forward TLS Verification</label>
-                      <Dropdown options={[{ value: 'full', label: 'Full' }, { value: 'none', label: 'None' }]} value={values.forwardTlsVerification} onChange={(v) => update({ forwardTlsVerification: v })} placeholder="Full" />
+                    <div className="mt-3">
+                      <FloatingDropdown label="Forward TLS Verification" options={[{ value: 'full', label: 'Full' }, { value: 'none', label: 'None' }]} value={values.forwardTlsVerification} onChange={(v) => update({ forwardTlsVerification: v })} disabled={disabled} />
                     </div>
                   )}
                 </div>
               )}
             </div>
             {showUrlPath && (
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">URL Path</label>
-                <input type="text" value={values.urlPath} onChange={(e) => update({ urlPath: e.target.value })} className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
-              </div>
+              <FloatingInput label="URL Path" value={values.urlPath} onChange={(v) => update({ urlPath: v })} disabled={disabled} />
             )}
           </div>
         </div>
 
-        <div>
-          <h4 className="text-xs font-medium text-gray-800 mb-3">Authentication (Optional)</h4>
-          <div className={`grid gap-3 ${showAuthScheme && !authLocked ? 'grid-cols-2' : authLocked && values.appProtocol === 'MCP' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Authentication Method</label>
-              {authLocked ? (
-                <div className="px-3 py-2 border border-border rounded-md text-sm text-gray-500 bg-gray-50">{values.appProtocol === 'MCP' ? 'HTTP Authentication' : (getAuthOptions()[0]?.label ?? 'No Authentication')}</div>
-              ) : (
-                <Dropdown options={getAuthOptions()} value={values.authMethod} onChange={handleAuthMethodChange} placeholder="No Authentication" />
+        {/* Authentication */}
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Authentication</h4>
+          <div className="space-y-4">
+            <div className={`grid gap-3 ${showAuthScheme && !authLocked ? 'grid-cols-2' : authLocked && values.appProtocol === 'MCP' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div>
+                {authLocked ? (
+                  <FloatingInput label="Authentication Method" value={values.appProtocol === 'MCP' ? 'HTTP Authentication' : ''} disabled />
+                ) : (
+                  <FloatingDropdown label="Authentication Method" options={getAuthOptions()} value={values.authMethod} onChange={handleAuthMethodChange} disabled={disabled} />
+                )}
+              </div>
+              {authLocked && values.appProtocol === 'MCP' && (
+                <FloatingInput label="Authentication Scheme" value="Bearer" disabled />
+              )}
+              {showAuthScheme && !authLocked && (
+                <FloatingDropdown label="Authentication Scheme" options={getAuthSchemeOptions()} value={values.authScheme} onChange={(v) => update({ authScheme: v })} disabled={disabled} />
               )}
             </div>
-            {authLocked && values.appProtocol === 'MCP' && (
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Authentication Scheme</label>
-                <div className="px-3 py-2 border border-border rounded-md text-sm text-gray-500 bg-gray-50">Bearer</div>
-              </div>
+            {values.authMethod === 'api_key' && (
+              <FloatingInput label={values.authScheme === 'query' ? 'Query Parameter' : 'Header Name'} value="" onChange={() => {}} disabled={disabled} />
             )}
-            {showAuthScheme && !authLocked && (
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-1">Authentication Scheme</label>
-                <Dropdown options={getAuthSchemeOptions()} value={values.authScheme} onChange={(v) => update({ authScheme: v })} placeholder="Select scheme..." />
-              </div>
+            {values.authMethod === 'http_auth' && values.authScheme === 'header' && (
+              <FloatingInput label="Header Name" value="" onChange={() => {}} disabled={disabled} />
+            )}
+            {showMcpAuthUrl && (
+              <FloatingInput label="Dipole MCP Authorization Server URL" value={`https://${values.host || '<tenant>'}.mcp.ap-south-1.dipolehq.com`} disabled />
             )}
           </div>
-          {values.authMethod === 'api_key' && (
-            <div className="mt-3">
-              <label className="block text-[11px] text-gray-500 mb-1">{values.authScheme === 'query' ? 'Query Parameter' : 'Header'}</label>
-              <input type="text" className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
-            </div>
-          )}
-          {values.authMethod === 'http_auth' && values.authScheme === 'header' && (
-            <div className="mt-3">
-              <label className="block text-[11px] text-gray-500 mb-1">Header</label>
-              <input type="text" className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
-            </div>
-          )}
-          {showMcpAuthUrl && (
-            <div className="mt-3">
-              <label className="block text-[11px] text-gray-500 mb-1">Dipole MCP Authorization Server URL</label>
-              <div className="flex items-center border border-border rounded-md overflow-hidden bg-gray-50">
-                <input type="text" readOnly value={`https://${values.host || '<tenant>'}.mcp.ap-south-1.dipolehq.com`} className="flex-1 px-3 py-2 text-sm text-gray-500 bg-gray-50 focus:outline-none" />
-                <button onClick={() => navigator.clipboard.writeText(`https://${values.host || '<tenant>'}.mcp.ap-south-1.dipolehq.com`)} className="px-3 py-2 border-l border-border text-gray-400 hover:text-gray-600" title="Copy">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" strokeWidth="2"/></svg>
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
-        {showStaticHeaders && <StaticHeadersField />}
+        {/* Static Headers */}
+        {showStaticHeaders && (
+          <StaticHeadersSection />
+        )}
 
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5">Tags</label>
+        {/* Tags */}
+        <div className="border border-border rounded-lg p-5">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
           <TagsField />
         </div>
       </div>
@@ -224,11 +199,40 @@ export function ServerWorkloadForm({ values, onChange, disabled = false }: Serve
   )
 }
 
-function StaticHeadersField() {
+function StaticHeadersSection() {
+  const [headers, setHeaders] = useState<{ name: string; value: string }[]>([])
+
+  function addHeader() {
+    setHeaders([...headers, { name: '', value: '' }])
+  }
+
+  function updateHeader(idx: number, field: 'name' | 'value', val: string) {
+    setHeaders(headers.map((h, i) => i === idx ? { ...h, [field]: val } : h))
+  }
+
+  function removeHeader(idx: number) {
+    setHeaders(headers.filter((_, i) => i !== idx))
+  }
+
   return (
-    <div>
-      <h4 className="text-xs font-medium text-gray-800 mb-2">Static HTTP Headers</h4>
-      <button className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Add Header</button>
+    <div className="border border-border rounded-lg p-5">
+      <h4 className="text-sm font-semibold text-gray-800 mb-4">Static HTTP Headers</h4>
+      {headers.length > 0 && (
+        <div className="space-y-3 mb-3">
+          {headers.map((header, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <div className="flex-1">
+                <FloatingInput label="Header Name" value={header.name} onChange={(v) => updateHeader(idx, 'name', v)} />
+              </div>
+              <div className="flex-1">
+                <FloatingInput label="Header Value" value={header.value} onChange={(v) => updateHeader(idx, 'value', v)} />
+              </div>
+              <button onClick={() => removeHeader(idx)} className="text-orange-400 hover:text-red-500 text-sm">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={addHeader} className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Add Header</button>
     </div>
   )
 }
