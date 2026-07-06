@@ -89,7 +89,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
           </tr>
         )}
         {filtered.map((entry) => (
-          <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
+          <tr key={entry.id} className="hover:bg-gray-50 transition-colors h-[41px]">
             <td className="px-2 py-[10px] text-center">
               <button
                 type="button"

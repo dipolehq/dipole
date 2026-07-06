@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { Dropdown } from '@/shared/components/Dropdown'
+import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { useClickOutside } from '@/shared/hooks/useClickOutside'
 
 const STATUS_OPTIONS = [
@@ -17,7 +17,7 @@ const RESOURCE_SET_OPTIONS = [
 ]
 
 const COPY_FROM_ROLE_OPTIONS = [
-  { value: '', label: 'Copy from existing Role...' },
+  { value: 'none', label: 'None' },
   { value: 'SuperAdmin', label: 'SuperAdmin' },
   { value: 'Auditor', label: 'Auditor' },
 ]
@@ -44,12 +44,9 @@ const PERMISSION_ENTITIES = [
   'Global Policy Compliance',
 ] as const
 
-type TabKey = 'details' | 'permissions'
-
 export function CreateRolePage() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('details')
-  const [status, setStatus] = useState('active')
+  const [status, setStatus] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [resourceSets, setResourceSets] = useState<string[]>([])
@@ -81,193 +78,92 @@ export function CreateRolePage() {
   }
 
   return (
-    <div className="px-4 py-3 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 shrink-0 min-h-[36px]">
+    <div className="flex flex-col h-full">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={handleSave} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">Save</button>
+          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-border flex-1 flex min-h-0">
-        {/* Left sidebar */}
-        <nav className="w-48 border-r border-border py-3 shrink-0 flex flex-col">
-          <div className="flex-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('details')}
-              className={`w-full text-left px-5 py-2.5 text-xs font-medium transition-colors relative ${
-                activeTab === 'details' ? 'text-orange-600 bg-orange-50' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              {activeTab === 'details' && <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-orange-500 rounded-r" />}
-              <span>Role Details</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('permissions')}
-              className={`w-full text-left px-5 py-2.5 text-xs font-medium transition-colors relative ${
-                activeTab === 'permissions' ? 'text-orange-600 bg-orange-50' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              {activeTab === 'permissions' && <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-orange-500 rounded-r" />}
-              <span>Role Permissions</span>
-            </button>
-          </div>
-          <div className="px-4 py-3 border-t border-border space-y-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              className="w-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-            >
-              Save Role
-            </button>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="w-full px-4 py-2 border border-gray-300 text-xs font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </nav>
-
-        {/* Main content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'details' ? (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-900">User Roles</h3>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-              <div className="border-b border-border mb-6" />
-
-              {/* Status */}
-              <div className="mb-6">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <Dropdown
-                  options={STATUS_OPTIONS}
-                  value={status}
-                  onChange={setStatus}
-                  placeholder="Select status..."
-                />
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex h-full">
+          {/* Form — left 60% */}
+          <div className="w-[60%] px-6 py-6 overflow-y-auto">
+            <div className="space-y-5">
+              <div className="border border-border rounded-lg p-5">
+                <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Details</h4>
+                <div className="space-y-4">
+                  <FloatingDropdown label="Status" options={STATUS_OPTIONS} value={status} onChange={setStatus} />
+                  <FloatingInput label="Name" value={name} onChange={setName} required />
+                  <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} rows={2} />
+                </div>
               </div>
 
-              {/* Name */}
-              <div className="mb-4">
-                <label className="block text-xs text-gray-500 mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Name"
-                  className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-400"
-                />
+              <div className="border border-border rounded-lg p-5">
+                <h4 className="text-sm font-semibold text-gray-800 mb-4">Resource Set Assignments</h4>
+                <ResourceSetMultiSelect options={RESOURCE_SET_OPTIONS} selected={resourceSets} onChange={setResourceSets} />
               </div>
 
-              {/* Description */}
-              <div className="mb-6">
-                <label className="block text-xs text-gray-500 mb-1">Description (Optional)</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Description (Optional)"
-                  rows={3}
-                  className="w-full px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-400 resize-y"
-                />
-              </div>
-
-              {/* Resource Set Assignments */}
-              <h4 className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-4">Resource Set(s) Assignments</h4>
-              <div className="mb-8">
-                <ResourceSetMultiSelect
-                  options={RESOURCE_SET_OPTIONS}
-                  selected={resourceSets}
-                  onChange={setResourceSets}
-                />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-900">Permissions</h3>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-              <div className="border-b border-border mb-6" />
-
-              {/* Copy from existing role */}
-              <div className="mb-6">
-                <Dropdown
-                  options={COPY_FROM_ROLE_OPTIONS}
-                  value={copyFromRole}
-                  onChange={handleCopyFromRole}
-                  placeholder="Copy from existing Role..."
-                />
-              </div>
-
-              {/* Permissions table */}
-              <div className="border border-border rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-border">
-                      <th className="px-4 py-3 text-[11px] font-bold text-orange-600 uppercase tracking-wider text-left">Entity</th>
-                      <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">No Access</th>
-                      <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read Only</th>
-                      <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read/Write</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {PERMISSION_ENTITIES.map((entity) => (
-                      <tr key={entity} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-gray-700">{entity}</td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={permissions[entity] === 'no_access'}
-                            onChange={() => handlePermissionChange(entity, 'no_access')}
-                            className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={permissions[entity] === 'read_only'}
-                            onChange={() => handlePermissionChange(entity, 'read_only')}
-                            className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={permissions[entity] === 'read_write'}
-                            onChange={() => handlePermissionChange(entity, 'read_write')}
-                            className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
-                          />
-                        </td>
+              <div className="border border-border rounded-lg p-5">
+                <h4 className="text-sm font-semibold text-gray-800 mb-4">Permissions</h4>
+                <div className="mb-4">
+                  <FloatingDropdown label="Copy from existing Role" options={COPY_FROM_ROLE_OPTIONS} value={copyFromRole} onChange={handleCopyFromRole} />
+                </div>
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-border">
+                        <th className="px-4 py-3 text-[11px] font-bold text-orange-600 uppercase tracking-wider text-left">Entity</th>
+                        <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">No Access</th>
+                        <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read Only</th>
+                        <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read/Write</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {PERMISSION_ENTITIES.map((entity) => (
+                        <tr key={entity} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 text-gray-700">{entity}</td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => handlePermissionChange(entity, 'no_access')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => handlePermissionChange(entity, 'read_only')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => handlePermissionChange(entity, 'read_write')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Help panel — right 40% */}
+          <div className="w-[40%] px-6 py-6 overflow-y-auto">
+            <div className="border border-border rounded-lg p-5 sticky top-0">
+              <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                <span className="font-semibold text-orange-600">Roles</span> define what actions a user can perform across the Dipole platform. Each role is a collection of permissions scoped to specific entities.
+              </p>
+              <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                Use <span className="font-semibold">Resource Set Assignments</span> to limit the role&apos;s scope to specific resource groups, enabling multi-tenancy within your organization.
+              </p>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                You can <span className="font-semibold">copy permissions</span> from an existing role as a starting point and customize from there.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
 
 // --- Multi-select for Resource Sets ---
 
@@ -339,11 +235,7 @@ function ResourceSetMultiSelect({
             return (
               <div key={value} className="flex items-center justify-between px-3 py-2 bg-gray-100 rounded-md">
                 <span className="text-sm text-gray-700">{label}</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(value)}
-                  className="text-orange-400 hover:text-orange-600 transition-colors"
-                >
+                <button type="button" onClick={() => handleRemove(value)} className="text-orange-400 hover:text-orange-600 transition-colors">
                   <X size={14} />
                 </button>
               </div>

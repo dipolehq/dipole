@@ -1,6 +1,13 @@
 import { useState } from 'react'
+import { FloatingInput } from '@/shared/components/FloatingInput'
 
 type EnforcementLevel = 'required' | 'recommended' | 'optional'
+
+const ENFORCEMENT_LEVELS: { value: EnforcementLevel; label: string }[] = [
+  { value: 'required', label: 'Required' },
+  { value: 'recommended', label: 'Recommended' },
+  { value: 'optional', label: 'Optional' },
+]
 
 export function GlobalPolicySettingsPanel() {
   // Access Policy Compliance
@@ -21,77 +28,71 @@ export function GlobalPolicySettingsPanel() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-sm font-semibold text-gray-900">Global Policy Compliance</h2>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
-        >
-          Save
-        </button>
-      </div>
-
-      {/* Access Policy Compliance */}
-      <div className="mb-8">
-        <h3 className="text-sm font-semibold text-orange-600 mb-1">Access Policy Compliance (Global)</h3>
-        <div className="border-b border-border mb-4" />
-
-        <div className="space-y-4">
-          <EnforcementRow
-            label="Trust Providers"
-            value={apTrustProvider}
-            onChange={setApTrustProvider}
-          />
-          <EnforcementRow
-            label="Access Conditions"
-            value={apAccessCondition}
-            onChange={setApAccessCondition}
-          />
+    <div className="flex h-full">
+      {/* Left 60% — settings */}
+      <div className="w-[60%] px-6 py-6 overflow-y-auto">
+        {/* Save row */}
+        <div className="flex items-center justify-between border-b border-border pb-3 mb-6">
+          <h3 className="text-sm font-semibold text-gray-900">Global Policy Compliance</h3>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+          >
+            Save
+          </button>
         </div>
-      </div>
 
-      {/* Agent Controller Compliance */}
-      <div className="mb-8">
-        <h3 className="text-sm font-semibold text-orange-600 mb-1">Agent Controller Compliance (Global)</h3>
-        <div className="border-b border-border mb-4" />
+        <div className="space-y-5">
+          {/* Access Policy Compliance */}
+          <div className="border border-border rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-4">Access Policy Compliance</h4>
+            <div className="space-y-3">
+              <EnforcementRow label="Trust Providers" value={apTrustProvider} onChange={setApTrustProvider} />
+              <EnforcementRow label="Access Conditions" value={apAccessCondition} onChange={setApAccessCondition} />
+            </div>
+          </div>
 
-        <div className="space-y-4">
-          <EnforcementRow
-            label="Trust Providers"
-            value={acTrustProvider}
-            onChange={setAcTrustProvider}
-          />
-          <EnforcementRow
-            label="Allowed TLS Hostname"
-            value={acTlsHostname}
-            onChange={setAcTlsHostname}
-          />
-        </div>
-      </div>
+          {/* Agent Controller Compliance */}
+          <div className="border border-border rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-4">Agent Controller Compliance</h4>
+            <div className="space-y-3">
+              <EnforcementRow label="Trust Providers" value={acTrustProvider} onChange={setAcTrustProvider} />
+              <EnforcementRow label="Allowed TLS Hostname" value={acTlsHostname} onChange={setAcTlsHostname} />
+            </div>
+          </div>
 
-      {/* Access Token Compliance */}
-      <div>
-        <h3 className="text-sm font-semibold text-orange-600 mb-1">Access Token Compliance (Global)</h3>
-        <div className="border-b border-border mb-4" />
-
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-700 w-40">API Access Token</span>
-          <div>
-            <div className="flex items-center gap-1">
-              <div>
-                <input
-                  type="number"
+          {/* Access Token Compliance */}
+          <div className="border border-border rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-800 mb-4">Access Token Compliance</h4>
+            <div className="flex items-end gap-3">
+              <div className="w-48">
+                <FloatingInput
+                  label="API Access Token Lifetime"
                   value={tokenLifetime}
-                  onChange={(e) => setTokenLifetime(e.target.value)}
-                  className="w-28 px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-400"
+                  onChange={setTokenLifetime}
+                  type="number"
                 />
               </div>
-              <span className="text-sm text-gray-600">Secs.</span>
+              <span className="text-sm text-gray-500 pb-2.5">Seconds</span>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">Max 2,592,000</p>
+            <p className="text-[11px] text-gray-400 mt-2">Maximum allowed: 2,592,000 seconds (30 days)</p>
           </div>
+        </div>
+      </div>
+
+      {/* Right 40% — help */}
+      <div className="w-[40%] px-6 py-6 overflow-y-auto">
+        <div className="border border-border rounded-lg p-5 sticky top-0">
+          <p className="text-xs text-gray-700 leading-relaxed mb-3">
+            <span className="font-semibold text-orange-600">Global Policy Compliance</span> defines organization-wide security standards for Access Policies and Agent Controllers.
+          </p>
+          <p className="text-xs text-gray-700 leading-relaxed mb-3">
+            Each attribute can be set to <span className="font-semibold">Required</span> (must be present), <span className="font-semibold">Recommended</span> (flagged if missing), or <span className="font-semibold">Optional</span> (no enforcement).
+          </p>
+          <p className="text-xs text-gray-700 leading-relaxed">
+            The <span className="font-semibold">Access Token Lifetime</span> sets the maximum validity period for API access tokens issued across the tenant.
+          </p>
         </div>
       </div>
     </div>
@@ -106,39 +107,25 @@ function EnforcementRow({
   label: string
   value: EnforcementLevel
   onChange: (v: EnforcementLevel) => void
-  name?: string
 }) {
   return (
-    <div className="flex items-center">
-      <span className="text-sm font-medium text-gray-700 w-40">{label}</span>
-      <div className="flex items-center gap-5">
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={value === 'required'}
-            onChange={() => onChange('required')}
-            className="w-4 h-4 accent-orange-500 cursor-pointer"
-          />
-          <span className="text-sm text-gray-700">Required</span>
-        </label>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={value === 'recommended'}
-            onChange={() => onChange('recommended')}
-            className="w-4 h-4 accent-orange-500 cursor-pointer"
-          />
-          <span className="text-sm text-gray-700">Recommended</span>
-        </label>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={value === 'optional'}
-            onChange={() => onChange('optional')}
-            className="w-4 h-4 accent-orange-500 cursor-pointer"
-          />
-          <span className="text-sm text-gray-700">Optional</span>
-        </label>
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-sm text-gray-700">{label}</span>
+      <div className="flex items-center rounded-md border border-border overflow-hidden shrink-0">
+        {ENFORCEMENT_LEVELS.map((level) => (
+          <button
+            key={level.value}
+            type="button"
+            onClick={() => onChange(level.value)}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              value === level.value
+                ? 'bg-orange-500 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {level.label}
+          </button>
+        ))}
       </div>
     </div>
   )
