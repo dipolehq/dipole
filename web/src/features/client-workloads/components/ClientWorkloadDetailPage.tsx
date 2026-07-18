@@ -4,7 +4,11 @@ import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingDropdown, FloatingInput } from '@/shared/components/FloatingInput'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
-import { useClientWorkload, useSaveClientWorkload } from '@/features/client-workloads/hooks/useClientWorkloads'
+import { apiErrorMessage } from '@/features/client-workloads/api/clientWorkloadsApi'
+import {
+  useClientWorkload,
+  useSaveClientWorkload,
+} from '@/features/client-workloads/hooks/useClientWorkloads'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
 const DETAIL_SECTIONS = [
@@ -26,6 +30,7 @@ export function ClientWorkloadDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [localValues, setLocalValues] = useState<ClientWorkloadFormValues | null>(null)
   const [localStatus, setLocalStatus] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -55,14 +60,19 @@ export function ClientWorkloadDetailPage() {
   const disabled = !isEditing
   const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      void saveMutation.mutateAsync(currentValues).then(() => {
+      setSaveError(null)
+      try {
+        await saveMutation.mutateAsync({ values: currentValues, isActive: status !== 'inactive' })
         setIsEditing(false)
         setLocalValues(null)
         setLocalStatus(null)
-      })
+      } catch (err) {
+        setSaveError(apiErrorMessage(err, 'Failed to save client workload'))
+      }
     } else {
+      setSaveError(null)
       if (data) setLocalValues({ ...data.values })
       setLocalStatus(data?.metadata.isActive ? 'active' : 'inactive')
       setIsEditing(true)
@@ -71,6 +81,7 @@ export function ClientWorkloadDetailPage() {
 
   function handleCancel() {
     if (isEditing) {
+      setSaveError(null)
       setLocalValues(null)
       setLocalStatus(null)
       setIsEditing(false)
@@ -92,9 +103,10 @@ export function ClientWorkloadDetailPage() {
           <button
             type="button"
             onClick={handleEditToggle}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            disabled={isEditing && saveMutation.isPending}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
-            {isEditing ? 'Save' : 'Edit'}
+            {isEditing ? (saveMutation.isPending ? 'Saving…' : 'Save') : 'Edit'}
           </button>
           <button
             type="button"
@@ -148,6 +160,12 @@ export function ClientWorkloadDetailPage() {
         </div>
       </div>
 
+      {saveError && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {saveError}
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
         {selectedSection === 'details' && (
@@ -180,11 +198,7 @@ export function ClientWorkloadDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput
-                    label="ID"
-                    value={data.metadata.entityId}
-                    disabled
-                  />
+                  <FloatingInput label="ID" value={data.metadata.entityId} disabled />
                   <FloatingInput
                     label="Created At"
                     value={new Date(data.metadata.createdAt).toLocaleString()}
@@ -192,7 +206,11 @@ export function ClientWorkloadDetailPage() {
                   />
                   <FloatingInput
                     label="Last Modified"
-                    value={data.metadata.lastModifiedAt ? new Date(data.metadata.lastModifiedAt).toLocaleString() : '—'}
+                    value={
+                      data.metadata.lastModifiedAt
+                        ? new Date(data.metadata.lastModifiedAt).toLocaleString()
+                        : '—'
+                    }
                     disabled
                   />
                 </div>
@@ -200,13 +218,24 @@ export function ClientWorkloadDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Client Workloads</span> are software applications that access services provided by Server Workloads. Examples include custom applications, daemons, ETL processors, one-off or batch jobs, and deployment scripts. Typically, Client Workloads run in the background and must access services on their own behalf, without user intervention.
+                  <span className="font-semibold text-orange-600">Client Workloads</span> are
+                  software applications that access services provided by Server Workloads. Examples
+                  include custom applications, daemons, ETL processors, one-off or batch jobs, and
+                  deployment scripts. Typically, Client Workloads run in the background and must
+                  access services on their own behalf, without user intervention.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  A <span className="font-semibold">Client Identifier</span> is a bit like the Client Workload's username. Dipole uses it to identify the workload but not to authenticate it. If you deploy your workload in Kubernetes, we recommend using its Kubernetes Pod Name Prefix as its identifier.
+                  A <span className="font-semibold">Client Identifier</span> is a bit like the
+                  Client Workload's username. Dipole uses it to identify the workload but not to
+                  authenticate it. If you deploy your workload in Kubernetes, we recommend using its
+                  Kubernetes Pod Name Prefix as its identifier.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed">
-                  Dipole supports identifying <span className="font-semibold">Client Workloads</span> by using multiple Client Identifiers and typically requires all of the values be matched. Multiple values within a Client Identifier type can be used in an either OR combination, though at least one of the values for each Client Identifier type will be required.
+                  Dipole supports identifying{' '}
+                  <span className="font-semibold">Client Workloads</span> by using multiple Client
+                  Identifiers and typically requires all of the values be matched. Multiple values
+                  within a Client Identifier type can be used in an either OR combination, though at
+                  least one of the values for each Client Identifier type will be required.
                 </p>
               </div>
             </div>

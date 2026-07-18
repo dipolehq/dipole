@@ -5,15 +5,24 @@ import { FloatingDropdown } from '@/shared/components/FloatingInput'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
 import { EMPTY_CLIENT_WORKLOAD } from '@/shared/components/forms/types'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
+import { useCreateClientWorkload } from '@/features/client-workloads/hooks/useClientWorkloads'
+import { apiErrorMessage } from '@/features/client-workloads/api/clientWorkloadsApi'
 
 export function CreateClientWorkloadPage() {
   const navigate = useNavigate()
+  const createMutation = useCreateClientWorkload()
   const [values, setValues] = useState<ClientWorkloadFormValues>({ ...EMPTY_CLIENT_WORKLOAD })
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('active')
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSave() {
-    console.info('[create-client-workload] submitted', values)
-    navigate('/client-workloads')
+  async function handleSave() {
+    setError(null)
+    try {
+      await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
+      navigate('/client-workloads')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create client workload'))
+    }
   }
 
   function handleCancel() {
@@ -29,9 +38,10 @@ export function CreateClientWorkloadPage() {
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            disabled={createMutation.isPending}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
-            Save
+            {createMutation.isPending ? 'Saving…' : 'Save'}
           </button>
           <button
             type="button"
@@ -42,6 +52,12 @@ export function CreateClientWorkloadPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
@@ -71,13 +87,24 @@ export function CreateClientWorkloadPage() {
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Client Workloads</span> are software applications that access services provided by Server Workloads. Examples include custom applications, daemons, ETL processors, one-off or batch jobs, and deployment scripts. Typically, Client Workloads run in the background and must access services on their own behalf, without user intervention.
+                <span className="font-semibold text-orange-600">Client Workloads</span> are software
+                applications that access services provided by Server Workloads. Examples include
+                custom applications, daemons, ETL processors, one-off or batch jobs, and deployment
+                scripts. Typically, Client Workloads run in the background and must access services
+                on their own behalf, without user intervention.
               </p>
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                A <span className="font-semibold">Client Identifier</span> is a bit like the Client Workload's username. Dipole uses it to identify the workload but not to authenticate it. If you deploy your workload in Kubernetes, we recommend using its Kubernetes Pod Name Prefix as its identifier.
+                A <span className="font-semibold">Client Identifier</span> is a bit like the Client
+                Workload's username. Dipole uses it to identify the workload but not to authenticate
+                it. If you deploy your workload in Kubernetes, we recommend using its Kubernetes Pod
+                Name Prefix as its identifier.
               </p>
               <p className="text-xs text-gray-700 leading-relaxed">
-                Dipole supports identifying <span className="font-semibold">Client Workloads</span> by using multiple Client Identifiers and typically requires all of the values be matched. Multiple values within a Client Identifier type can be used in an either OR combination, though at least one of the values for each Client Identifier type will be required.
+                Dipole supports identifying <span className="font-semibold">Client Workloads</span>{' '}
+                by using multiple Client Identifiers and typically requires all of the values be
+                matched. Multiple values within a Client Identifier type can be used in an either OR
+                combination, though at least one of the values for each Client Identifier type will
+                be required.
               </p>
             </div>
           </div>

@@ -17,10 +17,11 @@ export function ClientWorkloadsPage() {
 
   const items = data?.items ?? []
 
-  const filtered = items.filter((w) =>
-    w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    w.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    w.description.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filtered = items.filter(
+    (w) =>
+      w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      w.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      w.description.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -72,7 +73,12 @@ export function ClientWorkloadsPage() {
                     <th
                       key={col.key}
                       className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${ENTITY_TABLE_COL_WIDTHS[col.key] ?? ''} ${
-                        col.key === 'tags' || col.key === 'policies' || col.key === 'status' || col.key === 'number' ? 'text-center' : 'text-left'
+                        col.key === 'tags' ||
+                        col.key === 'policies' ||
+                        col.key === 'status' ||
+                        col.key === 'number'
+                          ? 'text-center'
+                          : 'text-left'
                       }`}
                     >
                       {col.label}
@@ -83,7 +89,10 @@ export function ClientWorkloadsPage() {
               <tbody className="divide-y divide-border bg-white">
                 {paginated.length === 0 && (
                   <tr>
-                    <td colSpan={CLIENT_WORKLOAD_TABLE_COLUMNS.length} className="px-4 py-12 text-center text-gray-400 text-sm">
+                    <td
+                      colSpan={CLIENT_WORKLOAD_TABLE_COLUMNS.length}
+                      className="px-4 py-12 text-center text-gray-400 text-sm"
+                    >
                       No client workloads found.
                     </td>
                   </tr>
@@ -94,7 +103,9 @@ export function ClientWorkloadsPage() {
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/client-workloads/${workload.id}`)}
                   >
-                    <td className="px-3 py-3 text-gray-400 text-center w-10">{(currentPage - 1) * pageSize + idx + 1}</td>
+                    <td className="px-3 py-3 text-gray-400 text-center w-10">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900 truncate max-w-[160px]">
                       <Link
                         to={`/client-workloads/${workload.id}`}
@@ -110,12 +121,8 @@ export function ClientWorkloadsPage() {
                     <td className="px-4 py-3 text-gray-700 truncate max-w-[260px]">
                       {workload.description}
                     </td>
-                    <td className="px-4 py-3 text-gray-700 text-center">
-                      {workload.tags}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 text-center">
-                      {workload.policies}
-                    </td>
+                    <td className="px-4 py-3 text-gray-700 text-center">{workload.tags}</td>
+                    <td className="px-4 py-3 text-gray-700 text-center">{workload.policies}</td>
                     <td className="px-3 py-3 text-xs font-medium text-center">
                       {workload.isActive ? (
                         <span className="text-green-600">Active</span>
@@ -141,11 +148,14 @@ export function ClientWorkloadsPage() {
                 className="border border-border rounded px-2 py-1 text-xs"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>{size}</option>
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
                 ))}
               </select>
               <span>
-                Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} Results
+                Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+                {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} Results
               </span>
             </div>
 

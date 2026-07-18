@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchClientWorkloads, fetchClientWorkload, saveClientWorkload } from '@/features/client-workloads/api/clientWorkloadsApi'
-import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
+import {
+  fetchClientWorkloads,
+  fetchClientWorkload,
+  createClientWorkload,
+  saveClientWorkload,
+} from '@/features/client-workloads/api/clientWorkloadsApi'
+import type { ClientWorkloadInput } from '@/features/client-workloads/api/clientWorkloadsApi'
 
 export function useClientWorkloads() {
   return useQuery({
@@ -20,10 +25,20 @@ export function useClientWorkload(id: string | undefined) {
   })
 }
 
+export function useCreateClientWorkload() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ClientWorkloadInput) => createClientWorkload(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-workloads', 'list'] })
+    },
+  })
+}
+
 export function useSaveClientWorkload(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (values: ClientWorkloadFormValues) => saveClientWorkload(id, values),
+    mutationFn: (input: ClientWorkloadInput) => saveClientWorkload(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client-workloads', 'detail', id] })
       qc.invalidateQueries({ queryKey: ['client-workloads', 'list'] })
