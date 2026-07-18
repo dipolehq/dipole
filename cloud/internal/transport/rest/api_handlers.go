@@ -12,7 +12,6 @@ import (
 )
 
 type APIHandlers struct {
-	serverWorkloads     repository.ServerWorkloadRepository
 	trustProviders      repository.TrustProviderRepository
 	credentialProviders repository.CredentialProviderRepository
 	accessPolicies      repository.AccessPolicyRepository
@@ -22,7 +21,6 @@ type APIHandlers struct {
 }
 
 func NewAPIHandlers(
-	sw repository.ServerWorkloadRepository,
 	tp repository.TrustProviderRepository,
 	cp repository.CredentialProviderRepository,
 	ap repository.AccessPolicyRepository,
@@ -31,7 +29,6 @@ func NewAPIHandlers(
 	u repository.UserRepository,
 ) *APIHandlers {
 	return &APIHandlers{
-		serverWorkloads:     sw,
 		trustProviders:      tp,
 		credentialProviders: cp,
 		accessPolicies:      ap,
@@ -43,12 +40,6 @@ func NewAPIHandlers(
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
-
-	mux.HandleFunc("GET /api/v1/server-workloads", h.ListServerWorkloads)
-	mux.HandleFunc("POST /api/v1/server-workloads", h.CreateServerWorkload)
-	mux.HandleFunc("GET /api/v1/server-workloads/{id}", h.GetServerWorkload)
-	mux.HandleFunc("PUT /api/v1/server-workloads/{id}", h.UpdateServerWorkload)
-	mux.HandleFunc("DELETE /api/v1/server-workloads/{id}", h.DeleteServerWorkload)
 
 	mux.HandleFunc("GET /api/v1/trust-providers", h.ListTrustProviders)
 	mux.HandleFunc("POST /api/v1/trust-providers", h.CreateTrustProvider)
@@ -88,23 +79,6 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Healthy"})
-}
-
-// Server Workloads — same pattern
-func (h *APIHandlers) ListServerWorkloads(w http.ResponseWriter, r *http.Request) {
-	h.listEntity(w, r, h.serverWorkloads)
-}
-func (h *APIHandlers) CreateServerWorkload(w http.ResponseWriter, r *http.Request) {
-	h.createEntity(w, r, h.serverWorkloads)
-}
-func (h *APIHandlers) GetServerWorkload(w http.ResponseWriter, r *http.Request) {
-	h.getEntity(w, r, h.serverWorkloads)
-}
-func (h *APIHandlers) UpdateServerWorkload(w http.ResponseWriter, r *http.Request) {
-	h.updateEntity(w, r, h.serverWorkloads)
-}
-func (h *APIHandlers) DeleteServerWorkload(w http.ResponseWriter, r *http.Request) {
-	h.deleteEntity(w, r, h.serverWorkloads)
 }
 
 // Trust Providers
@@ -207,13 +181,6 @@ func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo an
 	opts := parseListOptions(r)
 
 	switch rep := repo.(type) {
-	case repository.ServerWorkloadRepository:
-		items, total, err := rep.List(r.Context(), tenantID, opts)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
 	case repository.TrustProviderRepository:
 		items, total, err := rep.List(r.Context(), tenantID, opts)
 		if err != nil {

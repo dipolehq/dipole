@@ -137,6 +137,49 @@ func TestEvaluate_ANDLogic_BothMustMatch(t *testing.T) {
 	}
 }
 
+func TestEvaluate_SameType_ORLogic_OneValueMatches(t *testing.T) {
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy: domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{
+			{Type: "k8s_namespace", Value: "production"},
+			{Type: "k8s_namespace", Value: "staging"},
+		}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+	cred := &domain.Credential{Type: "bearer", Value: "key"}
+	svc := newTestService(policies, nil, cred, nil)
+
+	// Same type, OR semantics: matching either value is sufficient.
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "staging"}}
+	result, _ := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if !result.Allowed {
+		t.Error("allowed = false, want true (staging is one of the OR'd namespace values)")
+	}
+}
+
+func TestEvaluate_MixedTypes_ORWithinType_ANDAcrossTypes(t *testing.T) {
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy: domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{
+			{Type: "k8s_namespace", Value: "production"},
+			{Type: "k8s_namespace", Value: "staging"},
+			{Type: "k8s_service_account_name", Value: "payments-sa"},
+		}},
+		ServerWorkload: domain.ServerWorkload{AuthMethod: "http_bearer"},
+	}}
+	svc := newTestService(policies, nil, nil, nil)
+
+	// Namespace OR matches, but the service-account type has no match → deny.
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "staging", ServiceAccountName: "other-sa"}}
+	result, _ := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if result.Allowed {
+		t.Error("allowed = true, want false (service account type group has no matching value)")
+	}
+}
+
 func TestEvaluate_PodNamePrefix_Matches(t *testing.T) {
 	policies := []domain.AccessPolicyWithRelations{{
 		Policy: domain.AccessPolicy{ID: uuid.New(), IsActive: true},

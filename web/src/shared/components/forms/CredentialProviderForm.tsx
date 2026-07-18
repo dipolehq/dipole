@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import {
+  FloatingInput,
+  FloatingTextarea,
+  FloatingDropdown,
+} from '@/shared/components/FloatingInput'
 import { CredentialTypeConfig } from '@/features/policies/components/tabs/credential-provider/CredentialProviderTab'
 import { CREDENTIAL_TYPES } from '@/data/policies/geoData'
 import type { CredentialProviderFormValues } from '@/shared/components/forms/types'
@@ -12,7 +16,12 @@ interface CredentialProviderFormProps {
   statusSlot?: ReactNode
 }
 
-export function CredentialProviderForm({ values, onChange, disabled = false, statusSlot }: CredentialProviderFormProps) {
+export function CredentialProviderForm({
+  values,
+  onChange,
+  disabled = false,
+  statusSlot,
+}: CredentialProviderFormProps) {
   function update(partial: Partial<CredentialProviderFormValues>) {
     onChange({ ...values, ...partial })
   }

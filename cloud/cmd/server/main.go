@@ -79,9 +79,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker)
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
+	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, authenticator)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, authenticator)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -127,12 +128,12 @@ func buildHTTPServer(
 	cfg *config.Config,
 	repos *postgres.Repositories,
 	clientWorkloadSvc *service.ClientWorkloadService,
+	serverWorkloadSvc *service.ServerWorkloadService,
 	authenticator rest.APIAuthenticator,
 ) *http.Server {
 	mux := http.NewServeMux()
 
 	apiHandlers := rest.NewAPIHandlers(
-		repos.ServerWorkloads,
 		repos.TrustProviders,
 		repos.CredentialProviders,
 		repos.AccessPolicies,
@@ -143,6 +144,7 @@ func buildHTTPServer(
 	apiHandlers.RegisterAPIRoutes(mux)
 
 	rest.NewClientWorkloadHandler(clientWorkloadSvc).RegisterRoutes(mux)
+	rest.NewServerWorkloadHandler(serverWorkloadSvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 
 	handler := applyMiddleware(mux, authenticator)

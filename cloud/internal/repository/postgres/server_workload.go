@@ -23,14 +23,16 @@ func (r *ServerWorkloadRepo) Create(ctx context.Context, tenantID uuid.UUID, sw 
 	httpHeaders, _ := json.Marshal(sw.HTTPHeaders)
 	tags, _ := json.Marshal(sw.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO server_workloads (id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		 RETURNING created_at, updated_at`,
 		sw.ID, tenantID, sw.Name, sw.Description, sw.IsActive,
 		sw.Host, sw.Port, sw.AppProtocol, sw.TransportProtocol,
 		sw.TLS, sw.TLSVerification, sw.RequestedPort, sw.RequestedTLS,
 		sw.AuthMethod, sw.AuthScheme, authConfig, httpHeaders,
-		sw.URLPath, tags, sw.ResourceSetID)
+		sw.URLPath, tags, sw.ResourceSetID).
+		Scan(&sw.CreatedAt, &sw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create server workload: %w", err)
 	}
@@ -64,16 +66,22 @@ func (r *ServerWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 
 func (r *ServerWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ServerWorkload, int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM server_workloads WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM server_workloads
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`,
+		tenantID, opts.Search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count server workloads: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id, created_at, updated_at
-		 FROM server_workloads WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id, created_at, updated_at,
+		        (SELECT COUNT(*) FROM access_policies ap WHERE ap.server_workload_id = server_workloads.id) AS policy_count
+		 FROM server_workloads
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, opts.Search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list server workloads: %w", err)
 	}
@@ -87,7 +95,7 @@ func (r *ServerWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts 
 			&sw.Host, &sw.Port, &sw.AppProtocol, &sw.TransportProtocol,
 			&sw.TLS, &sw.TLSVerification, &sw.RequestedPort, &sw.RequestedTLS,
 			&sw.AuthMethod, &sw.AuthScheme, &authConfig, &httpHeaders,
-			&sw.URLPath, &tags, &sw.ResourceSetID, &sw.CreatedAt, &sw.UpdatedAt); err != nil {
+			&sw.URLPath, &tags, &sw.ResourceSetID, &sw.CreatedAt, &sw.UpdatedAt, &sw.PolicyCount); err != nil {
 			return nil, 0, fmt.Errorf("scan server workload: %w", err)
 		}
 		json.Unmarshal(authConfig, &sw.AuthConfig)
@@ -103,14 +111,16 @@ func (r *ServerWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, sw 
 	httpHeaders, _ := json.Marshal(sw.HTTPHeaders)
 	tags, _ := json.Marshal(sw.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`UPDATE server_workloads SET name=$1, description=$2, is_active=$3, host=$4, port=$5, app_protocol=$6, transport_protocol=$7, tls=$8, tls_verification=$9, requested_port=$10, requested_tls=$11, auth_method=$12, auth_scheme=$13, auth_config=$14, http_headers=$15, url_path=$16, tags=$17, resource_set_id=$18, updated_at=NOW()
-		 WHERE tenant_id = $19 AND id = $20`,
+		 WHERE tenant_id = $19 AND id = $20
+		 RETURNING created_at, updated_at`,
 		sw.Name, sw.Description, sw.IsActive,
 		sw.Host, sw.Port, sw.AppProtocol, sw.TransportProtocol,
 		sw.TLS, sw.TLSVerification, sw.RequestedPort, sw.RequestedTLS,
 		sw.AuthMethod, sw.AuthScheme, authConfig, httpHeaders,
-		sw.URLPath, tags, sw.ResourceSetID, tenantID, sw.ID)
+		sw.URLPath, tags, sw.ResourceSetID, tenantID, sw.ID).
+		Scan(&sw.CreatedAt, &sw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update server workload: %w", err)
 	}

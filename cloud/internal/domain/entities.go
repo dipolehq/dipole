@@ -37,6 +37,10 @@ type ClientWorkload struct {
 	ResourceSetID *uuid.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+
+	// PolicyCount is a derived field populated only by list queries; it is the
+	// number of access policies referencing this workload.
+	PolicyCount int
 }
 
 type ServerWorkload struct {
@@ -62,6 +66,10 @@ type ServerWorkload struct {
 	ResourceSetID     *uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+
+	// PolicyCount is a derived field populated only by list queries; it is the
+	// number of access policies referencing this workload.
+	PolicyCount int
 }
 
 type MatchRule struct {

@@ -1,8 +1,18 @@
+export interface FormTag {
+  key: string
+  value: string
+}
+
+export interface FormHeader {
+  name: string
+  value: string
+}
+
 export interface ClientWorkloadFormValues {
   name: string
   description: string
   identifiers: { type: string; values: string[] }[]
-  standaloneCaId: string
+  tags: FormTag[]
 }
 
 export interface ServerWorkloadFormValues {
@@ -18,7 +28,10 @@ export interface ServerWorkloadFormValues {
   forwardTlsVerification: string
   authMethod: string
   authScheme: string
+  headerName: string
   urlPath: string
+  staticHeaders: FormHeader[]
+  tags: FormTag[]
 }
 
 export interface TrustProviderMatchRule {
@@ -87,7 +100,7 @@ export const EMPTY_CLIENT_WORKLOAD: ClientWorkloadFormValues = {
   name: '',
   description: '',
   identifiers: [{ type: '', values: [''] }],
-  standaloneCaId: '',
+  tags: [],
 }
 
 export const EMPTY_SERVER_WORKLOAD: ServerWorkloadFormValues = {
@@ -103,7 +116,10 @@ export const EMPTY_SERVER_WORKLOAD: ServerWorkloadFormValues = {
   forwardTlsVerification: 'full',
   authMethod: '',
   authScheme: '',
+  headerName: '',
   urlPath: '',
+  staticHeaders: [],
+  tags: [],
 }
 
 export const EMPTY_TRUST_PROVIDER: TrustProviderFormValues = {

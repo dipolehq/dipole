@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import {
+  FloatingInput,
+  FloatingTextarea,
+  FloatingDropdown,
+} from '@/shared/components/FloatingInput'
 import { COUNTRIES, SUBDIVISIONS, TIMEZONES, CONDITION_INTEGRATIONS } from '@/data/policies/geoData'
 import type { AccessConditionFormValues } from '@/shared/components/forms/types'
 
@@ -13,7 +17,12 @@ interface AccessConditionFormProps {
   statusSlot?: ReactNode
 }
 
-export function AccessConditionForm({ values, onChange, disabled = false, statusSlot }: AccessConditionFormProps) {
+export function AccessConditionForm({
+  values,
+  onChange,
+  disabled = false,
+  statusSlot,
+}: AccessConditionFormProps) {
   function update(partial: Partial<AccessConditionFormValues>) {
     onChange({ ...values, ...partial })
   }
@@ -93,16 +102,45 @@ function GeoIPConditionForm({
   countries: { country: string; subdivisions: string[] }[]
   onCountriesChange: (c: { country: string; subdivisions: string[] }[]) => void
 }) {
-  function updateCountry(idx: number, country: string) { onCountriesChange(countries.map((c, i) => i === idx ? { country, subdivisions: [''] } : c)) }
-  function updateSubdivision(idx: number, subIdx: number, value: string) { onCountriesChange(countries.map((c, i) => { if (i !== idx) return c; const subs = [...c.subdivisions]; subs[subIdx] = value; return { ...c, subdivisions: subs } })) }
-  function addSubdivision(idx: number) { onCountriesChange(countries.map((c, i) => i === idx ? { ...c, subdivisions: [...c.subdivisions, ''] } : c)) }
-  function removeCountry(idx: number) { if (countries.length > 1) onCountriesChange(countries.filter((_, i) => i !== idx)) }
-  function removeSubdivision(idx: number, subIdx: number) { onCountriesChange(countries.map((c, i) => { if (i !== idx) return c; const subs = c.subdivisions.filter((_, si) => si !== subIdx); return { ...c, subdivisions: subs.length === 0 ? [''] : subs } })) }
-  function addCountry() { onCountriesChange([...countries, { country: '', subdivisions: [''] }]) }
+  function updateCountry(idx: number, country: string) {
+    onCountriesChange(countries.map((c, i) => (i === idx ? { country, subdivisions: [''] } : c)))
+  }
+  function updateSubdivision(idx: number, subIdx: number, value: string) {
+    onCountriesChange(
+      countries.map((c, i) => {
+        if (i !== idx) return c
+        const subs = [...c.subdivisions]
+        subs[subIdx] = value
+        return { ...c, subdivisions: subs }
+      }),
+    )
+  }
+  function addSubdivision(idx: number) {
+    onCountriesChange(
+      countries.map((c, i) => (i === idx ? { ...c, subdivisions: [...c.subdivisions, ''] } : c)),
+    )
+  }
+  function removeCountry(idx: number) {
+    if (countries.length > 1) onCountriesChange(countries.filter((_, i) => i !== idx))
+  }
+  function removeSubdivision(idx: number, subIdx: number) {
+    onCountriesChange(
+      countries.map((c, i) => {
+        if (i !== idx) return c
+        const subs = c.subdivisions.filter((_, si) => si !== subIdx)
+        return { ...c, subdivisions: subs.length === 0 ? [''] : subs }
+      }),
+    )
+  }
+  function addCountry() {
+    onCountriesChange([...countries, { country: '', subdivisions: [''] }])
+  }
 
   return (
     <div>
-      <p className="text-[11px] text-gray-500 mb-4">Add or remove locations that will be allowed by this Access Condition.</p>
+      <p className="text-[11px] text-gray-500 mb-4">
+        Add or remove locations that will be allowed by this Access Condition.
+      </p>
       {countries.map((entry, idx) => (
         <div key={idx} className="mb-4">
           <div className="grid grid-cols-2 gap-3">
@@ -116,7 +154,12 @@ function GeoIPConditionForm({
                     onChange={(v) => updateCountry(idx, v)}
                   />
                 </div>
-                <button onClick={() => removeCountry(idx)} className="text-orange-400 hover:text-red-500 text-sm shrink-0">×</button>
+                <button
+                  onClick={() => removeCountry(idx)}
+                  className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                >
+                  ×
+                </button>
               </div>
             </div>
             <div className="space-y-2">
@@ -130,16 +173,31 @@ function GeoIPConditionForm({
                       onChange={(v) => updateSubdivision(idx, subIdx, v)}
                     />
                   </div>
-                  <button onClick={() => removeSubdivision(idx, subIdx)} className="text-orange-400 hover:text-red-500 text-sm shrink-0">×</button>
+                  <button
+                    onClick={() => removeSubdivision(idx, subIdx)}
+                    className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
-              <button onClick={() => addSubdivision(idx)} className="text-orange-500 hover:text-orange-600 text-lg font-bold">+</button>
+              <button
+                onClick={() => addSubdivision(idx)}
+                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>
       ))}
       <div className="text-center">
-        <button onClick={addCountry} className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Add Country</button>
+        <button
+          onClick={addCountry}
+          className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+        >
+          + Add Country
+        </button>
       </div>
     </div>
   )
@@ -170,13 +228,45 @@ function TimeConditionForm({
             <span className="text-xs text-gray-700 w-24">{day.day}</span>
             {day.enabled ? (
               <div className="flex items-center gap-2 flex-1">
-                <input type="time" value={day.startTime} onChange={(e) => onDaysChange(days.map((d, i) => i === idx ? { ...d, startTime: e.target.value } : d))} className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500" />
+                <input
+                  type="time"
+                  value={day.startTime}
+                  onChange={(e) =>
+                    onDaysChange(
+                      days.map((d, i) => (i === idx ? { ...d, startTime: e.target.value } : d)),
+                    )
+                  }
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
                 <span className="text-xs text-gray-400">to</span>
-                <input type="time" value={day.endTime} onChange={(e) => onDaysChange(days.map((d, i) => i === idx ? { ...d, endTime: e.target.value } : d))} className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500" />
-                <button onClick={() => onDaysChange(days.map((d, i) => i === idx ? { ...d, enabled: false } : d))} className="text-red-400 hover:text-red-500 text-sm">×</button>
+                <input
+                  type="time"
+                  value={day.endTime}
+                  onChange={(e) =>
+                    onDaysChange(
+                      days.map((d, i) => (i === idx ? { ...d, endTime: e.target.value } : d)),
+                    )
+                  }
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+                <button
+                  onClick={() =>
+                    onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: false } : d)))
+                  }
+                  className="text-red-400 hover:text-red-500 text-sm"
+                >
+                  ×
+                </button>
               </div>
             ) : (
-              <button onClick={() => onDaysChange(days.map((d, i) => i === idx ? { ...d, enabled: true } : d))} className="text-orange-500 hover:text-orange-600 text-lg font-bold">+</button>
+              <button
+                onClick={() =>
+                  onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: true } : d)))
+                }
+                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+              >
+                +
+              </button>
             )}
           </div>
         ))}

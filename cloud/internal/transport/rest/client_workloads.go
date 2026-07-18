@@ -65,6 +65,7 @@ type clientWorkloadResponse struct {
 	Identifiers   []identifierDTO `json:"identifiers"`
 	Tags          []tagDTO        `json:"tags"`
 	ResourceSetID *uuid.UUID      `json:"resourceSetId,omitempty"`
+	PolicyCount   int             `json:"policyCount"`
 	CreatedAt     time.Time       `json:"createdAt"`
 	UpdatedAt     time.Time       `json:"updatedAt"`
 }
@@ -114,6 +115,7 @@ func toClientWorkloadResponse(cw *domain.ClientWorkload) clientWorkloadResponse 
 		Identifiers:   identifiers,
 		Tags:          tags,
 		ResourceSetID: cw.ResourceSetID,
+		PolicyCount:   cw.PolicyCount,
 		CreatedAt:     cw.CreatedAt,
 		UpdatedAt:     cw.UpdatedAt,
 	}

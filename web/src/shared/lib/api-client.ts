@@ -60,6 +60,14 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   return response.json() as Promise<T>
 }
 
+export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  if (err instanceof ApiError) {
+    const data = err.data as { error?: { message?: string } } | undefined
+    if (data?.error?.message) return data.error.message
+  }
+  return fallback
+}
+
 export const apiClient = {
   get: <T>(endpoint: string, headers?: Record<string, string>) =>
     request<T>(endpoint, { method: 'GET', headers }),

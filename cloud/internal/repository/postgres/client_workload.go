@@ -56,16 +56,22 @@ func (r *ClientWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 
 func (r *ClientWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ClientWorkload, int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM client_workloads WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM client_workloads
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
+		tenantID, opts.Search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count client workloads: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at
-		 FROM client_workloads WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at,
+		        (SELECT COUNT(*) FROM access_policies ap WHERE ap.client_workload_id = client_workloads.id) AS policy_count
+		 FROM client_workloads
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, opts.Search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list client workloads: %w", err)
 	}
@@ -75,7 +81,7 @@ func (r *ClientWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts 
 	for rows.Next() {
 		var cw domain.ClientWorkload
 		var identifiers, tags []byte
-		if err := rows.Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &cw.IsActive, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt); err != nil {
+		if err := rows.Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &cw.IsActive, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt, &cw.PolicyCount); err != nil {
 			return nil, 0, fmt.Errorf("scan client workload: %w", err)
 		}
 		json.Unmarshal(identifiers, &cw.Identifiers)

@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import {
+  FloatingInput,
+  FloatingTextarea,
+  FloatingDropdown,
+} from '@/shared/components/FloatingInput'
 import { TRUST_PROVIDER_TYPES } from '@/data/policies/config'
 import { TrustProviderConfig } from '@/features/policies/components/tabs/trust-provider/TrustProviderConfig'
 import type { TrustProviderFormValues } from '@/shared/components/forms/types'
@@ -12,7 +16,12 @@ interface TrustProviderFormProps {
   statusSlot?: ReactNode
 }
 
-export function TrustProviderForm({ values, onChange, disabled = false, statusSlot }: TrustProviderFormProps) {
+export function TrustProviderForm({
+  values,
+  onChange,
+  disabled = false,
+  statusSlot,
+}: TrustProviderFormProps) {
   function update(partial: Partial<TrustProviderFormValues>) {
     onChange({ ...values, ...partial })
   }

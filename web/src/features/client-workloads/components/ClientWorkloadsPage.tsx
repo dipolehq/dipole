@@ -9,23 +9,16 @@ import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
 
 export function ClientWorkloadsPage() {
   const navigate = useNavigate()
-  const { data, isLoading } = useClientWorkloads()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
 
+  const { data, isLoading } = useClientWorkloads(currentPage, pageSize, searchQuery)
+
   const items = data?.items ?? []
-
-  const filtered = items.filter(
-    (w) =>
-      w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.description.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="flex flex-col h-full">
@@ -87,7 +80,7 @@ export function ClientWorkloadsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-white">
-                {paginated.length === 0 && (
+                {items.length === 0 && (
                   <tr>
                     <td
                       colSpan={CLIENT_WORKLOAD_TABLE_COLUMNS.length}
@@ -97,7 +90,7 @@ export function ClientWorkloadsPage() {
                     </td>
                   </tr>
                 )}
-                {paginated.map((workload, idx) => (
+                {items.map((workload, idx) => (
                   <tr
                     key={workload.id}
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
@@ -154,8 +147,8 @@ export function ClientWorkloadsPage() {
                 ))}
               </select>
               <span>
-                Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
-                {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} Results
+                Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+                {Math.min(currentPage * pageSize, total)} of {total} Results
               </span>
             </div>
 

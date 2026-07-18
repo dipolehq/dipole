@@ -1,7 +1,7 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
 import { CLIENT_IDENTIFIER_TYPES } from '@/data/policies/config'
 import type { ClientWorkloadListItem } from '@/data/client-workloads'
-import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
+import type { ClientWorkloadFormValues, FormTag } from '@/shared/components/forms/types'
 
 const BASE = '/client-workloads'
 
@@ -22,6 +22,7 @@ interface ClientWorkloadDTO {
   isActive: boolean
   identifiers: IdentifierDTO[]
   tags: TagDTO[]
+  policyCount: number
   resourceSetId?: string
   createdAt: string
   updatedAt: string
@@ -70,6 +71,14 @@ function flattenIdentifiers(groups: { type: string; values: string[] }[]): Ident
   return flat
 }
 
+function toTagDTOs(tags: FormTag[]): TagDTO[] {
+  return tags.filter((t) => t.key.trim()).map((t) => ({ key: t.key.trim(), value: t.value }))
+}
+
+function fromTagDTOs(tags: TagDTO[] | undefined): FormTag[] {
+  return (tags ?? []).map((t) => ({ key: t.key, value: t.value }))
+}
+
 function toListItem(dto: ClientWorkloadDTO): ClientWorkloadListItem {
   const firstIdentifier = dto.identifiers?.[0]
   return {
@@ -78,7 +87,7 @@ function toListItem(dto: ClientWorkloadDTO): ClientWorkloadListItem {
     type: firstIdentifier ? labelForType(firstIdentifier.type) : '—',
     description: dto.description,
     tags: dto.tags?.length ?? 0,
-    policies: 0,
+    policies: dto.policyCount ?? 0,
     isActive: dto.isActive,
   }
 }
@@ -88,7 +97,7 @@ function toFormValues(dto: ClientWorkloadDTO): ClientWorkloadFormValues {
     name: dto.name,
     description: dto.description,
     identifiers: groupIdentifiers(dto.identifiers ?? []),
-    standaloneCaId: '',
+    tags: fromTagDTOs(dto.tags),
   }
 }
 
@@ -109,7 +118,7 @@ function toRequestBody(input: ClientWorkloadInput) {
     description: input.values.description,
     isActive: input.isActive,
     identifiers: flattenIdentifiers(input.values.identifiers),
-    tags: [] as TagDTO[],
+    tags: toTagDTOs(input.values.tags),
   }
 }
 
@@ -137,8 +146,14 @@ export interface FetchClientWorkloadDetailResult {
   metadata: ClientWorkloadMetadata
 }
 
-export async function fetchClientWorkloads(): Promise<FetchClientWorkloadsResult> {
-  const res = await apiClient.get<ListResponseDTO>(`${BASE}?perPage=100`)
+export async function fetchClientWorkloads(
+  page = 1,
+  perPage = 20,
+  search = '',
+): Promise<FetchClientWorkloadsResult> {
+  const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
+  if (search) params.set('search', search)
+  const res = await apiClient.get<ListResponseDTO>(`${BASE}?${params}`)
   return { items: res.items.map(toListItem), total: res.total }
 }
 
@@ -162,10 +177,4 @@ export async function saveClientWorkload(id: string, input: ClientWorkloadInput)
   await apiClient.put<ClientWorkloadDTO>(`${BASE}/${id}`, toRequestBody(input))
 }
 
-export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
-  if (err instanceof ApiError) {
-    const data = err.data as { error?: { message?: string } } | undefined
-    if (data?.error?.message) return data.error.message
-  }
-  return fallback
-}
+export { apiErrorMessage } from '@/shared/lib/api-client'

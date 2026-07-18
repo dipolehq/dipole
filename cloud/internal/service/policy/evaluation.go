@@ -122,13 +122,32 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 	return &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}, nil
 }
 
+// matchAllIdentifiers implements Aembit's identifier semantics: values of the
+// same type are OR'd together, and distinct types are AND'd. A workload
+// matches only if every type group has at least one matching value.
 func matchAllIdentifiers(identifiers []domain.Identifier, evidence *domain.ClientEvidence) bool {
 	if len(identifiers) == 0 {
 		return true
 	}
 
+	byType := make(map[string][]domain.Identifier)
+	order := make([]string, 0)
 	for _, id := range identifiers {
-		if !matchIdentifier(id, evidence) {
+		if _, seen := byType[id.Type]; !seen {
+			order = append(order, id.Type)
+		}
+		byType[id.Type] = append(byType[id.Type], id)
+	}
+
+	for _, t := range order {
+		matched := false
+		for _, id := range byType[t] {
+			if matchIdentifier(id, evidence) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return false
 		}
 	}

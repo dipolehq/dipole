@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react'
 import { TagsField } from '@/shared/components/TagsField'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import {
+  FloatingInput,
+  FloatingTextarea,
+  FloatingDropdown,
+} from '@/shared/components/FloatingInput'
 import { CLIENT_IDENTIFIER_TYPES } from '@/data/policies/config'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
@@ -11,13 +15,20 @@ interface ClientWorkloadFormProps {
   statusSlot?: ReactNode
 }
 
-export function ClientWorkloadForm({ values, onChange, disabled = false, statusSlot }: ClientWorkloadFormProps) {
+export function ClientWorkloadForm({
+  values,
+  onChange,
+  disabled = false,
+  statusSlot,
+}: ClientWorkloadFormProps) {
   function update(partial: Partial<ClientWorkloadFormValues>) {
     onChange({ ...values, ...partial })
   }
 
   function updateIdentifierType(idx: number, type: string) {
-    const identifiers = values.identifiers.map((ident, i) => i === idx ? { ...ident, type } : ident)
+    const identifiers = values.identifiers.map((ident, i) =>
+      i === idx ? { ...ident, type } : ident,
+    )
     update({ identifiers })
   }
 
@@ -90,7 +101,9 @@ export function ClientWorkloadForm({ values, onChange, disabled = false, statusS
             {values.identifiers.map((ident, idx) => (
               <div key={idx}>
                 {idx > 0 && (
-                  <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-semibold rounded mb-2">AND</span>
+                  <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-semibold rounded mb-2">
+                    AND
+                  </span>
                 )}
                 <div className="space-y-2">
                   {ident.values.map((val, valIdx) => (
@@ -98,14 +111,19 @@ export function ClientWorkloadForm({ values, onChange, disabled = false, statusS
                       {valIdx === 0 ? (
                         <FloatingDropdown
                           label="Identifier Type"
-                          options={CLIENT_IDENTIFIER_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                          options={CLIENT_IDENTIFIER_TYPES.map((t) => ({
+                            value: t.value,
+                            label: t.label,
+                          }))}
                           value={ident.type}
                           onChange={(v) => updateIdentifierType(idx, v)}
                           className="w-48"
                         />
                       ) : (
                         <span className="w-48 flex items-center justify-center">
-                          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-semibold rounded">OR</span>
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-semibold rounded">
+                            OR
+                          </span>
                         </span>
                       )}
                       <div className="flex-1">
@@ -116,9 +134,24 @@ export function ClientWorkloadForm({ values, onChange, disabled = false, statusS
                           disabled={disabled}
                         />
                       </div>
-                      <button onClick={() => addOrValue(idx)} className="text-orange-500 hover:text-orange-600 text-sm font-bold" title="Add OR value">+</button>
+                      <button
+                        onClick={() => addOrValue(idx)}
+                        className="text-orange-500 hover:text-orange-600 text-sm font-bold"
+                        title="Add OR value"
+                      >
+                        +
+                      </button>
                       {(values.identifiers.length > 1 || ident.values.length > 1) && (
-                        <button onClick={() => ident.values.length > 1 ? removeOrValue(idx, valIdx) : removeIdentifier(idx)} className="text-orange-400 hover:text-red-500 text-sm">×</button>
+                        <button
+                          onClick={() =>
+                            ident.values.length > 1
+                              ? removeOrValue(idx, valIdx)
+                              : removeIdentifier(idx)
+                          }
+                          className="text-orange-400 hover:text-red-500 text-sm"
+                        >
+                          ×
+                        </button>
                       )}
                     </div>
                   ))}
@@ -126,14 +159,21 @@ export function ClientWorkloadForm({ values, onChange, disabled = false, statusS
               </div>
             ))}
           </div>
-          <button onClick={addIdentifier} className="mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium">
+          <button
+            onClick={addIdentifier}
+            className="mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium"
+          >
             + Additional Client Identifier
           </button>
         </div>
 
         <div className="border border-border rounded-lg p-5">
           <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
-          <TagsField />
+          <TagsField
+            value={values.tags}
+            onChange={(tags) => update({ tags })}
+            disabled={disabled}
+          />
         </div>
       </div>
     </fieldset>

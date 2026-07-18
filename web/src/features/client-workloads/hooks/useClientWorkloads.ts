@@ -7,10 +7,10 @@ import {
 } from '@/features/client-workloads/api/clientWorkloadsApi'
 import type { ClientWorkloadInput } from '@/features/client-workloads/api/clientWorkloadsApi'
 
-export function useClientWorkloads() {
+export function useClientWorkloads(page = 1, perPage = 20, search = '') {
   return useQuery({
-    queryKey: ['client-workloads', 'list'],
-    queryFn: fetchClientWorkloads,
+    queryKey: ['client-workloads', 'list', page, perPage, search],
+    queryFn: () => fetchClientWorkloads(page, perPage, search),
   })
 }
 
