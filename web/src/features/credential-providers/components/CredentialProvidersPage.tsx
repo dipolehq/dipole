@@ -9,22 +9,16 @@ import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
 
 export function CredentialProvidersPage() {
   const navigate = useNavigate()
-  const { data, isLoading } = useCredentialProviders()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
 
+  const { data, isLoading } = useCredentialProviders(currentPage, pageSize, searchQuery)
+
   const items = data?.items ?? []
-
-  const filtered = items.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.description.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="flex flex-col h-full">
@@ -38,7 +32,10 @@ export function CredentialProvidersPage() {
               type="text"
               placeholder="Search"
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setCurrentPage(1)
+              }}
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
@@ -69,7 +66,12 @@ export function CredentialProvidersPage() {
                     <th
                       key={col.key}
                       className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${ENTITY_TABLE_COL_WIDTHS[col.key] ?? ''} ${
-                        col.key === 'tags' || col.key === 'policies' || col.key === 'status' || col.key === 'number' ? 'text-center' : 'text-left'
+                        col.key === 'tags' ||
+                        col.key === 'policies' ||
+                        col.key === 'status' ||
+                        col.key === 'number'
+                          ? 'text-center'
+                          : 'text-left'
                       }`}
                     >
                       {col.label}
@@ -78,20 +80,25 @@ export function CredentialProvidersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-white">
-                {paginated.length === 0 && (
+                {items.length === 0 && (
                   <tr>
-                    <td colSpan={CREDENTIAL_PROVIDER_TABLE_COLUMNS.length} className="px-4 py-12 text-center text-gray-400 text-sm">
+                    <td
+                      colSpan={CREDENTIAL_PROVIDER_TABLE_COLUMNS.length}
+                      className="px-4 py-12 text-center text-gray-400 text-sm"
+                    >
                       No credential providers found.
                     </td>
                   </tr>
                 )}
-                {paginated.map((provider, idx) => (
+                {items.map((provider, idx) => (
                   <tr
                     key={provider.id}
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/credential-providers/${provider.id}`)}
                   >
-                    <td className="px-3 py-3 text-gray-400 text-center w-10">{(currentPage - 1) * pageSize + idx + 1}</td>
+                    <td className="px-3 py-3 text-gray-400 text-center w-10">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900 truncate max-w-[160px]">
                       <Link
                         to={`/credential-providers/${provider.id}`}
@@ -101,12 +108,20 @@ export function CredentialProvidersPage() {
                         {provider.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">{provider.type}</td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[260px]">{provider.description}</td>
+                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
+                      {provider.type}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700 truncate max-w-[260px]">
+                      {provider.description}
+                    </td>
                     <td className="px-4 py-3 text-gray-700 text-center">{provider.tags}</td>
                     <td className="px-4 py-3 text-gray-700 text-center">{provider.policies}</td>
                     <td className="px-3 py-3 text-xs font-medium text-center">
-                      {provider.isActive ? <span className="text-green-600">Active</span> : <span className="text-red-500">Inactive</span>}
+                      {provider.isActive ? (
+                        <span className="text-green-600">Active</span>
+                      ) : (
+                        <span className="text-red-500">Inactive</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -117,17 +132,49 @@ export function CredentialProvidersPage() {
           {/* Pagination footer */}
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }} className="border border-border rounded px-2 py-1 text-xs">
-                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setCurrentPage(1)
+                }}
+                className="border border-border rounded px-2 py-1 text-xs"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
               </select>
-              <span>Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} Results</span>
+              <span>
+                Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+                {Math.min(currentPage * pageSize, total)} of {total} Results
+              </span>
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">←</button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+              >
+                ←
+              </button>
               {Array.from({ length: totalPages }, (_, i) => (
-                <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium transition-colors ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
+                <button
+                  key={i + 1}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-7 h-7 rounded text-xs font-medium transition-colors ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {i + 1}
+                </button>
               ))}
-              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">→</button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+              >
+                →
+              </button>
             </div>
           </div>
         </>

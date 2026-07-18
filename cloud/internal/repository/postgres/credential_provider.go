@@ -20,10 +20,12 @@ func (r *CredentialProviderRepo) Create(ctx context.Context, tenantID uuid.UUID,
 	cp.TenantID = tenantID
 	tags, _ := json.Marshal(cp.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO credential_providers (id, tenant_id, name, description, is_active, type, config_encrypted, tags, integration_id, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		cp.ID, tenantID, cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 RETURNING created_at, updated_at`,
+		cp.ID, tenantID, cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID).
+		Scan(&cp.CreatedAt, &cp.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create credential provider: %w", err)
 	}
@@ -51,16 +53,22 @@ func (r *CredentialProviderRepo) GetByID(ctx context.Context, tenantID uuid.UUID
 
 func (r *CredentialProviderRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.CredentialProvider, int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM credential_providers WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM credential_providers
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
+		tenantID, opts.Search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count credential providers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, is_active, type, config_encrypted, tags, integration_id, resource_set_id, created_at, updated_at
-		 FROM credential_providers WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, is_active, type, config_encrypted, tags, integration_id, resource_set_id, created_at, updated_at,
+		        (SELECT COUNT(*) FROM policy_credential_providers pcp WHERE pcp.credential_provider_id = credential_providers.id) AS policy_count
+		 FROM credential_providers
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, opts.Search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list credential providers: %w", err)
 	}
@@ -70,7 +78,7 @@ func (r *CredentialProviderRepo) List(ctx context.Context, tenantID uuid.UUID, o
 	for rows.Next() {
 		var cp domain.CredentialProvider
 		var tags []byte
-		if err := rows.Scan(&cp.ID, &cp.TenantID, &cp.Name, &cp.Description, &cp.IsActive, &cp.Type, &cp.ConfigEncrypted, &tags, &cp.IntegrationID, &cp.ResourceSetID, &cp.CreatedAt, &cp.UpdatedAt); err != nil {
+		if err := rows.Scan(&cp.ID, &cp.TenantID, &cp.Name, &cp.Description, &cp.IsActive, &cp.Type, &cp.ConfigEncrypted, &tags, &cp.IntegrationID, &cp.ResourceSetID, &cp.CreatedAt, &cp.UpdatedAt, &cp.PolicyCount); err != nil {
 			return nil, 0, fmt.Errorf("scan credential provider: %w", err)
 		}
 		json.Unmarshal(tags, &cp.Tags)
@@ -82,10 +90,12 @@ func (r *CredentialProviderRepo) List(ctx context.Context, tenantID uuid.UUID, o
 func (r *CredentialProviderRepo) Update(ctx context.Context, tenantID uuid.UUID, cp *domain.CredentialProvider) error {
 	tags, _ := json.Marshal(cp.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`UPDATE credential_providers SET name=$1, description=$2, is_active=$3, type=$4, config_encrypted=$5, tags=$6, integration_id=$7, resource_set_id=$8, updated_at=NOW()
-		 WHERE tenant_id = $9 AND id = $10`,
-		cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID, tenantID, cp.ID)
+		 WHERE tenant_id = $9 AND id = $10
+		 RETURNING created_at, updated_at`,
+		cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID, tenantID, cp.ID).
+		Scan(&cp.CreatedAt, &cp.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update credential provider: %w", err)
 	}
