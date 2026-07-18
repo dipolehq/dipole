@@ -4,7 +4,11 @@ import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingDropdown, FloatingInput } from '@/shared/components/FloatingInput'
 import { TrustProviderForm } from '@/shared/components/forms/TrustProviderForm'
-import { useTrustProvider, useSaveTrustProvider } from '@/features/trust-providers/hooks/useTrustProviders'
+import {
+  useTrustProvider,
+  useSaveTrustProvider,
+} from '@/features/trust-providers/hooks/useTrustProviders'
+import { apiErrorMessage } from '@/features/trust-providers/api/trustProvidersApi'
 import type { TrustProviderFormValues } from '@/shared/components/forms/types'
 
 const DETAIL_SECTIONS = [
@@ -26,6 +30,7 @@ export function TrustProviderDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [localValues, setLocalValues] = useState<TrustProviderFormValues | null>(null)
   const [localStatus, setLocalStatus] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -55,14 +60,19 @@ export function TrustProviderDetailPage() {
   const disabled = !isEditing
   const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      void saveMutation.mutateAsync(currentValues).then(() => {
+      setSaveError(null)
+      try {
+        await saveMutation.mutateAsync({ values: currentValues, isActive: status !== 'inactive' })
         setIsEditing(false)
         setLocalValues(null)
         setLocalStatus(null)
-      })
+      } catch (err) {
+        setSaveError(apiErrorMessage(err, 'Failed to save trust provider'))
+      }
     } else {
+      setSaveError(null)
       if (data) setLocalValues({ ...data.values })
       setLocalStatus(data?.metadata.isActive ? 'active' : 'inactive')
       setIsEditing(true)
@@ -71,6 +81,7 @@ export function TrustProviderDetailPage() {
 
   function handleCancel() {
     if (isEditing) {
+      setSaveError(null)
       setLocalValues(null)
       setLocalStatus(null)
       setIsEditing(false)
@@ -92,9 +103,10 @@ export function TrustProviderDetailPage() {
           <button
             type="button"
             onClick={handleEditToggle}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            disabled={isEditing && saveMutation.isPending}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
-            {isEditing ? 'Save' : 'Edit'}
+            {isEditing ? (saveMutation.isPending ? 'Saving…' : 'Save') : 'Edit'}
           </button>
           <button
             type="button"
@@ -148,6 +160,12 @@ export function TrustProviderDetailPage() {
         </div>
       </div>
 
+      {saveError && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {saveError}
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
         {selectedSection === 'details' && (
@@ -180,11 +198,7 @@ export function TrustProviderDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput
-                    label="ID"
-                    value={data.metadata.entityId}
-                    disabled
-                  />
+                  <FloatingInput label="ID" value={data.metadata.entityId} disabled />
                   <FloatingInput
                     label="Created At"
                     value={new Date(data.metadata.createdAt).toLocaleString()}
@@ -192,7 +206,11 @@ export function TrustProviderDetailPage() {
                   />
                   <FloatingInput
                     label="Last Modified"
-                    value={data.metadata.lastModifiedAt ? new Date(data.metadata.lastModifiedAt).toLocaleString() : '—'}
+                    value={
+                      data.metadata.lastModifiedAt
+                        ? new Date(data.metadata.lastModifiedAt).toLocaleString()
+                        : '—'
+                    }
                     disabled
                   />
                 </div>
@@ -200,13 +218,19 @@ export function TrustProviderDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Trust Providers</span> verify workload identity using cryptographic attestation from the runtime environment. They answer: "Can the environment VOUCH for this workload's identity?"
+                  <span className="font-semibold text-orange-600">Trust Providers</span> verify
+                  workload identity using cryptographic attestation from the runtime environment.
+                  They answer: "Can the environment VOUCH for this workload's identity?"
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  Instead of a shared secret, the workload's environment provides cryptographic proof. Supported types include Kubernetes Service Account tokens, AWS Metadata/Role, GitHub/GitLab OIDC tokens, and generic OIDC providers.
+                  Instead of a shared secret, the workload's environment provides cryptographic
+                  proof. Supported types include Kubernetes Service Account tokens, AWS
+                  Metadata/Role, GitHub/GitLab OIDC tokens, and generic OIDC providers.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed">
-                  <span className="font-semibold">Match Rules</span> define which claims or attributes must match for attestation to succeed. All rules use AND logic — every configured rule must pass.
+                  <span className="font-semibold">Match Rules</span> define which claims or
+                  attributes must match for attestation to succeed. All rules use AND logic — every
+                  configured rule must pass.
                 </p>
               </div>
             </div>

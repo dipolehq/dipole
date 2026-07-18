@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTrustProviders, fetchTrustProvider, saveTrustProvider } from '@/features/trust-providers/api/trustProvidersApi'
-import type { TrustProviderFormValues } from '@/shared/components/forms/types'
+import {
+  fetchTrustProviders,
+  fetchTrustProvider,
+  createTrustProvider,
+  saveTrustProvider,
+} from '@/features/trust-providers/api/trustProvidersApi'
+import type { TrustProviderInput } from '@/features/trust-providers/api/trustProvidersApi'
 
-export function useTrustProviders() {
+export function useTrustProviders(page = 1, perPage = 20, search = '') {
   return useQuery({
-    queryKey: ['trust-providers', 'list'],
-    queryFn: fetchTrustProviders,
+    queryKey: ['trust-providers', 'list', page, perPage, search],
+    queryFn: () => fetchTrustProviders(page, perPage, search),
   })
 }
 
@@ -20,10 +25,20 @@ export function useTrustProvider(id: string | undefined) {
   })
 }
 
+export function useCreateTrustProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: TrustProviderInput) => createTrustProvider(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['trust-providers', 'list'] })
+    },
+  })
+}
+
 export function useSaveTrustProvider(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (values: TrustProviderFormValues) => saveTrustProvider(id, values),
+    mutationFn: (input: TrustProviderInput) => saveTrustProvider(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trust-providers', 'detail', id] })
       qc.invalidateQueries({ queryKey: ['trust-providers', 'list'] })

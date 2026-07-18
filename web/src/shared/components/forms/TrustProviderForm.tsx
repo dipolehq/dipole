@@ -80,6 +80,16 @@ export function TrustProviderForm({
                 onOidcEndpointChange={(v) => update({ oidcEndpoint: v })}
                 attestationMethod={values.attestationMethod}
                 onAttestationMethodChange={(v) => update({ attestationMethod: v })}
+                samlMetadataUrl={values.samlMetadataUrl}
+                onSamlMetadataUrlChange={(v) => update({ samlMetadataUrl: v })}
+                samlMetadataXml={values.samlMetadataXml}
+                onSamlMetadataXmlChange={(v) => update({ samlMetadataXml: v })}
+                symmetricKey={values.symmetricKey}
+                onSymmetricKeyChange={(v) => update({ symmetricKey: v })}
+                jwks={values.jwks}
+                onJwksChange={(v) => update({ jwks: v })}
+                publicKey={values.publicKey}
+                onPublicKeyChange={(v) => update({ publicKey: v })}
               />
             )}
           </div>
@@ -87,7 +97,11 @@ export function TrustProviderForm({
 
         <div className="border border-border rounded-lg p-5">
           <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
-          <TagsField />
+          <TagsField
+            value={values.tags}
+            onChange={(tags) => update({ tags })}
+            disabled={disabled}
+          />
         </div>
       </div>
     </fieldset>

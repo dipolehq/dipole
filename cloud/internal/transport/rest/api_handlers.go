@@ -12,7 +12,6 @@ import (
 )
 
 type APIHandlers struct {
-	trustProviders      repository.TrustProviderRepository
 	credentialProviders repository.CredentialProviderRepository
 	accessPolicies      repository.AccessPolicyRepository
 	accessConditions    repository.AccessConditionRepository
@@ -21,7 +20,6 @@ type APIHandlers struct {
 }
 
 func NewAPIHandlers(
-	tp repository.TrustProviderRepository,
 	cp repository.CredentialProviderRepository,
 	ap repository.AccessPolicyRepository,
 	ac repository.AccessConditionRepository,
@@ -29,7 +27,6 @@ func NewAPIHandlers(
 	u repository.UserRepository,
 ) *APIHandlers {
 	return &APIHandlers{
-		trustProviders:      tp,
 		credentialProviders: cp,
 		accessPolicies:      ap,
 		accessConditions:    ac,
@@ -40,12 +37,6 @@ func NewAPIHandlers(
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
-
-	mux.HandleFunc("GET /api/v1/trust-providers", h.ListTrustProviders)
-	mux.HandleFunc("POST /api/v1/trust-providers", h.CreateTrustProvider)
-	mux.HandleFunc("GET /api/v1/trust-providers/{id}", h.GetTrustProvider)
-	mux.HandleFunc("PUT /api/v1/trust-providers/{id}", h.UpdateTrustProvider)
-	mux.HandleFunc("DELETE /api/v1/trust-providers/{id}", h.DeleteTrustProvider)
 
 	mux.HandleFunc("GET /api/v1/credential-providers", h.ListCredentialProviders)
 	mux.HandleFunc("POST /api/v1/credential-providers", h.CreateCredentialProvider)
@@ -79,23 +70,6 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Healthy"})
-}
-
-// Trust Providers
-func (h *APIHandlers) ListTrustProviders(w http.ResponseWriter, r *http.Request) {
-	h.listEntity(w, r, h.trustProviders)
-}
-func (h *APIHandlers) CreateTrustProvider(w http.ResponseWriter, r *http.Request) {
-	h.createEntity(w, r, h.trustProviders)
-}
-func (h *APIHandlers) GetTrustProvider(w http.ResponseWriter, r *http.Request) {
-	h.getEntity(w, r, h.trustProviders)
-}
-func (h *APIHandlers) UpdateTrustProvider(w http.ResponseWriter, r *http.Request) {
-	h.updateEntity(w, r, h.trustProviders)
-}
-func (h *APIHandlers) DeleteTrustProvider(w http.ResponseWriter, r *http.Request) {
-	h.deleteEntity(w, r, h.trustProviders)
 }
 
 // Credential Providers (GET redacts config)
@@ -181,13 +155,6 @@ func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo an
 	opts := parseListOptions(r)
 
 	switch rep := repo.(type) {
-	case repository.TrustProviderRepository:
-		items, total, err := rep.List(r.Context(), tenantID, opts)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
 	case repository.CredentialProviderRepository:
 		items, total, err := rep.List(r.Context(), tenantID, opts)
 		if err != nil {

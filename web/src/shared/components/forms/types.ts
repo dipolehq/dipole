@@ -50,6 +50,12 @@ export interface TrustProviderFormValues {
   expiresAt: string
   oidcEndpoint: string
   attestationMethod: string
+  samlMetadataUrl: string
+  samlMetadataXml: string
+  symmetricKey: string
+  jwks: string
+  publicKey: string
+  tags: FormTag[]
 }
 
 export interface GeoIpCountryEntry {
@@ -133,6 +139,12 @@ export const EMPTY_TRUST_PROVIDER: TrustProviderFormValues = {
   expiresAt: '',
   oidcEndpoint: '',
   attestationMethod: 'oidc_discovery',
+  samlMetadataUrl: '',
+  samlMetadataXml: '',
+  symmetricKey: '',
+  jwks: '',
+  publicKey: '',
+  tags: [],
 }
 
 export const EMPTY_ACCESS_CONDITION: AccessConditionFormValues = {

@@ -16,16 +16,20 @@ type TrustProviderRepo struct {
 }
 
 func (r *TrustProviderRepo) Create(ctx context.Context, tenantID uuid.UUID, tp *domain.TrustProvider) error {
-	tp.ID = uuid.New()
+	if tp.ID == uuid.Nil {
+		tp.ID = uuid.New()
+	}
 	tp.TenantID = tenantID
 
 	matchRules, _ := json.Marshal(tp.MatchRules)
 	tags, _ := json.Marshal(tp.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO trust_providers (id, tenant_id, name, description, is_active, type, config, match_rules, edge_sdk_client_id, edge_sdk_audience, tags, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		tp.ID, tenantID, tp.Name, tp.Description, tp.IsActive, tp.Type, tp.Config, matchRules, tp.EdgeSDKClientID, tp.EdgeSDKAudience, tags, tp.ResourceSetID)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		 RETURNING created_at, updated_at`,
+		tp.ID, tenantID, tp.Name, tp.Description, tp.IsActive, tp.Type, tp.Config, matchRules, tp.EdgeSDKClientID, tp.EdgeSDKAudience, tags, tp.ResourceSetID).
+		Scan(&tp.CreatedAt, &tp.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create trust provider: %w", err)
 	}
@@ -54,16 +58,22 @@ func (r *TrustProviderRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 
 func (r *TrustProviderRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM trust_providers WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM trust_providers
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
+		tenantID, opts.Search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count trust providers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, is_active, type, config, match_rules, edge_sdk_client_id, edge_sdk_audience, tags, resource_set_id, created_at, updated_at
-		 FROM trust_providers WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, is_active, type, config, match_rules, edge_sdk_client_id, edge_sdk_audience, tags, resource_set_id, created_at, updated_at,
+		        (SELECT COUNT(*) FROM policy_trust_providers ptp WHERE ptp.trust_provider_id = trust_providers.id) AS policy_count
+		 FROM trust_providers
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, opts.Search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list trust providers: %w", err)
 	}
@@ -73,7 +83,7 @@ func (r *TrustProviderRepo) List(ctx context.Context, tenantID uuid.UUID, opts d
 	for rows.Next() {
 		var tp domain.TrustProvider
 		var matchRules, tags []byte
-		if err := rows.Scan(&tp.ID, &tp.TenantID, &tp.Name, &tp.Description, &tp.IsActive, &tp.Type, &tp.Config, &matchRules, &tp.EdgeSDKClientID, &tp.EdgeSDKAudience, &tags, &tp.ResourceSetID, &tp.CreatedAt, &tp.UpdatedAt); err != nil {
+		if err := rows.Scan(&tp.ID, &tp.TenantID, &tp.Name, &tp.Description, &tp.IsActive, &tp.Type, &tp.Config, &matchRules, &tp.EdgeSDKClientID, &tp.EdgeSDKAudience, &tags, &tp.ResourceSetID, &tp.CreatedAt, &tp.UpdatedAt, &tp.PolicyCount); err != nil {
 			return nil, 0, fmt.Errorf("scan trust provider: %w", err)
 		}
 		json.Unmarshal(matchRules, &tp.MatchRules)
@@ -87,10 +97,12 @@ func (r *TrustProviderRepo) Update(ctx context.Context, tenantID uuid.UUID, tp *
 	matchRules, _ := json.Marshal(tp.MatchRules)
 	tags, _ := json.Marshal(tp.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`UPDATE trust_providers SET name=$1, description=$2, is_active=$3, type=$4, config=$5, match_rules=$6, edge_sdk_client_id=$7, edge_sdk_audience=$8, tags=$9, resource_set_id=$10, updated_at=NOW()
-		 WHERE tenant_id = $11 AND id = $12`,
-		tp.Name, tp.Description, tp.IsActive, tp.Type, tp.Config, matchRules, tp.EdgeSDKClientID, tp.EdgeSDKAudience, tags, tp.ResourceSetID, tenantID, tp.ID)
+		 WHERE tenant_id = $11 AND id = $12
+		 RETURNING created_at, updated_at`,
+		tp.Name, tp.Description, tp.IsActive, tp.Type, tp.Config, matchRules, tp.EdgeSDKClientID, tp.EdgeSDKAudience, tags, tp.ResourceSetID, tenantID, tp.ID).
+		Scan(&tp.CreatedAt, &tp.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update trust provider: %w", err)
 	}
