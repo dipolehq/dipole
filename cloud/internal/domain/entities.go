@@ -122,6 +122,7 @@ type AccessCondition struct {
 	ResourceSetID *uuid.UUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	PolicyCount   int
 }
 
 type PolicyCredentialProvider struct {

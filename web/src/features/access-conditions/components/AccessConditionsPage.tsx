@@ -9,22 +9,16 @@ import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
 
 export function AccessConditionsPage() {
   const navigate = useNavigate()
-  const { data, isLoading } = useAccessConditions()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
 
+  const { data, isLoading } = useAccessConditions(currentPage, pageSize, searchQuery)
+
   const items = data?.items ?? []
-
-  const filtered = items.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.description.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <div className="flex flex-col h-full">
@@ -72,7 +66,12 @@ export function AccessConditionsPage() {
                     <th
                       key={col.key}
                       className={`px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider ${ENTITY_TABLE_COL_WIDTHS[col.key] ?? ''} ${
-                        col.key === 'tags' || col.key === 'policies' || col.key === 'status' || col.key === 'number' ? 'text-center' : 'text-left'
+                        col.key === 'tags' ||
+                        col.key === 'policies' ||
+                        col.key === 'status' ||
+                        col.key === 'number'
+                          ? 'text-center'
+                          : 'text-left'
                       }`}
                     >
                       {col.label}
@@ -81,20 +80,25 @@ export function AccessConditionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-white">
-                {paginated.length === 0 && (
+                {items.length === 0 && (
                   <tr>
-                    <td colSpan={ACCESS_CONDITION_TABLE_COLUMNS.length} className="px-4 py-12 text-center text-gray-400 text-sm">
+                    <td
+                      colSpan={ACCESS_CONDITION_TABLE_COLUMNS.length}
+                      className="px-4 py-12 text-center text-gray-400 text-sm"
+                    >
                       No access conditions found.
                     </td>
                   </tr>
                 )}
-                {paginated.map((condition, idx) => (
+                {items.map((condition, idx) => (
                   <tr
                     key={condition.id}
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/access-conditions/${condition.id}`)}
                   >
-                    <td className="px-3 py-3 text-gray-400 text-center w-10">{(currentPage - 1) * pageSize + idx + 1}</td>
+                    <td className="px-3 py-3 text-gray-400 text-center w-10">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900 truncate max-w-[160px]">
                       <Link
                         to={`/access-conditions/${condition.id}`}
@@ -110,12 +114,8 @@ export function AccessConditionsPage() {
                     <td className="px-4 py-3 text-gray-700 truncate max-w-[260px]">
                       {condition.description}
                     </td>
-                    <td className="px-4 py-3 text-gray-700 text-center">
-                      {condition.tags}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 text-center">
-                      {condition.policies}
-                    </td>
+                    <td className="px-4 py-3 text-gray-700 text-center">{condition.tags}</td>
+                    <td className="px-4 py-3 text-gray-700 text-center">{condition.policies}</td>
                     <td className="px-3 py-3 text-xs font-medium text-center">
                       {condition.isActive ? (
                         <span className="text-green-600">Active</span>
@@ -141,11 +141,14 @@ export function AccessConditionsPage() {
                 className="border border-border rounded px-2 py-1 text-xs"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>{size}</option>
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
                 ))}
               </select>
               <span>
-                Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length} Results
+                Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
+                {Math.min(currentPage * pageSize, total)} of {total} Results
               </span>
             </div>
 

@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchAccessConditions, fetchAccessCondition, saveAccessCondition } from '@/features/access-conditions/api/accessConditionsApi'
-import type { AccessConditionFormValues } from '@/shared/components/forms/types'
+import {
+  fetchAccessConditions,
+  fetchAccessCondition,
+  createAccessCondition,
+  saveAccessCondition,
+} from '@/features/access-conditions/api/accessConditionsApi'
+import type { AccessConditionInput } from '@/features/access-conditions/api/accessConditionsApi'
 
-export function useAccessConditions() {
+export function useAccessConditions(page = 1, perPage = 20, search = '') {
   return useQuery({
-    queryKey: ['access-conditions', 'list'],
-    queryFn: fetchAccessConditions,
+    queryKey: ['access-conditions', 'list', page, perPage, search],
+    queryFn: () => fetchAccessConditions(page, perPage, search),
   })
 }
 
@@ -20,10 +25,20 @@ export function useAccessCondition(id: string | undefined) {
   })
 }
 
+export function useCreateAccessCondition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AccessConditionInput) => createAccessCondition(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['access-conditions', 'list'] })
+    },
+  })
+}
+
 export function useSaveAccessCondition(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (values: AccessConditionFormValues) => saveAccessCondition(id, values),
+    mutationFn: (input: AccessConditionInput) => saveAccessCondition(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['access-conditions', 'detail', id] })
       qc.invalidateQueries({ queryKey: ['access-conditions', 'list'] })

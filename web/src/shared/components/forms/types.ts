@@ -74,11 +74,10 @@ export interface AccessConditionFormValues {
   name: string
   description: string
   integration: string
-  // GeoIP config
   countries: GeoIpCountryEntry[]
-  // Time config
   timezone: string
   days: TimeConditionDay[]
+  tags: FormTag[]
 }
 
 export interface CredentialProviderFormValues {
@@ -162,6 +161,7 @@ export const EMPTY_ACCESS_CONDITION: AccessConditionFormValues = {
     { day: 'Saturday', startTime: '09:00', endTime: '18:00', enabled: false },
     { day: 'Sunday', startTime: '09:00', endTime: '18:00', enabled: false },
   ],
+  tags: [],
 }
 
 export const EMPTY_CREDENTIAL_PROVIDER: CredentialProviderFormValues = {

@@ -20,10 +20,12 @@ func (r *AccessConditionRepo) Create(ctx context.Context, tenantID uuid.UUID, ac
 	ac.TenantID = tenantID
 	tags, _ := json.Marshal(ac.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO access_conditions (id, tenant_id, name, description, is_active, type, config, tags, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		ac.ID, tenantID, ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING created_at, updated_at`,
+		ac.ID, tenantID, ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID).
+		Scan(&ac.CreatedAt, &ac.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create access condition: %w", err)
 	}
@@ -51,16 +53,22 @@ func (r *AccessConditionRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 
 func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_conditions WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM access_conditions
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
+		tenantID, opts.Search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count access conditions: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, is_active, type, config, tags, resource_set_id, created_at, updated_at
-		 FROM access_conditions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, is_active, type, config, tags, resource_set_id, created_at, updated_at,
+		        (SELECT COUNT(*) FROM policy_access_conditions pac WHERE pac.access_condition_id = access_conditions.id) AS policy_count
+		 FROM access_conditions
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, opts.Search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list access conditions: %w", err)
 	}
@@ -70,7 +78,7 @@ func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts
 	for rows.Next() {
 		var ac domain.AccessCondition
 		var tags []byte
-		if err := rows.Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Type, &ac.Config, &tags, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt); err != nil {
+		if err := rows.Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Type, &ac.Config, &tags, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt, &ac.PolicyCount); err != nil {
 			return nil, 0, fmt.Errorf("scan access condition: %w", err)
 		}
 		json.Unmarshal(tags, &ac.Tags)
@@ -82,10 +90,12 @@ func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts
 func (r *AccessConditionRepo) Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AccessCondition) error {
 	tags, _ := json.Marshal(ac.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`UPDATE access_conditions SET name=$1, description=$2, is_active=$3, type=$4, config=$5, tags=$6, resource_set_id=$7, updated_at=NOW()
-		 WHERE tenant_id = $8 AND id = $9`,
-		ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID, tenantID, ac.ID)
+		 WHERE tenant_id = $8 AND id = $9
+		 RETURNING created_at, updated_at`,
+		ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID, tenantID, ac.ID).
+		Scan(&ac.CreatedAt, &ac.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update access condition: %w", err)
 	}

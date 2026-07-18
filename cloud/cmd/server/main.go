@@ -81,9 +81,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
 	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders)
+	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, authenticator)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, authenticator)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -131,6 +132,7 @@ func buildHTTPServer(
 	clientWorkloadSvc *service.ClientWorkloadService,
 	serverWorkloadSvc *service.ServerWorkloadService,
 	trustProviderSvc *service.TrustProviderService,
+	accessConditionSvc *service.AccessConditionService,
 	authenticator rest.APIAuthenticator,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -138,7 +140,6 @@ func buildHTTPServer(
 	apiHandlers := rest.NewAPIHandlers(
 		repos.CredentialProviders,
 		repos.AccessPolicies,
-		repos.AccessConditions,
 		repos.AgentControllers,
 		repos.Users,
 	)
@@ -147,6 +148,7 @@ func buildHTTPServer(
 	rest.NewClientWorkloadHandler(clientWorkloadSvc).RegisterRoutes(mux)
 	rest.NewServerWorkloadHandler(serverWorkloadSvc).RegisterRoutes(mux)
 	rest.NewTrustProviderHandler(trustProviderSvc).RegisterRoutes(mux)
+	rest.NewAccessConditionHandler(accessConditionSvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 
 	handler := applyMiddleware(mux, authenticator)

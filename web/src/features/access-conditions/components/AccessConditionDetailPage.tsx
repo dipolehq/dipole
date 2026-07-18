@@ -4,7 +4,11 @@ import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingDropdown, FloatingInput } from '@/shared/components/FloatingInput'
 import { AccessConditionForm } from '@/shared/components/forms/AccessConditionForm'
-import { useAccessCondition, useSaveAccessCondition } from '@/features/access-conditions/hooks/useAccessConditions'
+import {
+  useAccessCondition,
+  useSaveAccessCondition,
+} from '@/features/access-conditions/hooks/useAccessConditions'
+import { apiErrorMessage } from '@/features/access-conditions/api/accessConditionsApi'
 import type { AccessConditionFormValues } from '@/shared/components/forms/types'
 
 const DETAIL_SECTIONS = [
@@ -26,6 +30,7 @@ export function AccessConditionDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [localValues, setLocalValues] = useState<AccessConditionFormValues | null>(null)
   const [localStatus, setLocalStatus] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -55,14 +60,19 @@ export function AccessConditionDetailPage() {
   const disabled = !isEditing
   const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      void saveMutation.mutateAsync(currentValues).then(() => {
+      setSaveError(null)
+      try {
+        await saveMutation.mutateAsync({ values: currentValues, isActive: status !== 'inactive' })
         setIsEditing(false)
         setLocalValues(null)
         setLocalStatus(null)
-      })
+      } catch (err) {
+        setSaveError(apiErrorMessage(err, 'Failed to save access condition'))
+      }
     } else {
+      setSaveError(null)
       if (data) setLocalValues({ ...data.values })
       setLocalStatus(data?.metadata.isActive ? 'active' : 'inactive')
       setIsEditing(true)
@@ -71,6 +81,7 @@ export function AccessConditionDetailPage() {
 
   function handleCancel() {
     if (isEditing) {
+      setSaveError(null)
       setLocalValues(null)
       setLocalStatus(null)
       setIsEditing(false)
@@ -92,9 +103,10 @@ export function AccessConditionDetailPage() {
           <button
             type="button"
             onClick={handleEditToggle}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            disabled={isEditing && saveMutation.isPending}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
-            {isEditing ? 'Save' : 'Edit'}
+            {isEditing ? (saveMutation.isPending ? 'Saving…' : 'Save') : 'Edit'}
           </button>
           <button
             type="button"
@@ -148,6 +160,12 @@ export function AccessConditionDetailPage() {
         </div>
       </div>
 
+      {saveError && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {saveError}
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
         {selectedSection === 'details' && (
@@ -180,11 +198,7 @@ export function AccessConditionDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput
-                    label="ID"
-                    value={data.metadata.entityId}
-                    disabled
-                  />
+                  <FloatingInput label="ID" value={data.metadata.entityId} disabled />
                   <FloatingInput
                     label="Created At"
                     value={new Date(data.metadata.createdAt).toLocaleString()}
@@ -192,7 +206,11 @@ export function AccessConditionDetailPage() {
                   />
                   <FloatingInput
                     label="Last Modified"
-                    value={data.metadata.lastModifiedAt ? new Date(data.metadata.lastModifiedAt).toLocaleString() : '—'}
+                    value={
+                      data.metadata.lastModifiedAt
+                        ? new Date(data.metadata.lastModifiedAt).toLocaleString()
+                        : '—'
+                    }
                     disabled
                   />
                 </div>
@@ -200,13 +218,20 @@ export function AccessConditionDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Access Conditions</span> add contextual security checks beyond identity verification. Even if a workload's identity is verified, additional conditions must be satisfied before access is granted.
+                  <span className="font-semibold text-orange-600">Access Conditions</span> add
+                  contextual security checks beyond identity verification. Even if a workload's
+                  identity is verified, additional conditions must be satisfied before access is
+                  granted.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  Supported conditions include <span className="font-semibold">Time-based</span> restrictions (specific days and hours) and <span className="font-semibold">GeoIP</span> restrictions (country and subdivision).
+                  Supported conditions include <span className="font-semibold">Time-based</span>{' '}
+                  restrictions (specific days and hours) and{' '}
+                  <span className="font-semibold">GeoIP</span> restrictions (country and
+                  subdivision).
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed">
-                  All conditions use <span className="font-semibold">AND logic</span> — every configured condition must pass for authorization to proceed.
+                  All conditions use <span className="font-semibold">AND logic</span> — every
+                  configured condition must pass for authorization to proceed.
                 </p>
               </div>
             </div>

@@ -14,7 +14,6 @@ import (
 type APIHandlers struct {
 	credentialProviders repository.CredentialProviderRepository
 	accessPolicies      repository.AccessPolicyRepository
-	accessConditions    repository.AccessConditionRepository
 	agentControllers    repository.AgentControllerRepository
 	users               repository.UserRepository
 }
@@ -22,14 +21,12 @@ type APIHandlers struct {
 func NewAPIHandlers(
 	cp repository.CredentialProviderRepository,
 	ap repository.AccessPolicyRepository,
-	ac repository.AccessConditionRepository,
 	agc repository.AgentControllerRepository,
 	u repository.UserRepository,
 ) *APIHandlers {
 	return &APIHandlers{
 		credentialProviders: cp,
 		accessPolicies:      ap,
-		accessConditions:    ac,
 		agentControllers:    agc,
 		users:               u,
 	}
@@ -49,12 +46,6 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/access-policies/{id}", h.GetAccessPolicy)
 	mux.HandleFunc("PUT /api/v1/access-policies/{id}", h.UpdateAccessPolicy)
 	mux.HandleFunc("DELETE /api/v1/access-policies/{id}", h.DeleteAccessPolicy)
-
-	mux.HandleFunc("GET /api/v1/access-conditions", h.ListAccessConditions)
-	mux.HandleFunc("POST /api/v1/access-conditions", h.CreateAccessCondition)
-	mux.HandleFunc("GET /api/v1/access-conditions/{id}", h.GetAccessCondition)
-	mux.HandleFunc("PUT /api/v1/access-conditions/{id}", h.UpdateAccessCondition)
-	mux.HandleFunc("DELETE /api/v1/access-conditions/{id}", h.DeleteAccessCondition)
 
 	mux.HandleFunc("GET /api/v1/agent-controllers", h.ListAgentControllers)
 	mux.HandleFunc("POST /api/v1/agent-controllers", h.CreateAgentController)
@@ -106,23 +97,6 @@ func (h *APIHandlers) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request)
 	h.deleteEntity(w, r, h.accessPolicies)
 }
 
-// Access Conditions
-func (h *APIHandlers) ListAccessConditions(w http.ResponseWriter, r *http.Request) {
-	h.listEntity(w, r, h.accessConditions)
-}
-func (h *APIHandlers) CreateAccessCondition(w http.ResponseWriter, r *http.Request) {
-	h.createEntity(w, r, h.accessConditions)
-}
-func (h *APIHandlers) GetAccessCondition(w http.ResponseWriter, r *http.Request) {
-	h.getEntity(w, r, h.accessConditions)
-}
-func (h *APIHandlers) UpdateAccessCondition(w http.ResponseWriter, r *http.Request) {
-	h.updateEntity(w, r, h.accessConditions)
-}
-func (h *APIHandlers) DeleteAccessCondition(w http.ResponseWriter, r *http.Request) {
-	h.deleteEntity(w, r, h.accessConditions)
-}
-
 // Agent Controllers
 func (h *APIHandlers) ListAgentControllers(w http.ResponseWriter, r *http.Request) {
 	h.listEntity(w, r, h.agentControllers)
@@ -163,13 +137,6 @@ func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo an
 		}
 		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
 	case repository.AccessPolicyRepository:
-		items, total, err := rep.List(r.Context(), tenantID, opts)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
-	case repository.AccessConditionRepository:
 		items, total, err := rep.List(r.Context(), tenantID, opts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
