@@ -1,17 +1,9 @@
-/*
-Package rest — api_handlers.go implements the REST API CRUD endpoints.
-
-Provides handlers for all entity types: client-workloads, server-workloads,
-trust-providers, credential-providers, access-policies, access-conditions,
-agent-controllers, users. All use camelCase JSON and paginated list responses.
-Credential provider GET responses REDACT secrets.
-*/
+// Package rest — api_handlers.go holds the legacy CRUD handlers for resources
+// not yet migrated to the per-resource handler + service pattern.
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 
@@ -20,7 +12,6 @@ import (
 )
 
 type APIHandlers struct {
-	clientWorkloads     repository.ClientWorkloadRepository
 	serverWorkloads     repository.ServerWorkloadRepository
 	trustProviders      repository.TrustProviderRepository
 	credentialProviders repository.CredentialProviderRepository
@@ -31,7 +22,6 @@ type APIHandlers struct {
 }
 
 func NewAPIHandlers(
-	cw repository.ClientWorkloadRepository,
 	sw repository.ServerWorkloadRepository,
 	tp repository.TrustProviderRepository,
 	cp repository.CredentialProviderRepository,
@@ -41,7 +31,6 @@ func NewAPIHandlers(
 	u repository.UserRepository,
 ) *APIHandlers {
 	return &APIHandlers{
-		clientWorkloads:     cw,
 		serverWorkloads:     sw,
 		trustProviders:      tp,
 		credentialProviders: cp,
@@ -54,12 +43,6 @@ func NewAPIHandlers(
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
-
-	mux.HandleFunc("GET /api/v1/client-workloads", h.ListClientWorkloads)
-	mux.HandleFunc("POST /api/v1/client-workloads", h.CreateClientWorkload)
-	mux.HandleFunc("GET /api/v1/client-workloads/{id}", h.GetClientWorkload)
-	mux.HandleFunc("PUT /api/v1/client-workloads/{id}", h.UpdateClientWorkload)
-	mux.HandleFunc("DELETE /api/v1/client-workloads/{id}", h.DeleteClientWorkload)
 
 	mux.HandleFunc("GET /api/v1/server-workloads", h.ListServerWorkloads)
 	mux.HandleFunc("POST /api/v1/server-workloads", h.CreateServerWorkload)
@@ -105,84 +88,6 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Healthy"})
-}
-
-// Client Workloads
-func (h *APIHandlers) ListClientWorkloads(w http.ResponseWriter, r *http.Request) {
-	tenantID := TenantIDFromContext(r.Context())
-	opts := parsePaginationOpts(r)
-	items, total, err := h.clientWorkloads.List(r.Context(), tenantID, opts)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, paginatedResponse(items, total, opts))
-}
-
-func (h *APIHandlers) CreateClientWorkload(w http.ResponseWriter, r *http.Request) {
-	tenantID := TenantIDFromContext(r.Context())
-	var cw domain.ClientWorkload
-	if err := json.NewDecoder(r.Body).Decode(&cw); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	cw.ID = uuid.New()
-	cw.TenantID = tenantID
-	if err := h.clientWorkloads.Create(r.Context(), tenantID, &cw); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusCreated, cw)
-}
-
-func (h *APIHandlers) GetClientWorkload(w http.ResponseWriter, r *http.Request) {
-	tenantID := TenantIDFromContext(r.Context())
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
-		return
-	}
-	cw, err := h.clientWorkloads.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, cw)
-}
-
-func (h *APIHandlers) UpdateClientWorkload(w http.ResponseWriter, r *http.Request) {
-	tenantID := TenantIDFromContext(r.Context())
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
-		return
-	}
-	var cw domain.ClientWorkload
-	if err := json.NewDecoder(r.Body).Decode(&cw); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	cw.ID = id
-	cw.TenantID = tenantID
-	if err := h.clientWorkloads.Update(r.Context(), tenantID, &cw); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, cw)
-}
-
-func (h *APIHandlers) DeleteClientWorkload(w http.ResponseWriter, r *http.Request) {
-	tenantID := TenantIDFromContext(r.Context())
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid UUID"})
-		return
-	}
-	if err := h.clientWorkloads.Delete(r.Context(), tenantID, id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // Server Workloads — same pattern
@@ -297,14 +202,9 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.deleteEntity(w, r, h.users)
 }
 
-// Generic helpers using interface type assertions for repos that share similar patterns
-type lister interface {
-	List(ctx interface{}, tenantID uuid.UUID, opts domain.ListOptions) (interface{}, int, error)
-}
-
 func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo any) {
 	tenantID := TenantIDFromContext(r.Context())
-	opts := parsePaginationOpts(r)
+	opts := parseListOptions(r)
 
 	switch rep := repo.(type) {
 	case repository.ServerWorkloadRepository:
@@ -361,11 +261,11 @@ func (h *APIHandlers) listEntity(w http.ResponseWriter, r *http.Request, repo an
 	}
 }
 
-func (h *APIHandlers) createEntity(w http.ResponseWriter, r *http.Request, _ any) {
+func (h *APIHandlers) createEntity(w http.ResponseWriter, _ *http.Request, _ any) {
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "create not implemented for this entity"})
 }
 
-func (h *APIHandlers) getEntity(w http.ResponseWriter, r *http.Request, _ any) {
+func (h *APIHandlers) getEntity(w http.ResponseWriter, _ *http.Request, _ any) {
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "get not implemented for this entity"})
 }
 
@@ -394,29 +294,12 @@ func (h *APIHandlers) getEntityRedacted(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
-func (h *APIHandlers) updateEntity(w http.ResponseWriter, r *http.Request, _ any) {
+func (h *APIHandlers) updateEntity(w http.ResponseWriter, _ *http.Request, _ any) {
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "update not implemented for this entity"})
 }
 
-func (h *APIHandlers) deleteEntity(w http.ResponseWriter, r *http.Request, _ any) {
+func (h *APIHandlers) deleteEntity(w http.ResponseWriter, _ *http.Request, _ any) {
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "delete not implemented for this entity"})
-}
-
-func parsePaginationOpts(r *http.Request) domain.ListOptions {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("perPage"))
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 25
-	}
-	return domain.ListOptions{
-		Page:    page,
-		PerPage: perPage,
-		OrderBy: r.URL.Query().Get("orderBy"),
-		Search:  r.URL.Query().Get("search"),
-	}
 }
 
 func paginatedResponse(items any, total int, opts domain.ListOptions) map[string]any {

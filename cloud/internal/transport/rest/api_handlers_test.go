@@ -23,9 +23,9 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestParsePaginationOpts_Defaults(t *testing.T) {
+func TestParseListOptions_Defaults(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/test", nil)
-	opts := parsePaginationOpts(req)
+	opts := parseListOptions(req)
 
 	if opts.Page != 1 {
 		t.Errorf("expected page=1, got %d", opts.Page)
@@ -35,18 +35,18 @@ func TestParsePaginationOpts_Defaults(t *testing.T) {
 	}
 }
 
-func TestParsePaginationOpts_Cap100(t *testing.T) {
+func TestParseListOptions_Cap100(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/test?perPage=500", nil)
-	opts := parsePaginationOpts(req)
+	opts := parseListOptions(req)
 
 	if opts.PerPage != 25 {
 		t.Errorf("expected perPage=25 (>100 treated as invalid), got %d", opts.PerPage)
 	}
 }
 
-func TestParsePaginationOpts_ValidValues(t *testing.T) {
+func TestParseListOptions_ValidValues(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/test?page=3&perPage=50&orderBy=name&search=test", nil)
-	opts := parsePaginationOpts(req)
+	opts := parseListOptions(req)
 
 	if opts.Page != 3 {
 		t.Errorf("expected page=3, got %d", opts.Page)

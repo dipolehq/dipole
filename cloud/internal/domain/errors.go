@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrPolicyNotFound            = errors.New("no matching policy found")
@@ -11,4 +14,21 @@ var (
 	ErrInactivePolicy            = errors.New("policy is inactive")
 	ErrInvalidIdentifier         = errors.New("invalid identifier")
 	ErrEncryptionFailed          = errors.New("encryption failed")
+	ErrNotFound                  = errors.New("resource not found")
 )
+
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	if e.Field != "" {
+		return fmt.Sprintf("%s: %s", e.Field, e.Message)
+	}
+	return e.Message
+}
+
+func NewValidationError(field, message string) *ValidationError {
+	return &ValidationError{Field: field, Message: message}
+}

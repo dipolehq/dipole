@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: dipole
       POSTGRES_USER: dipole
-      POSTGRES_PASSWORD: devpassword
+      POSTGRES_PASSWORD: dipole
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,6 +14,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # Web-based database browser for local development only.
+  # Opt-in via the "tools" profile so it never runs as part of the product stack:
+  #   docker compose --profile tools up -d adminer
+  adminer:
+    image: adminer:4
+    profiles: ["tools"]
+    ports:
+      - "8090:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   cloud:
     build:
@@ -23,7 +38,7 @@ services:
       - "8080:8080"
       - "50051:50051"
     environment:
-      DIPOLE_DATABASE_URL: postgres://dipole:devpassword@postgres:5432/dipole?sslmode=disable
+      DIPOLE_DATABASE_URL: postgres://dipole:dipole@postgres:5432/dipole?sslmode=disable
       DIPOLE_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       DIPOLE_GRPC_PORT: "50051"
       DIPOLE_HTTP_PORT: "8080"

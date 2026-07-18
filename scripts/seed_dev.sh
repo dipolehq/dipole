@@ -7,7 +7,7 @@
 
 set -e
 
-DB_URL="${DIPOLE_DATABASE_URL:-postgres://dipole:devpassword@localhost:5432/dipole?sslmode=disable}"
+DB_URL="${DIPOLE_DATABASE_URL:-postgres://dipole:dipole@localhost:5432/dipole?sslmode=disable}"
 ENC_KEY_HEX="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 echo "Seeding development data..."
