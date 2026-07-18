@@ -22,10 +22,12 @@ func (r *ClientWorkloadRepo) Create(ctx context.Context, tenantID uuid.UUID, cw 
 	identifiers, _ := json.Marshal(cw.Identifiers)
 	tags, _ := json.Marshal(cw.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`INSERT INTO client_workloads (id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		cw.ID, tenantID, cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 RETURNING created_at, updated_at`,
+		cw.ID, tenantID, cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID).
+		Scan(&cw.CreatedAt, &cw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create client workload: %w", err)
 	}
@@ -87,10 +89,12 @@ func (r *ClientWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, cw 
 	identifiers, _ := json.Marshal(cw.Identifiers)
 	tags, _ := json.Marshal(cw.Tags)
 
-	_, err := r.pool.Exec(ctx,
+	err := r.pool.QueryRow(ctx,
 		`UPDATE client_workloads SET name = $1, description = $2, is_active = $3, identifiers = $4, tags = $5, resource_set_id = $6, updated_at = NOW()
-		 WHERE tenant_id = $7 AND id = $8`,
-		cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID)
+		 WHERE tenant_id = $7 AND id = $8
+		 RETURNING created_at, updated_at`,
+		cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID).
+		Scan(&cw.CreatedAt, &cw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update client workload: %w", err)
 	}

@@ -48,7 +48,7 @@ func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
 }
 
 type APIAuthenticator interface {
-	ValidateToken(token string) (tenantID uuid.UUID, email string, err error)
+	ValidateToken(ctx context.Context, token string) (tenantID uuid.UUID, email string, err error)
 }
 
 func AuthMiddleware(auth APIAuthenticator) func(http.Handler) http.Handler {
@@ -60,7 +60,7 @@ func AuthMiddleware(auth APIAuthenticator) func(http.Handler) http.Handler {
 				return
 			}
 
-			tenantID, email, err := auth.ValidateToken(token)
+			tenantID, email, err := auth.ValidateToken(r.Context(), token)
 			if err != nil {
 				http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
 				return

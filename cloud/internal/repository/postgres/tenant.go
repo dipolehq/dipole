@@ -53,6 +53,23 @@ func (r *TenantRepo) GetBySubdomain(ctx context.Context, subdomain string) (*dom
 	return t, nil
 }
 
+func (r *TenantRepo) GetByAPITokenHash(ctx context.Context, hash string) (*domain.Tenant, error) {
+	if hash == "" {
+		return nil, nil
+	}
+	t := &domain.Tenant{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, subdomain, api_token_hash, created_at, updated_at FROM tenants WHERE api_token_hash = $1`, hash).
+		Scan(&t.ID, &t.Name, &t.Subdomain, &t.APITokenHash, &t.CreatedAt, &t.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get tenant by api token hash: %w", err)
+	}
+	return t, nil
+}
+
 func (r *TenantRepo) List(ctx context.Context, opts domain.ListOptions) ([]domain.Tenant, int, error) {
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tenants`).Scan(&total)

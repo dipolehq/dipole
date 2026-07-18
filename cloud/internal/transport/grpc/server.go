@@ -2,8 +2,8 @@
 Package grpc provides the gRPC transport layer for the Cloud service.
 
 StartServer initializes a gRPC server with keepalive, logging, recovery, and
-timeout interceptors, registers the PolicyEvaluationService, and listens on
-the configured port.
+timeout interceptors, registers the PolicyEvaluationService, listens on the
+configured port, and gracefully stops when the provided context is cancelled.
 */
 package grpc
 
@@ -22,7 +22,7 @@ import (
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
-func StartServer(port int, handler pb.PolicyEvaluationServiceServer, logger *slog.Logger) error {
+func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServiceServer, logger *slog.Logger) error {
 	kaParams := keepalive.ServerParameters{
 		MaxConnectionIdle: 5 * time.Minute,
 		MaxConnectionAge:  30 * time.Minute,
@@ -47,8 +47,17 @@ func StartServer(port int, handler pb.PolicyEvaluationServiceServer, logger *slo
 		return fmt.Errorf("grpc listen on %s: %w", addr, err)
 	}
 
+	go func() {
+		<-ctx.Done()
+		logger.Info("grpc server shutting down")
+		srv.GracefulStop()
+	}()
+
 	logger.Info("grpc server started", "addr", addr)
-	return srv.Serve(ln)
+	if err := srv.Serve(ln); err != nil {
+		return fmt.Errorf("grpc serve: %w", err)
+	}
+	return nil
 }
 
 func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {

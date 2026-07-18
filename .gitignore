@@ -23,6 +23,8 @@ edge/injector
 edge/cli
 edge/init
 cloud/server
+cloud/migrate
+cloud/bootstrap
 
 # Build artifacts
 dist/

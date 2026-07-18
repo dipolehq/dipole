@@ -8,6 +8,10 @@
 DIPOLE_DATABASE_URL ?= postgres://dipole:dipole@localhost:5432/dipole?sslmode=disable
 export DIPOLE_DATABASE_URL
 
+# Local-dev encryption key (32 bytes hex). Production must supply this via a secret.
+DIPOLE_ENCRYPTION_KEY ?= 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+export DIPOLE_ENCRYPTION_KEY
+
 CLOUD_DIR := cloud
 
 .PHONY: help
@@ -60,6 +64,14 @@ migrate-force: ## Force schema to VERSION and clear dirty flag (recovery only): 
 # ---------------------------------------------------------------------------
 # Build & test
 # ---------------------------------------------------------------------------
+
+.PHONY: run
+run: ## Run the cloud server (REST + gRPC)
+	cd $(CLOUD_DIR) && DIPOLE_ENCRYPTION_KEY=$(DIPOLE_ENCRYPTION_KEY) go run ./cmd/server
+
+.PHONY: bootstrap
+bootstrap: ## Provision a dev tenant and print an API token: make bootstrap [SUBDOMAIN=dev]
+	cd $(CLOUD_DIR) && go run ./cmd/bootstrap $(if $(SUBDOMAIN),-subdomain $(SUBDOMAIN),)
 
 .PHONY: build
 build: ## Build all cloud binaries

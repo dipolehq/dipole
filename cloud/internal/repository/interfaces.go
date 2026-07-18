@@ -12,6 +12,7 @@ type TenantRepository interface {
 	Create(ctx context.Context, tenant *domain.Tenant) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error)
 	GetBySubdomain(ctx context.Context, subdomain string) (*domain.Tenant, error)
+	GetByAPITokenHash(ctx context.Context, hash string) (*domain.Tenant, error)
 	List(ctx context.Context, opts domain.ListOptions) ([]domain.Tenant, int, error)
 	Update(ctx context.Context, tenant *domain.Tenant) error
 	Delete(ctx context.Context, id uuid.UUID) error
