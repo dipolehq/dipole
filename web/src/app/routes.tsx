@@ -1,28 +1,55 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from '@/shared/components/Layout'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DashboardPage } from '@/features/dashboard/components/DashboardPage'
 import { PoliciesPage } from '@/features/policies/components/PoliciesPage'
 import { CreatePolicyPage } from '@/features/policies/components/CreatePolicyPage'
 import { PolicyDetailPage } from '@/features/policies/components/PolicyDetailPage'
-import { ClientWorkloadsPage, CreateClientWorkloadPage, ClientWorkloadDetailPage } from '@/features/client-workloads'
-import { ServerWorkloadsPage, CreateServerWorkloadPage, ServerWorkloadDetailPage } from '@/features/server-workloads'
-import { TrustProvidersPage, CreateTrustProviderPage, TrustProviderDetailPage } from '@/features/trust-providers'
-import { AccessConditionsPage, CreateAccessConditionPage, AccessConditionDetailPage } from '@/features/access-conditions'
-import { CredentialProvidersPage, CreateCredentialProviderPage, CredentialProviderDetailPage } from '@/features/credential-providers'
+import {
+  ClientWorkloadsPage,
+  CreateClientWorkloadPage,
+  ClientWorkloadDetailPage,
+} from '@/features/client-workloads'
+import {
+  ServerWorkloadsPage,
+  CreateServerWorkloadPage,
+  ServerWorkloadDetailPage,
+} from '@/features/server-workloads'
+import {
+  TrustProvidersPage,
+  CreateTrustProviderPage,
+  TrustProviderDetailPage,
+} from '@/features/trust-providers'
+import {
+  AccessConditionsPage,
+  CreateAccessConditionPage,
+  AccessConditionDetailPage,
+} from '@/features/access-conditions'
+import {
+  CredentialProvidersPage,
+  CreateCredentialProviderPage,
+  CredentialProviderDetailPage,
+} from '@/features/credential-providers'
 import { ReportingPage } from '@/features/reporting'
-import { EdgeComponentsPage, CreateAgentControllerPage, AgentControllerDetailPage } from '@/features/edge-components'
+import {
+  EdgeComponentsPage,
+  CreateAgentControllerPage,
+  AgentControllerDetailPage,
+} from '@/features/edge-components'
 import { HelpPage } from '@/features/help'
 import { ProfilePage } from '@/features/profile'
-import { AdministrationPage, CreateUserPage, UserDetailPage, CreateRolePage, RoleDetailPage, CreateResourceSetPage, ResourceSetDetailPage, CreateIdentityProviderPage, IdentityProviderDetailPage, CreateLogStreamPage, LogStreamDetailPage } from '@/features/administration'
-
-function Placeholder() {
-  return (
-    <div className="p-6">
-      <PageHeader />
-    </div>
-  )
-}
+import {
+  AdministrationPage,
+  CreateUserPage,
+  UserDetailPage,
+  CreateRolePage,
+  RoleDetailPage,
+  CreateResourceSetPage,
+  ResourceSetDetailPage,
+  CreateIdentityProviderPage,
+  IdentityProviderDetailPage,
+  CreateLogStreamPage,
+  LogStreamDetailPage,
+} from '@/features/administration'
 
 export function AppRoutes() {
   return (
@@ -49,8 +76,14 @@ export function AppRoutes() {
         <Route path="/server-workloads/:id" element={<ServerWorkloadDetailPage />} />
         <Route path="/reporting" element={<ReportingPage />} />
         <Route path="/edge-components" element={<EdgeComponentsPage />} />
-        <Route path="/edge-components/agent_controllers/new" element={<CreateAgentControllerPage />} />
-        <Route path="/edge-components/agent_controllers/:id" element={<AgentControllerDetailPage />} />
+        <Route
+          path="/edge-components/agent_controllers/new"
+          element={<CreateAgentControllerPage />}
+        />
+        <Route
+          path="/edge-components/agent_controllers/:id"
+          element={<AgentControllerDetailPage />}
+        />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/new" element={<CreateUserPage />} />
         <Route path="/administration/users/new" element={<CreateUserPage />} />
@@ -59,8 +92,14 @@ export function AppRoutes() {
         <Route path="/administration/roles/:id" element={<RoleDetailPage />} />
         <Route path="/administration/resource_sets/new" element={<CreateResourceSetPage />} />
         <Route path="/administration/resource_sets/:id" element={<ResourceSetDetailPage />} />
-        <Route path="/administration/identity_providers/new" element={<CreateIdentityProviderPage />} />
-        <Route path="/administration/identity_providers/:id" element={<IdentityProviderDetailPage />} />
+        <Route
+          path="/administration/identity_providers/new"
+          element={<CreateIdentityProviderPage />}
+        />
+        <Route
+          path="/administration/identity_providers/:id"
+          element={<IdentityProviderDetailPage />}
+        />
         <Route path="/administration/log_streams/new" element={<CreateLogStreamPage />} />
         <Route path="/administration/log_streams/:id" element={<LogStreamDetailPage />} />
         <Route path="/help" element={<HelpPage />} />

@@ -84,21 +84,110 @@ export interface CredentialProviderFormValues {
   name: string
   description: string
   credentialType: string
-  // Stored config values (flat shape for simplicity)
+  tags: FormTag[]
+
+  // API Key
   apiKey: string
+
+  // Username & Password
   username: string
   password: string
+
+  // OAuth Client Credentials / Authorization Code / MCP User-Based
   tokenEndpointUrl: string
   authorizationUrl: string
   introspectionUrl: string
   clientId: string
   clientSecret: string
   scopes: string
+  credentialStyle: string
+  mcpServerUrl: string
+  mcpResource: string
+  mcpPkceRequired: boolean
+  oauthPkceRequired: boolean
+  oauthUrl: string
+  oauthLifetimeValue: number
+  oauthLifetimeUnit: string
+
+  // AWS STS Federation
   awsIamRoleArn: string
+
+  // AWS Secrets Manager
+  integrationId: string
+  secretArn: string
+  credentialValueType: string
+  secretKey: string
+  usernameKey: string
+  passwordKey: string
+  privateNetworkAccess: boolean
+
+  // Azure Entra WIF
+  azureTenantId: string
+  azureClientId: string
+  jwtTokenSubject: string
+  jwtTokenScope: string
+
+  // Azure Key Vault
+  keyVaultUrl: string
+  keyVaultSecretName: string
+
+  // Google GCP WIF
+  gcpServiceAccountEmail: string
+  gcpProjectNumber: string
+  gcpWorkloadIdentityPool: string
+  gcpWifProvider: string
+
+  // Claude WIF
+  claudeApiAudience: string
+  claudeFederationRuleId: string
+  claudeOrganizationId: string
+  claudeScope: string
+  claudeServiceAccountId: string
+  claudeWorkspaceId: string
+
+  // OpenAI WIF
+  openaiIdentityProviderId: string
+  openaiServiceAccountId: string
+
+  // JWT (Snowflake)
+  snowflakeAccountId: string
+  snowflakeUsername: string
+
+  // JWT-SVID
+  spiffeTrustDomain: string
+  signingAlgorithm: string
+
+  // OIDC ID Token
+  subject: string
+  customClaims: { name: string; value: string; valueType: string }[]
+
+  // Vault Client Token
+  vaultHost: string
+  vaultPort: string
+  vaultTls: boolean
+  vaultAuthPath: string
+  vaultRole: string
+  vaultNamespace: string
+  vaultForwardingConfig: string
+
+  // Managed GitLab
+  gitlabGroupId: string
+  gitlabProjectId: string
+  gitlabScopes: string
+  gitlabAccessLevel: string
+  gitlabServiceAccountUsername: string
+  gitlabRotationTime: number
+  gitlabRotationUnit: string
+
+  // X.509-SVID
+  standaloneCaId: string
+  spiffeId: string
+  keyUsage: string
+  extendedKeyUsage: string[]
+
+  // Shared
   audience: string
   lifetimeSeconds: number
-  vaultAddress: string
-  vaultRole: string
 }
 
 export const EMPTY_CLIENT_WORKLOAD: ClientWorkloadFormValues = {
@@ -168,6 +257,7 @@ export const EMPTY_CREDENTIAL_PROVIDER: CredentialProviderFormValues = {
   name: '',
   description: '',
   credentialType: '',
+  tags: [],
   apiKey: '',
   username: '',
   password: '',
@@ -177,9 +267,64 @@ export const EMPTY_CREDENTIAL_PROVIDER: CredentialProviderFormValues = {
   clientId: '',
   clientSecret: '',
   scopes: '',
+  credentialStyle: 'authorization_header',
+  mcpServerUrl: '',
+  mcpResource: '',
+  mcpPkceRequired: false,
+  oauthPkceRequired: false,
+  oauthUrl: '',
+  oauthLifetimeValue: 1,
+  oauthLifetimeUnit: 'years',
   awsIamRoleArn: '',
+  integrationId: '',
+  secretArn: '',
+  credentialValueType: 'plain_text',
+  secretKey: '',
+  usernameKey: '',
+  passwordKey: '',
+  privateNetworkAccess: false,
+  azureTenantId: '',
+  azureClientId: '',
+  jwtTokenSubject: '',
+  jwtTokenScope: '',
+  keyVaultUrl: '',
+  keyVaultSecretName: '',
+  gcpServiceAccountEmail: '',
+  gcpProjectNumber: '',
+  gcpWorkloadIdentityPool: '',
+  gcpWifProvider: '',
+  claudeApiAudience: '',
+  claudeFederationRuleId: '',
+  claudeOrganizationId: '',
+  claudeScope: 'workspace:developer',
+  claudeServiceAccountId: '',
+  claudeWorkspaceId: '',
+  openaiIdentityProviderId: '',
+  openaiServiceAccountId: '',
+  snowflakeAccountId: '',
+  snowflakeUsername: '',
+  spiffeTrustDomain: '',
+  signingAlgorithm: 'ES256',
+  subject: '',
+  customClaims: [],
+  vaultHost: '',
+  vaultPort: '8200',
+  vaultTls: true,
+  vaultAuthPath: '',
+  vaultRole: '',
+  vaultNamespace: '',
+  vaultForwardingConfig: 'none',
+  gitlabGroupId: '',
+  gitlabProjectId: '',
+  gitlabScopes: '',
+  gitlabAccessLevel: '',
+  gitlabServiceAccountUsername: '',
+  gitlabRotationTime: 1,
+  gitlabRotationUnit: 'days',
+  standaloneCaId: '',
+  spiffeId: '',
+  keyUsage: 'digital_signature',
+  extendedKeyUsage: ['id-kp-clientAuth'],
   audience: '',
   lifetimeSeconds: 3600,
-  vaultAddress: '',
-  vaultRole: '',
 }
