@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExistingServerWorkloadSelector } from '@/features/policies/components/tabs/server-workload/ExistingServerWorkloadSelector'
 import { ServerWorkloadForm } from '@/shared/components/forms/ServerWorkloadForm'
-import { buildServerWorkloadValues } from '@/data/policies/policyFormMappers'
+import { fetchServerWorkload } from '@/features/policies/api/entityApi'
 import type { ServerWorkloadFormValues } from '@/shared/components/forms/types'
 
 interface ServerWorkloadTabProps {
@@ -21,9 +21,31 @@ export function ServerWorkloadTab({
 }: ServerWorkloadTabProps) {
   const [mode, setMode] = useState<'new' | 'existing'>('new')
 
-  function handleSelectExisting(id: string) {
+  async function handleSelectExisting(id: string) {
     onSelect(id)
-    onChange(buildServerWorkloadValues(id))
+    try {
+      const sw = await fetchServerWorkload(id)
+      onChange({
+        name: sw.name,
+        description: sw.description,
+        host: sw.host,
+        appProtocol: sw.appProtocol,
+        transportProtocol: sw.transportProtocol || 'TCP',
+        port: String(sw.port || ''),
+        forwardToPort: String(sw.requestedPort || ''),
+        tls: sw.tls,
+        forwardTls: sw.requestedTls,
+        forwardTlsVerification: sw.tlsVerification || 'full',
+        authMethod: sw.authMethod,
+        authScheme: sw.authScheme,
+        headerName: sw.authConfig?.headerName ?? '',
+        urlPath: sw.urlPath,
+        staticHeaders: [],
+        tags: [],
+      })
+    } catch {
+      // If fetch fails, just set the ID without populating form
+    }
     setMode('new')
   }
 

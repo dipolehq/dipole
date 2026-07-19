@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExistingAccessConditionSelector } from '@/features/policies/components/tabs/access-conditions/ExistingAccessConditionSelector'
 import { AccessConditionForm } from '@/shared/components/forms/AccessConditionForm'
-import { buildAccessConditionValues } from '@/data/policies/policyFormMappers'
+import { fetchAccessCondition } from '@/features/policies/api/entityApi'
 import { EMPTY_ACCESS_CONDITION } from '@/shared/components/forms/types'
 import type { AccessConditionFormValues } from '@/shared/components/forms/types'
 
@@ -21,9 +21,7 @@ export function AccessConditionTab({
   disabled = false,
 }: AccessConditionTabProps) {
   const [mode, setMode] = useState<'new' | 'existing'>('new')
-  const [expandedIndex, setExpandedIndex] = useState<Set<number>>(
-    new Set(values.map((_, i) => i)),
-  )
+  const [expandedIndex, setExpandedIndex] = useState<Set<number>>(new Set(values.map((_, i) => i)))
 
   const displayValues = values.length === 0 && !disabled ? [{ ...EMPTY_ACCESS_CONDITION }] : values
 
@@ -51,9 +49,26 @@ export function AccessConditionTab({
     })
   }
 
-  function handleAddExisting(id: string) {
+  async function handleAddExisting(id: string) {
     if (!selectedIds.includes(id)) onToggleId(id)
-    onChange([...values, buildAccessConditionValues(id)])
+    try {
+      const ac = await fetchAccessCondition(id)
+      const config = ac.config as Record<string, unknown> | undefined
+      onChange([
+        ...values,
+        {
+          name: ac.name,
+          description: ac.description,
+          integration: ac.type,
+          timezone: (config?.timezone as string) ?? '',
+          days: (config?.days as AccessConditionFormValues['days']) ?? [],
+          countries: (config?.countries as AccessConditionFormValues['countries']) ?? [],
+          tags: [],
+        },
+      ])
+    } catch {
+      onChange([...values, { ...EMPTY_ACCESS_CONDITION }])
+    }
     setMode('new')
   }
 
@@ -113,7 +128,19 @@ export function AccessConditionTab({
                       className="text-gray-400 hover:text-red-500"
                       title="Remove condition"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
                     </button>
                   )}
                 </div>

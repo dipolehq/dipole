@@ -86,7 +86,7 @@ func parseListOptions(r *http.Request) domain.ListOptions {
 	}
 
 	perPage, _ := strconv.Atoi(q.Get("perPage"))
-	if perPage < 1 || perPage > 100 {
+	if perPage < 1 || perPage > 500 {
 		perPage = 25
 	}
 

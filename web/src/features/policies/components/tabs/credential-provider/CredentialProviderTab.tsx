@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExistingCredentialProviderSelector } from '@/features/policies/components/tabs/credential-provider/ExistingCredentialProviderSelector'
 import { CredentialProviderForm } from '@/shared/components/forms/CredentialProviderForm'
-import { buildCredentialProviderValues } from '@/data/policies/policyFormMappers'
+import { fetchCredentialProvider } from '@/features/policies/api/entityApi'
 import type { CredentialProviderFormValues } from '@/shared/components/forms/types'
 
 interface CredentialProviderTabProps {
@@ -21,9 +21,19 @@ export function CredentialProviderTab({
 }: CredentialProviderTabProps) {
   const [mode, setMode] = useState<'new' | 'existing'>('new')
 
-  function handleSelectExisting(id: string) {
+  async function handleSelectExisting(id: string) {
     onSelect(id)
-    onChange(buildCredentialProviderValues(id))
+    try {
+      const cp = await fetchCredentialProvider(id)
+      onChange({
+        ...values,
+        name: cp.name,
+        description: cp.description,
+        credentialType: cp.type,
+      })
+    } catch {
+      // If fetch fails, just set the ID
+    }
     setMode('new')
   }
 

@@ -4,6 +4,7 @@ import type {
   TrustProviderFormValues,
   AccessConditionFormValues,
   CredentialProviderFormValues,
+  FormTag,
 } from '@/shared/components/forms/types'
 
 /**
@@ -15,7 +16,7 @@ export interface PolicyFormValues {
   name: string
   description: string
   status: string // 'active' | 'inactive' | 'deprecated'
-  tags: string[]
+  tags: FormTag[]
 
   // Client Workload tab
   clientWorkloadId: string

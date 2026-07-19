@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExistingWorkloadSelector } from '@/features/policies/components/tabs/client-workload/ExistingWorkloadSelector'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
-import { buildClientWorkloadValues } from '@/data/policies/policyFormMappers'
+import { fetchClientWorkload } from '@/features/policies/api/entityApi'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
 interface ClientWorkloadTabProps {
@@ -21,9 +21,22 @@ export function ClientWorkloadTab({
 }: ClientWorkloadTabProps) {
   const [mode, setMode] = useState<'new' | 'existing'>('new')
 
-  function handleSelectExisting(id: string) {
+  async function handleSelectExisting(id: string) {
     onSelect(id)
-    onChange(buildClientWorkloadValues(id))
+    try {
+      const cw = await fetchClientWorkload(id)
+      onChange({
+        name: cw.name,
+        description: cw.description,
+        identifiers: (cw.identifiers ?? []).map((ident) => ({
+          type: ident.type,
+          values: [ident.value || ''],
+        })),
+        tags: [],
+      })
+    } catch {
+      // If fetch fails, just set the ID without populating form
+    }
     setMode('new')
   }
 

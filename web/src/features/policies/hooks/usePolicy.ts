@@ -1,20 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchPolicy, savePolicy } from '@/features/policies/api/policiesApi'
+import {
+  fetchPolicies,
+  fetchPolicy,
+  createPolicy,
+  savePolicy,
+  deletePolicy,
+} from '@/features/policies/api/policiesApi'
 import type { PolicyFormValues } from '@/features/policies/types/formValues'
+import type { FetchPoliciesResult } from '@/features/policies/api/policiesApi'
 
-const POLICY_KEY = ['policies'] as const
-
-export function policyQueryKey(id: string): readonly unknown[] {
-  return [...POLICY_KEY, 'detail', id]
+export function usePolicies(page = 1, perPage = 20, search = '') {
+  return useQuery<FetchPoliciesResult>({
+    queryKey: ['policies', 'list', page, perPage, search],
+    queryFn: () => fetchPolicies(page, perPage, search),
+  })
 }
 
-/**
- * Loads the full form data for a policy by id. Backed by React Query so
- * consumers get caching, refetching, loading and error states for free.
- */
 export function usePolicy(id: string | undefined) {
   return useQuery({
-    queryKey: policyQueryKey(id ?? ''),
+    queryKey: ['policies', 'detail', id],
     queryFn: () => {
       if (!id) return Promise.resolve(null)
       return fetchPolicy(id)
@@ -23,15 +27,33 @@ export function usePolicy(id: string | undefined) {
   })
 }
 
-/**
- * Mutation for saving edits to an existing policy.
- */
+export function useCreatePolicy() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values: PolicyFormValues) => createPolicy(values),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['policies', 'list'] })
+    },
+  })
+}
+
 export function useSavePolicy(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (values: PolicyFormValues) => savePolicy(id, values),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: policyQueryKey(id) })
+      qc.invalidateQueries({ queryKey: ['policies', 'detail', id] })
+      qc.invalidateQueries({ queryKey: ['policies', 'list'] })
+    },
+  })
+}
+
+export function useDeletePolicy() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deletePolicy(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['policies', 'list'] })
     },
   })
 }

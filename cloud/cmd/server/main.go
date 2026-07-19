@@ -83,9 +83,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders)
 	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
+	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, authenticator)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -135,12 +136,12 @@ func buildHTTPServer(
 	trustProviderSvc *service.TrustProviderService,
 	accessConditionSvc *service.AccessConditionService,
 	credentialProviderSvc *service.CredentialProviderService,
+	accessPolicySvc *service.AccessPolicyService,
 	authenticator rest.APIAuthenticator,
 ) *http.Server {
 	mux := http.NewServeMux()
 
 	apiHandlers := rest.NewAPIHandlers(
-		repos.AccessPolicies,
 		repos.AgentControllers,
 		repos.Users,
 	)
@@ -151,6 +152,7 @@ func buildHTTPServer(
 	rest.NewTrustProviderHandler(trustProviderSvc).RegisterRoutes(mux)
 	rest.NewAccessConditionHandler(accessConditionSvc).RegisterRoutes(mux)
 	rest.NewCredentialProviderHandler(credentialProviderSvc).RegisterRoutes(mux)
+	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 
 	handler := applyMiddleware(mux, authenticator)
