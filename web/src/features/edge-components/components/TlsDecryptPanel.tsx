@@ -28,7 +28,7 @@ export function TlsDecryptPanel() {
             <p className="text-xs text-gray-600 mb-2">
               Dipole provides the Root CA certificate for your tenant in support of the TLS Decrypt feature.
             </p>
-            <p className="text-xs text-gray-600 max-w-lg">
+            <p className="text-xs text-gray-600 max-w-3xl">
               When you enable TLS Decrypt for your Dipole-enabled Client Workloads, Dipole Agent Proxy can decrypt and manage encrypted traffic (such as HTTPS) to and from the configured Client and Server Workloads.
             </p>
           </div>

@@ -60,6 +60,7 @@ func (s *RegistrationService) CreateController(ctx context.Context, tenantID uui
 		ID:                  uuid.New(),
 		TenantID:            tenantID,
 		Name:                name,
+		IsActive:            true,
 		Status:              domain.AgentStatusUnregistered,
 		DeviceCode:          code,
 		DeviceCodeExpiresAt: &expiresAt,
