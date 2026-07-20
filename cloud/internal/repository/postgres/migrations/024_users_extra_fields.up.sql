@@ -1,0 +1,4 @@
+ALTER TABLE users ADD COLUMN first_name text NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN last_name text NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN phone text NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN is_active boolean NOT NULL DEFAULT true;

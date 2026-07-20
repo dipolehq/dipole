@@ -4,6 +4,8 @@ import { X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { useClickOutside } from '@/shared/hooks/useClickOutside'
+import { useCreateRole } from '@/features/administration/hooks/useRoles'
+import { apiErrorMessage } from '@/features/administration/api/rolesApi'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -46,7 +48,9 @@ const PERMISSION_ENTITIES = [
 
 export function CreateRolePage() {
   const navigate = useNavigate()
-  const [status, setStatus] = useState('')
+  const createMutation = useCreateRole()
+  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState('active')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [resourceSets, setResourceSets] = useState<string[]>([])
@@ -68,9 +72,19 @@ export function CreateRolePage() {
     }
   }
 
-  function handleSave() {
-    console.info('[create-role] submitted', { name, description, status, resourceSets, permissions })
-    navigate('/administration')
+  async function handleSave() {
+    setError(null)
+    try {
+      await createMutation.mutateAsync({
+        name,
+        description,
+        isActive: status === 'active',
+        permissions: permissions as Record<string, string>,
+      })
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create role'))
+    }
   }
 
   function handleCancel() {
@@ -79,11 +93,18 @@ export function CreateRolePage() {
 
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">Save</button>
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+            {createMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
         </div>
       </div>

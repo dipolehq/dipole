@@ -225,6 +225,10 @@ type User struct {
 	TenantID  uuid.UUID
 	Email     string
 	Name      string
+	FirstName string
+	LastName  string
+	Phone     string
+	IsActive  bool
 	RoleID    *uuid.UUID
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -4,7 +4,8 @@ import { FileText, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { useClickOutside } from '@/shared/hooks/useClickOutside'
-import { rolesData } from '@/data/administration/roles'
+import { useRole, useSaveRole, useDeleteRole } from '@/features/administration/hooks/useRoles'
+import { apiErrorMessage } from '@/features/administration/api/rolesApi'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -50,20 +51,41 @@ type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 export function RoleDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const role = rolesData.find((r) => r.id === id)
+
+  const { data: role, isLoading } = useRole(id)
+  const saveMutation = useSaveRole(id ?? '')
+  const deleteMutation = useDeleteRole()
 
   const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
   const [sectionOpen, setSectionOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [status, setStatus] = useState(role?.isActive ? 'active' : 'inactive')
-  const [name, setName] = useState(role?.name ?? '')
-  const [description, setDescription] = useState(role?.description ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [status, setStatus] = useState('')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [resourceSets, setResourceSets] = useState<string[]>(['default'])
   const [permissions, setPermissions] = useState<Record<string, PermissionLevel>>(
     Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, 'no_access' as PermissionLevel]))
   )
+  const [initialized, setInitialized] = useState(false)
 
-  if (!role) {
+  if (role && !initialized) {
+    setStatus(role.isActive ? 'active' : 'inactive')
+    setName(role.name)
+    setDescription(role.description)
+    const perms = (role.permissions ?? {}) as Record<string, string>
+    setPermissions(
+      Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access']))
+    )
+    setInitialized(true)
+  }
+
+  if (initialized && role && role.id !== id) {
+    setInitialized(false)
+  }
+
+  if (!id || (!isLoading && role === null)) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white"><PageHeader /></div>
@@ -83,10 +105,20 @@ export function RoleDetailPage() {
     setPermissions({ ...permissions, [entity]: level })
   }
 
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      console.info('[save-role]', { name, description, status, resourceSets, permissions })
-      setIsEditing(false)
+      setError(null)
+      try {
+        await saveMutation.mutateAsync({
+          name,
+          description,
+          isActive: status === 'active',
+          permissions: permissions as Record<string, string>,
+        })
+        setIsEditing(false)
+      } catch (err) {
+        setError(apiErrorMessage(err, 'Failed to save role'))
+      }
     } else {
       setIsEditing(true)
     }
@@ -94,23 +126,47 @@ export function RoleDetailPage() {
 
   function handleCancel() {
     if (isEditing) {
-      setName(role?.name ?? '')
-      setDescription(role?.description ?? '')
-      setStatus(role?.isActive ? 'active' : 'inactive')
+      if (role) {
+        setStatus(role.isActive ? 'active' : 'inactive')
+        setName(role.name)
+        setDescription(role.description)
+        const perms = (role.permissions ?? {}) as Record<string, string>
+        setPermissions(
+          Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access']))
+        )
+      }
       setIsEditing(false)
     } else {
       navigate('/administration')
     }
   }
 
+  async function handleDelete() {
+    if (!id) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete role'))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
+          {!isEditing && (
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          )}
           <div className="relative">
             <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
               <FileText size={14} className="shrink-0" />
@@ -188,8 +244,13 @@ export function RoleDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput label="ID" value={role.id} disabled />
-                  <FloatingInput label="Users" value={String(role.users)} disabled />
+                  {role && (
+                    <>
+                      <FloatingInput label="ID" value={role.id} disabled />
+                      <FloatingInput label="Created At" value={new Date(role.createdAt).toLocaleString()} disabled />
+                      <FloatingInput label="Last Modified" value={new Date(role.updatedAt).toLocaleString()} disabled />
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -212,6 +273,23 @@ export function RoleDetailPage() {
           <div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>
         )}
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Role</h3>
+            <p className="text-xs text-gray-600 mb-5">
+              Are you sure you want to delete this role? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

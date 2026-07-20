@@ -144,6 +144,7 @@ func buildHTTPServer(
 	apiHandlers := rest.NewAPIHandlers(
 		repos.AgentControllers,
 		repos.Users,
+		repos.Roles,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
 

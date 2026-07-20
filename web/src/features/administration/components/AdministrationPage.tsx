@@ -9,8 +9,8 @@ import { IdentityProvidersTable } from '@/features/administration/components/Ide
 import { LogStreamsTable } from '@/features/administration/components/LogStreamsTable'
 import { GlobalPolicySettingsPanel } from '@/features/administration/components/GlobalPolicySettingsPanel'
 import { SignOnPolicyPanel } from '@/features/administration/components/SignOnPolicyPanel'
-import { usersData } from '@/data/administration/users'
-import { rolesData } from '@/data/administration/roles'
+import { useUsers } from '@/features/administration/hooks/useUsers'
+import { useRoles } from '@/features/administration/hooks/useRoles'
 import { resourceSetsData } from '@/data/administration/resourceSets'
 import { identityProvidersData } from '@/data/administration/identityProviders'
 import { logStreamsData } from '@/data/administration/logStreams'
@@ -34,20 +34,20 @@ export function AdministrationPage() {
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
 
+  const { data: usersData, isLoading: usersLoading } = useUsers(currentPage, pageSize, searchQuery)
+  const usersItems = usersData?.items ?? []
+  const usersTotal = usersData?.total ?? 0
+
+  const { data: rolesApiData, isLoading: rolesLoading } = useRoles(currentPage, pageSize, searchQuery)
+  const rolesItems = rolesApiData?.items ?? []
+  const rolesTotal = rolesApiData?.total ?? 0
+
   const selectedLabel = ADMIN_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   const totalItems = selectedSection === 'users'
-    ? usersData.filter((u) => {
-        if (!searchQuery) return true
-        const q = searchQuery.toLowerCase()
-        return u.firstName.toLowerCase().includes(q) || u.lastName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
-      }).length
+    ? usersTotal
     : selectedSection === 'roles'
-    ? rolesData.filter((r) => {
-        if (!searchQuery) return true
-        const q = searchQuery.toLowerCase()
-        return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)
-      }).length
+    ? rolesTotal
     : selectedSection === 'resource_sets'
     ? resourceSetsData.filter((rs) => {
         if (!searchQuery) return true
@@ -105,9 +105,9 @@ export function AdministrationPage() {
       {/* Content — full bleed */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {selectedSection === 'users' ? (
-          <UsersTable searchQuery={searchQuery} />
+          <UsersTable items={usersItems} isLoading={usersLoading} />
         ) : selectedSection === 'roles' ? (
-          <RolesTable searchQuery={searchQuery} />
+          <RolesTable items={rolesItems} isLoading={rolesLoading} />
         ) : selectedSection === 'resource_sets' ? (
           <ResourceSetsTable searchQuery={searchQuery} />
         ) : selectedSection === 'identity_providers' ? (
