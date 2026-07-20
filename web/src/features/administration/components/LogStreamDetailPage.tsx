@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { logStreamsData, LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { useLogStream, useSaveLogStream, useDeleteLogStream } from '@/features/administration/hooks/useLogStreams'
+import { apiErrorMessage } from '@/features/administration/api/logStreamsApi'
 import type { LogStreamEventType, LogStreamDestinationType } from '@/data/administration/logStreams'
 
 const DETAIL_SECTIONS = [
@@ -17,30 +19,65 @@ type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 export function LogStreamDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const ls = logStreamsData.find((l) => l.id === id)
+
+  const { data: ls, isLoading } = useLogStream(id)
+  const saveMutation = useSaveLogStream(id ?? '')
+  const deleteMutation = useDeleteLogStream()
 
   const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
   const [sectionOpen, setSectionOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [name, setName] = useState(ls?.name ?? '')
-  const [description, setDescription] = useState(ls?.description ?? '')
-  const [eventType, setEventType] = useState<LogStreamEventType>(ls?.eventType ?? 'access_authorization')
-  const [destinationType, setDestinationType] = useState<LogStreamDestinationType>(ls?.destinationType ?? 'aws_s3')
-  const [s3Region, setS3Region] = useState(ls?.s3BucketRegion ?? '')
-  const [s3Bucket, setS3Bucket] = useState(ls?.s3BucketName ?? '')
-  const [s3Prefix, setS3Prefix] = useState(ls?.s3PathPrefix ?? '')
-  const [gcsBucket, setGcsBucket] = useState(ls?.gcsBucketName ?? '')
-  const [gcsAudience, setGcsAudience] = useState(ls?.gcsAudience ?? '')
-  const [gcsEmail, setGcsEmail] = useState(ls?.gcsServiceAccountEmail ?? '')
-  const [gcsLifetime, setGcsLifetime] = useState(ls?.gcsTokenLifetime ?? '3600')
-  const [hostPort, setHostPort] = useState(ls?.hostPort ?? '')
-  const [tls, setTls] = useState(ls?.tls ?? false)
-  const [tlsVerification, setTlsVerification] = useState(ls?.tlsVerification ?? 'full')
-  const [apiKey, setApiKey] = useState(ls?.apiKey ?? '')
-  const [authToken, setAuthToken] = useState(ls?.authToken ?? '')
-  const [sourceName, setSourceName] = useState(ls?.sourceName ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  if (!ls) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [eventType, setEventType] = useState<LogStreamEventType>('access_authorization')
+  const [destinationType, setDestinationType] = useState<LogStreamDestinationType>('aws_s3')
+  const [s3Region, setS3Region] = useState('')
+  const [s3Bucket, setS3Bucket] = useState('')
+  const [s3Prefix, setS3Prefix] = useState('')
+  const [gcsBucket, setGcsBucket] = useState('')
+  const [gcsPathPrefix, setGcsPathPrefix] = useState('')
+  const [gcsAudience, setGcsAudience] = useState('')
+  const [gcsEmail, setGcsEmail] = useState('')
+  const [gcsLifetime, setGcsLifetime] = useState('3600')
+  const [hostPort, setHostPort] = useState('')
+  const [tls, setTls] = useState(false)
+  const [tlsVerification, setTlsVerification] = useState('full')
+  const [apiKey, setApiKey] = useState('')
+  const [authToken, setAuthToken] = useState('')
+  const [sourceName, setSourceName] = useState('')
+  const [initialized, setInitialized] = useState(false)
+
+  if (ls && !initialized) {
+    const config = (ls.config ?? {}) as Record<string, unknown>
+    setName(ls.name)
+    setDescription(ls.description)
+    setEventType(ls.eventType as LogStreamEventType)
+    setDestinationType(ls.destinationType as LogStreamDestinationType)
+    setS3Region((config.s3BucketRegion as string) ?? '')
+    setS3Bucket((config.s3BucketName as string) ?? '')
+    setS3Prefix((config.s3PathPrefix as string) ?? '')
+    setGcsBucket((config.gcsBucketName as string) ?? '')
+    setGcsPathPrefix((config.gcsPathPrefix as string) ?? '')
+    setGcsAudience((config.gcsAudience as string) ?? '')
+    setGcsEmail((config.gcsServiceAccountEmail as string) ?? '')
+    setGcsLifetime((config.gcsTokenLifetime as string) ?? '3600')
+    setHostPort((config.hostPort as string) ?? '')
+    setTls((config.tls as boolean) ?? false)
+    setTlsVerification((config.tlsVerification as string) ?? 'full')
+    setApiKey((config.apiKey as string) ?? '')
+    setAuthToken((config.authToken as string) ?? '')
+    setSourceName((config.sourceName as string) ?? '')
+    setInitialized(true)
+  }
+
+  if (initialized && ls && ls.id !== id) {
+    setInitialized(false)
+  }
+
+  if (!id || (!isLoading && ls === null)) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white"><PageHeader /></div>
@@ -55,27 +92,71 @@ export function LogStreamDetailPage() {
   const disabled = !isEditing
   const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      console.info('[save-log-stream]', { name, description, eventType, destinationType })
-      setIsEditing(false)
+      setError(null)
+      const config: Record<string, unknown> = {}
+      if (destinationType === 'aws_s3') {
+        config.s3BucketRegion = s3Region; config.s3BucketName = s3Bucket; config.s3PathPrefix = s3Prefix
+      } else if (destinationType === 'gcs_bucket') {
+        config.gcsBucketName = gcsBucket; config.gcsPathPrefix = gcsPathPrefix; config.gcsAudience = gcsAudience; config.gcsServiceAccountEmail = gcsEmail; config.gcsTokenLifetime = gcsLifetime
+      } else if (destinationType === 'crowdstrike_siem') {
+        config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.apiKey = apiKey; config.sourceName = sourceName
+      } else if (destinationType === 'splunk_siem') {
+        config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.authToken = authToken; config.sourceName = sourceName
+      }
+      try {
+        await saveMutation.mutateAsync({ name, description, isActive: true, eventType, destinationType, config })
+        setIsEditing(false)
+      } catch (err) {
+        setError(apiErrorMessage(err, 'Failed to save log stream'))
+      }
     } else { setIsEditing(true) }
   }
 
   function handleCancel() {
     if (isEditing) {
-      setName(ls?.name ?? ''); setDescription(ls?.description ?? ''); setIsEditing(false)
+      if (ls) {
+        const config = (ls.config ?? {}) as Record<string, unknown>
+        setName(ls.name); setDescription(ls.description)
+        setEventType(ls.eventType as LogStreamEventType); setDestinationType(ls.destinationType as LogStreamDestinationType)
+        setS3Region((config.s3BucketRegion as string) ?? ''); setS3Bucket((config.s3BucketName as string) ?? ''); setS3Prefix((config.s3PathPrefix as string) ?? '')
+        setGcsBucket((config.gcsBucketName as string) ?? ''); setGcsPathPrefix((config.gcsPathPrefix as string) ?? ''); setGcsAudience((config.gcsAudience as string) ?? '')
+        setGcsEmail((config.gcsServiceAccountEmail as string) ?? ''); setGcsLifetime((config.gcsTokenLifetime as string) ?? '3600')
+        setHostPort((config.hostPort as string) ?? ''); setTls((config.tls as boolean) ?? false)
+        setTlsVerification((config.tlsVerification as string) ?? 'full')
+        setApiKey((config.apiKey as string) ?? ''); setAuthToken((config.authToken as string) ?? ''); setSourceName((config.sourceName as string) ?? '')
+      }
+      setIsEditing(false)
     } else { navigate('/administration') }
+  }
+
+  async function handleDelete() {
+    if (!id) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete log stream'))
+    }
   }
 
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
+          {!isEditing && (
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          )}
           <div className="relative">
             <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
               <FileText size={14} className="shrink-0" />
@@ -133,6 +214,7 @@ export function LogStreamDetailPage() {
                         <div className="text-xs text-gray-700 font-mono">https://acme.id.ap-south-1.dipolehq.com/</div>
                       </div>
                       <FloatingInput label="Bucket Name" value={gcsBucket} onChange={setGcsBucket} disabled={disabled} />
+                      <FloatingInput label="Path Prefix" value={gcsPathPrefix} onChange={setGcsPathPrefix} disabled={disabled} />
                       <FloatingInput label="Audience" value={gcsAudience} onChange={setGcsAudience} disabled={disabled} />
                       <FloatingInput label="Service Account Email" value={gcsEmail} onChange={setGcsEmail} disabled={disabled} />
                       <FloatingInput label="Token Lifetime (seconds)" value={gcsLifetime} onChange={setGcsLifetime} disabled={disabled} />
@@ -183,9 +265,13 @@ export function LogStreamDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput label="ID" value={ls.id} disabled />
-                  <FloatingInput label="Status" value={ls.isActive ? 'Active' : 'Inactive'} disabled />
-                  <FloatingInput label="Event Type" value={LOG_STREAM_EVENT_TYPE_OPTIONS.find((o) => o.value === ls.eventType)?.label ?? ''} disabled />
+                  {ls && (
+                    <>
+                      <FloatingInput label="ID" value={ls.id} disabled />
+                      <FloatingInput label="Status" value={ls.isActive ? 'Active' : 'Inactive'} disabled />
+                      <FloatingInput label="Created At" value={new Date(ls.createdAt).toLocaleString()} disabled />
+                    </>
+                  )}
                 </div>
               </div>
               <div className="border border-border rounded-lg p-5">
@@ -202,6 +288,23 @@ export function LogStreamDetailPage() {
         {selectedSection === 'metrics' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Metrics — coming soon</p></div>)}
         {selectedSection === 'logs' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>)}
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Log Stream</h3>
+            <p className="text-xs text-gray-600 mb-5">
+              Are you sure you want to delete this log stream? Events will no longer be exported to this destination.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

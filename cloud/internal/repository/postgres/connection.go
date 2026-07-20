@@ -22,21 +22,23 @@ type TxPool interface {
 }
 
 type Repositories struct {
-	pool                Pool
-	Tenants             *TenantRepo
-	ClientWorkloads     *ClientWorkloadRepo
-	ServerWorkloads     *ServerWorkloadRepo
-	TrustProviders      *TrustProviderRepo
-	CredentialProviders *CredentialProviderRepo
-	AccessConditions    *AccessConditionRepo
-	AccessPolicies      *AccessPolicyRepo
-	AgentControllers    *AgentControllerRepo
-	Events              *EventRepo
-	ResourceSets        *ResourceSetRepo
-	Users               *UserRepo
-	Roles               *RoleRepo
-	IdentityProviders   *IdentityProviderRepo
-	SignOnPolicies      *SignOnPolicyRepo
+	pool                   Pool
+	Tenants                *TenantRepo
+	ClientWorkloads        *ClientWorkloadRepo
+	ServerWorkloads        *ServerWorkloadRepo
+	TrustProviders         *TrustProviderRepo
+	CredentialProviders    *CredentialProviderRepo
+	AccessConditions       *AccessConditionRepo
+	AccessPolicies         *AccessPolicyRepo
+	AgentControllers       *AgentControllerRepo
+	Events                 *EventRepo
+	ResourceSets           *ResourceSetRepo
+	Users                  *UserRepo
+	Roles                  *RoleRepo
+	IdentityProviders      *IdentityProviderRepo
+	SignOnPolicies         *SignOnPolicyRepo
+	LogStreams             *LogStreamRepo
+	GlobalPolicyCompliance *GlobalPolicyComplianceRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -60,21 +62,23 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 
 func NewRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
-		pool:                pool,
-		Tenants:             &TenantRepo{pool: pool},
-		ClientWorkloads:     &ClientWorkloadRepo{pool: pool},
-		ServerWorkloads:     &ServerWorkloadRepo{pool: pool},
-		TrustProviders:      &TrustProviderRepo{pool: pool},
-		CredentialProviders: &CredentialProviderRepo{pool: pool},
-		AccessConditions:    &AccessConditionRepo{pool: pool},
-		AccessPolicies:      &AccessPolicyRepo{pool: pool},
-		AgentControllers:    &AgentControllerRepo{pool: pool},
-		Events:              &EventRepo{pool: pool},
-		ResourceSets:        &ResourceSetRepo{pool: pool},
-		Users:               &UserRepo{pool: pool},
-		Roles:               &RoleRepo{pool: pool},
-		IdentityProviders:   &IdentityProviderRepo{pool: pool},
-		SignOnPolicies:      &SignOnPolicyRepo{pool: pool},
+		pool:                   pool,
+		Tenants:                &TenantRepo{pool: pool},
+		ClientWorkloads:        &ClientWorkloadRepo{pool: pool},
+		ServerWorkloads:        &ServerWorkloadRepo{pool: pool},
+		TrustProviders:         &TrustProviderRepo{pool: pool},
+		CredentialProviders:    &CredentialProviderRepo{pool: pool},
+		AccessConditions:       &AccessConditionRepo{pool: pool},
+		AccessPolicies:         &AccessPolicyRepo{pool: pool},
+		AgentControllers:       &AgentControllerRepo{pool: pool},
+		Events:                 &EventRepo{pool: pool},
+		ResourceSets:           &ResourceSetRepo{pool: pool},
+		Users:                  &UserRepo{pool: pool},
+		Roles:                  &RoleRepo{pool: pool},
+		IdentityProviders:      &IdentityProviderRepo{pool: pool},
+		SignOnPolicies:         &SignOnPolicyRepo{pool: pool},
+		LogStreams:             &LogStreamRepo{pool: pool},
+		GlobalPolicyCompliance: &GlobalPolicyComplianceRepo{pool: pool},
 	}
 }
 

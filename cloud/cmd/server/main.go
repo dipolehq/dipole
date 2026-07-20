@@ -148,6 +148,8 @@ func buildHTTPServer(
 		repos.ResourceSets,
 		repos.IdentityProviders,
 		repos.SignOnPolicies,
+		repos.LogStreams,
+		repos.GlobalPolicyCompliance,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
 

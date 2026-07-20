@@ -18,13 +18,20 @@ type signOnPolicyStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.SignOnPolicy) error
 }
 
+type globalPolicyComplianceStore interface {
+	Get(ctx context.Context, tenantID uuid.UUID) (*domain.GlobalPolicyCompliance, error)
+	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.GlobalPolicyCompliance) error
+}
+
 type APIHandlers struct {
-	agentControllers  repository.AgentControllerRepository
-	users             repository.UserRepository
-	roles             repository.RoleRepository
-	resourceSets      repository.ResourceSetRepository
-	identityProviders repository.IdentityProviderRepository
-	signOnPolicies    signOnPolicyStore
+	agentControllers       repository.AgentControllerRepository
+	users                  repository.UserRepository
+	roles                  repository.RoleRepository
+	resourceSets           repository.ResourceSetRepository
+	identityProviders      repository.IdentityProviderRepository
+	signOnPolicies         signOnPolicyStore
+	logStreams             repository.LogStreamRepository
+	globalPolicyCompliance globalPolicyComplianceStore
 }
 
 func NewAPIHandlers(
@@ -34,14 +41,18 @@ func NewAPIHandlers(
 	rs repository.ResourceSetRepository,
 	idp repository.IdentityProviderRepository,
 	sop signOnPolicyStore,
+	ls repository.LogStreamRepository,
+	gpc globalPolicyComplianceStore,
 ) *APIHandlers {
 	return &APIHandlers{
-		agentControllers:  agc,
-		users:             u,
-		roles:             r,
-		resourceSets:      rs,
-		identityProviders: idp,
-		signOnPolicies:    sop,
+		agentControllers:       agc,
+		users:                  u,
+		roles:                  r,
+		resourceSets:           rs,
+		identityProviders:      idp,
+		signOnPolicies:         sop,
+		logStreams:             ls,
+		globalPolicyCompliance: gpc,
 	}
 }
 
@@ -80,6 +91,15 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/sign-on-policy", h.GetSignOnPolicy)
 	mux.HandleFunc("PUT /api/v1/sign-on-policy", h.UpdateSignOnPolicy)
+
+	mux.HandleFunc("GET /api/v1/global-policy-compliance", h.GetGlobalPolicyCompliance)
+	mux.HandleFunc("PUT /api/v1/global-policy-compliance", h.UpdateGlobalPolicyCompliance)
+
+	mux.HandleFunc("GET /api/v1/log-streams", h.ListLogStreams)
+	mux.HandleFunc("POST /api/v1/log-streams", h.CreateLogStream)
+	mux.HandleFunc("GET /api/v1/log-streams/{id}", h.GetLogStream)
+	mux.HandleFunc("PUT /api/v1/log-streams/{id}", h.UpdateLogStream)
+	mux.HandleFunc("DELETE /api/v1/log-streams/{id}", h.DeleteLogStream)
 }
 
 func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
@@ -1018,5 +1038,263 @@ func (h *APIHandlers) UpdateSignOnPolicy(w http.ResponseWriter, r *http.Request)
 	respondJSON(w, http.StatusOK, map[string]any{
 		"requireSso": req.RequireSSO,
 		"requireMfa": req.RequireMFA,
+	})
+}
+
+// --- Log Stream Handlers ---
+
+func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	opts := parseListOptions(r)
+	items, total, err := h.logStreams.List(r.Context(), tenantID, opts)
+	if err != nil {
+		slog.Error("list log streams failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	respondJSON(w, http.StatusOK, NewListResponse(toLogStreamResponses(items), total, opts))
+}
+
+func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	var req logStreamRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondBadRequest(w, err.Error())
+		return
+	}
+	if req.Name == "" {
+		respondBadRequest(w, "name is required")
+		return
+	}
+	if req.EventType == "" {
+		respondBadRequest(w, "eventType is required")
+		return
+	}
+	if req.DestinationType == "" {
+		respondBadRequest(w, "destinationType is required")
+		return
+	}
+	validEventTypes := map[string]bool{"access_authorization": true, "audit_logs": true, "workload_events": true}
+	if !validEventTypes[req.EventType] {
+		respondBadRequest(w, "eventType must be access_authorization, audit_logs, or workload_events")
+		return
+	}
+	validDestTypes := map[string]bool{"aws_s3": true, "gcs_bucket": true, "crowdstrike_siem": true, "splunk_siem": true}
+	if !validDestTypes[req.DestinationType] {
+		respondBadRequest(w, "destinationType must be aws_s3, gcs_bucket, crowdstrike_siem, or splunk_siem")
+		return
+	}
+	ls := req.toDomain()
+	if err := h.logStreams.Create(r.Context(), tenantID, &ls); err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	saved, err := h.logStreams.GetByID(r.Context(), tenantID, ls.ID)
+	if err != nil || saved == nil {
+		respondJSON(w, http.StatusCreated, toLogStreamResponse(&ls))
+		return
+	}
+	respondJSON(w, http.StatusCreated, toLogStreamResponse(saved))
+}
+
+func (h *APIHandlers) GetLogStream(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondBadRequest(w, "invalid id")
+		return
+	}
+	ls, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	if err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	if ls == nil {
+		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, toLogStreamResponse(ls))
+}
+
+func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondBadRequest(w, "invalid id")
+		return
+	}
+	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	if err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	if existing == nil {
+		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
+		return
+	}
+	var req logStreamRequest
+	if err := decodeJSON(r, &req); err != nil {
+		respondBadRequest(w, err.Error())
+		return
+	}
+	ls := req.toDomain()
+	ls.ID = id
+	ls.TenantID = tenantID
+	if err := h.logStreams.Update(r.Context(), tenantID, &ls); err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	saved, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	if err != nil || saved == nil {
+		respondJSON(w, http.StatusOK, toLogStreamResponse(&ls))
+		return
+	}
+	respondJSON(w, http.StatusOK, toLogStreamResponse(saved))
+}
+
+func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondBadRequest(w, "invalid id")
+		return
+	}
+	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	if err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	if existing == nil {
+		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
+		return
+	}
+	if err := h.logStreams.Delete(r.Context(), tenantID, id); err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Log Stream DTOs ---
+
+type logStreamRequest struct {
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	IsActive        *bool           `json:"isActive"`
+	EventType       string          `json:"eventType"`
+	DestinationType string          `json:"destinationType"`
+	Config          json.RawMessage `json:"config"`
+}
+
+func (r logStreamRequest) toDomain() domain.LogStream {
+	isActive := true
+	if r.IsActive != nil {
+		isActive = *r.IsActive
+	}
+	config := r.Config
+	if config == nil {
+		config = json.RawMessage(`{}`)
+	}
+	return domain.LogStream{
+		Name:            r.Name,
+		Description:     r.Description,
+		IsActive:        isActive,
+		EventType:       r.EventType,
+		DestinationType: r.DestinationType,
+		Config:          config,
+	}
+}
+
+type logStreamResponse struct {
+	ID              uuid.UUID       `json:"id"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	IsActive        bool            `json:"isActive"`
+	EventType       string          `json:"eventType"`
+	DestinationType string          `json:"destinationType"`
+	Config          json.RawMessage `json:"config"`
+	CreatedAt       string          `json:"createdAt"`
+	UpdatedAt       string          `json:"updatedAt"`
+}
+
+// TODO: Encrypt Log Stream config at rest (contains apiKey/authToken for SIEM destinations).
+// For now, config is stored as plaintext JSONB — acceptable for MVP behind auth.
+func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
+	config := ls.Config
+	if config == nil {
+		config = json.RawMessage(`{}`)
+	}
+	return logStreamResponse{
+		ID:              ls.ID,
+		Name:            ls.Name,
+		Description:     ls.Description,
+		IsActive:        ls.IsActive,
+		EventType:       ls.EventType,
+		DestinationType: ls.DestinationType,
+		Config:          config,
+		CreatedAt:       ls.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:       ls.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func toLogStreamResponses(streams []domain.LogStream) []logStreamResponse {
+	resp := make([]logStreamResponse, 0, len(streams))
+	for i := range streams {
+		resp = append(resp, toLogStreamResponse(&streams[i]))
+	}
+	return resp
+}
+
+// --- Global Policy Compliance Handlers ---
+
+func (h *APIHandlers) GetGlobalPolicyCompliance(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	p, err := h.globalPolicyCompliance.Get(r.Context(), tenantID)
+	if err != nil {
+		slog.Error("get global policy compliance failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"apTrustProvider":            p.APTrustProvider,
+		"apAccessCondition":          p.APAccessCondition,
+		"acTrustProvider":            p.ACTrustProvider,
+		"acTlsHostname":              p.ACTLSHostname,
+		"accessTokenLifetimeSeconds": p.AccessTokenLifetimeSeconds,
+	})
+}
+
+func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	var req struct {
+		APTrustProvider            string `json:"apTrustProvider"`
+		APAccessCondition          string `json:"apAccessCondition"`
+		ACTrustProvider            string `json:"acTrustProvider"`
+		ACTLSHostname              string `json:"acTlsHostname"`
+		AccessTokenLifetimeSeconds int    `json:"accessTokenLifetimeSeconds"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		respondBadRequest(w, err.Error())
+		return
+	}
+	p := &domain.GlobalPolicyCompliance{
+		TenantID:                   tenantID,
+		APTrustProvider:            req.APTrustProvider,
+		APAccessCondition:          req.APAccessCondition,
+		ACTrustProvider:            req.ACTrustProvider,
+		ACTLSHostname:              req.ACTLSHostname,
+		AccessTokenLifetimeSeconds: req.AccessTokenLifetimeSeconds,
+	}
+	if err := h.globalPolicyCompliance.Upsert(r.Context(), tenantID, p); err != nil {
+		slog.Error("update global policy compliance failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"apTrustProvider":            req.APTrustProvider,
+		"apAccessCondition":          req.APAccessCondition,
+		"acTrustProvider":            req.ACTrustProvider,
+		"acTlsHostname":              req.ACTLSHostname,
+		"accessTokenLifetimeSeconds": req.AccessTokenLifetimeSeconds,
 	})
 }

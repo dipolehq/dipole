@@ -13,15 +13,15 @@ import { useUsers } from '@/features/administration/hooks/useUsers'
 import { useRoles } from '@/features/administration/hooks/useRoles'
 import { useResourceSets } from '@/features/administration/hooks/useResourceSets'
 import { useIdentityProviders } from '@/features/administration/hooks/useIdentityProviders'
-import { logStreamsData } from '@/data/administration/logStreams'
+import { useLogStreams } from '@/features/administration/hooks/useLogStreams'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
   { value: 'roles', label: 'Roles' },
   { value: 'resource_sets', label: 'Resource Sets' },
   { value: 'identity_providers', label: 'Identity Providers' },
-  { value: 'sign_on_policy', label: 'Sign-On Policy' },
   { value: 'log_streams', label: 'Log Streams' },
+  { value: 'sign_on_policy', label: 'Sign-On Policy' },
   { value: 'global_policy_compliance', label: 'Global Policy Compliance' },
 ] as const
 
@@ -50,6 +50,10 @@ export function AdministrationPage() {
   const idpItems = idpData?.items ?? []
   const idpTotal = idpData?.total ?? 0
 
+  const { data: logStreamsApiData, isLoading: logStreamsLoading } = useLogStreams(currentPage, pageSize, searchQuery)
+  const logStreamsItems = logStreamsApiData?.items ?? []
+  const logStreamsTotal = logStreamsApiData?.total ?? 0
+
   const selectedLabel = ADMIN_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   const totalItems = selectedSection === 'users'
@@ -61,11 +65,7 @@ export function AdministrationPage() {
     : selectedSection === 'identity_providers'
     ? idpTotal
     : selectedSection === 'log_streams'
-    ? logStreamsData.filter((ls) => {
-        if (!searchQuery) return true
-        const q = searchQuery.toLowerCase()
-        return ls.name.toLowerCase().includes(q) || ls.description.toLowerCase().includes(q)
-      }).length
+    ? logStreamsTotal
     : 0
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
   const showPagination = selectedSection !== 'global_policy_compliance' && selectedSection !== 'sign_on_policy'
@@ -114,7 +114,7 @@ export function AdministrationPage() {
         ) : selectedSection === 'identity_providers' ? (
           <IdentityProvidersTable items={idpItems} isLoading={idpLoading} />
         ) : selectedSection === 'log_streams' ? (
-          <LogStreamsTable searchQuery={searchQuery} />
+          <LogStreamsTable items={logStreamsItems} isLoading={logStreamsLoading} />
         ) : selectedSection === 'global_policy_compliance' ? (
           <GlobalPolicySettingsPanel />
         ) : selectedSection === 'sign_on_policy' ? (

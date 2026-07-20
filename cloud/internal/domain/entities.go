@@ -253,6 +253,29 @@ type SignOnPolicy struct {
 	UpdatedAt  time.Time
 }
 
+type LogStream struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	Name            string
+	Description     string
+	IsActive        bool
+	EventType       string // "access_authorization", "audit_logs", "workload_events"
+	DestinationType string // "aws_s3", "gcs_bucket", "crowdstrike_siem", "splunk_siem"
+	Config          json.RawMessage
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type GlobalPolicyCompliance struct {
+	TenantID                   uuid.UUID
+	APTrustProvider            string // "required", "recommended", "optional"
+	APAccessCondition          string
+	ACTrustProvider            string
+	ACTLSHostname              string
+	AccessTokenLifetimeSeconds int
+	UpdatedAt                  time.Time
+}
+
 type ListOptions struct {
 	Page    int
 	PerPage int

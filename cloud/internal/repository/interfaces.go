@@ -120,3 +120,11 @@ type IdentityProviderRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, idp *domain.IdentityProvider) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 }
+
+type LogStreamRepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.LogStream, error)
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.LogStream, int, error)
+	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
+	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+}

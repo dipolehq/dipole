@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { useCreateLogStream } from '@/features/administration/hooks/useLogStreams'
+import { apiErrorMessage } from '@/features/administration/api/logStreamsApi'
 import type { LogStreamEventType, LogStreamDestinationType } from '@/data/administration/logStreams'
 
 export function CreateLogStreamPage() {
   const navigate = useNavigate()
+  const createMutation = useCreateLogStream()
+  const [error, setError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -33,9 +37,45 @@ export function CreateLogStreamPage() {
   const [authToken, setAuthToken] = useState('')
   const [sourceName, setSourceName] = useState('')
 
-  function handleSave() {
-    console.info('[create-log-stream]', { name, description, eventType, destinationType })
-    navigate('/administration')
+  async function handleSave() {
+    setError(null)
+    const config: Record<string, unknown> = {}
+    if (destinationType === 'aws_s3') {
+      config.s3BucketRegion = s3Region
+      config.s3BucketName = s3Bucket
+      config.s3PathPrefix = s3Prefix
+    } else if (destinationType === 'gcs_bucket') {
+      config.gcsBucketName = gcsBucket
+      config.gcsPathPrefix = gcsPathPrefix
+      config.gcsAudience = gcsAudience
+      config.gcsServiceAccountEmail = gcsEmail
+      config.gcsTokenLifetime = gcsLifetime
+    } else if (destinationType === 'crowdstrike_siem') {
+      config.hostPort = hostPort
+      config.tls = tls
+      config.tlsVerification = tlsVerification
+      config.apiKey = apiKey
+      config.sourceName = sourceName
+    } else if (destinationType === 'splunk_siem') {
+      config.hostPort = hostPort
+      config.tls = tls
+      config.tlsVerification = tlsVerification
+      config.authToken = authToken
+      config.sourceName = sourceName
+    }
+    try {
+      await createMutation.mutateAsync({
+        name,
+        description,
+        isActive: true,
+        eventType,
+        destinationType,
+        config,
+      })
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create log stream'))
+    }
   }
 
   function handleCancel() {
@@ -44,11 +84,18 @@ export function CreateLogStreamPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">Save</button>
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+            {createMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
         </div>
       </div>
