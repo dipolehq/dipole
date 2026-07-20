@@ -86,7 +86,7 @@ export function PoliciesPage() {
           </div>
           <Link
             to="/access-policies/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-gray-900 text-xs font-medium rounded-md transition-colors"
           >
             <Plus size={14} /> New
           </Link>
@@ -95,9 +95,7 @@ export function PoliciesPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400">Loading access policies…</p>
-        </div>
+        <div className="flex-1" />
       ) : (
         <>
           <div className="flex-1 overflow-y-auto min-h-0">

@@ -53,7 +53,7 @@ export function AccessConditionsPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400">Loading access conditions…</p>
+          
         </div>
       ) : (
         <>

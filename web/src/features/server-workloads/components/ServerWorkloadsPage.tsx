@@ -52,7 +52,7 @@ export function ServerWorkloadsPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400">Loading server workloads…</p>
+          
         </div>
       ) : (
         <>

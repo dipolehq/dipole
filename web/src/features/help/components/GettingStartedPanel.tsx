@@ -57,7 +57,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/edge-components"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-gray-900 text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
           >
             Deploy Dipole Edge
             <ArrowRight size={11} />
@@ -75,7 +75,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/access-policies/new"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-gray-900 text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
           >
             Add an Access Policy
             <ArrowRight size={11} />
@@ -93,7 +93,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/reporting"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-gray-900 text-xs font-medium rounded-md transition-colors mt-4"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors mt-4"
           >
             Explore Reporting
             <ArrowRight size={11} />
@@ -111,7 +111,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-gray-900 text-xs font-medium rounded-md transition-colors mt-4"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors mt-4"
           >
             View Dashboard
             <ArrowRight size={11} />
