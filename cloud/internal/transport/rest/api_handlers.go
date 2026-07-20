@@ -23,6 +23,11 @@ type globalPolicyComplianceStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.GlobalPolicyCompliance) error
 }
 
+type tenantProfileStore interface {
+	Get(ctx context.Context, tenantID uuid.UUID) (*domain.TenantProfile, error)
+	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
+}
+
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	users                  repository.UserRepository
@@ -32,6 +37,7 @@ type APIHandlers struct {
 	signOnPolicies         signOnPolicyStore
 	logStreams             repository.LogStreamRepository
 	globalPolicyCompliance globalPolicyComplianceStore
+	tenantProfiles         tenantProfileStore
 }
 
 func NewAPIHandlers(
@@ -43,6 +49,7 @@ func NewAPIHandlers(
 	sop signOnPolicyStore,
 	ls repository.LogStreamRepository,
 	gpc globalPolicyComplianceStore,
+	tp tenantProfileStore,
 ) *APIHandlers {
 	return &APIHandlers{
 		agentControllers:       agc,
@@ -53,6 +60,7 @@ func NewAPIHandlers(
 		signOnPolicies:         sop,
 		logStreams:             ls,
 		globalPolicyCompliance: gpc,
+		tenantProfiles:         tp,
 	}
 }
 
@@ -94,6 +102,9 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/global-policy-compliance", h.GetGlobalPolicyCompliance)
 	mux.HandleFunc("PUT /api/v1/global-policy-compliance", h.UpdateGlobalPolicyCompliance)
+
+	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
+	mux.HandleFunc("PUT /api/v1/profile", h.UpdateProfile)
 
 	mux.HandleFunc("GET /api/v1/log-streams", h.ListLogStreams)
 	mux.HandleFunc("POST /api/v1/log-streams", h.CreateLogStream)
@@ -1296,5 +1307,55 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 		"acTrustProvider":            req.ACTrustProvider,
 		"acTlsHostname":              req.ACTLSHostname,
 		"accessTokenLifetimeSeconds": req.AccessTokenLifetimeSeconds,
+	})
+}
+
+// --- Profile Handlers ---
+
+func (h *APIHandlers) GetProfile(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	p, err := h.tenantProfiles.Get(r.Context(), tenantID)
+	if err != nil {
+		slog.Error("get profile failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"firstName": p.FirstName,
+		"lastName":  p.LastName,
+		"email":     p.Email,
+		"phone":     p.Phone,
+	})
+}
+
+func (h *APIHandlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	var req struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Email     string `json:"email"`
+		Phone     string `json:"phone"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		respondBadRequest(w, err.Error())
+		return
+	}
+	p := &domain.TenantProfile{
+		TenantID:  tenantID,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Email:     req.Email,
+		Phone:     req.Phone,
+	}
+	if err := h.tenantProfiles.Upsert(r.Context(), tenantID, p); err != nil {
+		slog.Error("update profile failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"firstName": req.FirstName,
+		"lastName":  req.LastName,
+		"email":     req.Email,
+		"phone":     req.Phone,
 	})
 }

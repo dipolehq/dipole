@@ -276,6 +276,15 @@ type GlobalPolicyCompliance struct {
 	UpdatedAt                  time.Time
 }
 
+type TenantProfile struct {
+	TenantID  uuid.UUID
+	FirstName string
+	LastName  string
+	Email     string
+	Phone     string
+	UpdatedAt time.Time
+}
+
 type ListOptions struct {
 	Page    int
 	PerPage int

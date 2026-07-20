@@ -150,6 +150,7 @@ func buildHTTPServer(
 		repos.SignOnPolicies,
 		repos.LogStreams,
 		repos.GlobalPolicyCompliance,
+		repos.TenantProfiles,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
 

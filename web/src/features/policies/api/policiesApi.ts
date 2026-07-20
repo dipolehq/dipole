@@ -1,4 +1,4 @@
-import { apiClient, ApiError } from '@/shared/lib/api-client'
+import { apiClient, ApiError, apiErrorMessage } from '@/shared/lib/api-client'
 import type { PolicyFormValues, PolicyMetadata } from '@/features/policies/types/formValues'
 
 const BASE = '/access-policies'
@@ -227,7 +227,7 @@ export async function fetchPolicy(id: string): Promise<FetchPolicyResult | null>
         ),
       ),
       (dto.credentialProviderIds ?? [])[0]?.credentialProviderId
-        ? apiClient.get<{ id: string; name: string; description: string; type: string; config: Record<string, unknown>; tags: { key: string; value: string }[] }>(`/credential-providers/${(dto.credentialProviderIds ?? [])[0].credentialProviderId}`).catch(() => null)
+        ? apiClient.get<{ id: string; name: string; description: string; type: string; config: Record<string, unknown>; tags: { key: string; value: string }[] }>(`/credential-providers/${(dto.credentialProviderIds ?? [])[0]!.credentialProviderId}`).catch(() => null)
         : Promise.resolve(null),
     ])
 
@@ -256,7 +256,7 @@ export async function fetchPolicy(id: string): Promise<FetchPolicyResult | null>
           authScheme: swData.authScheme,
           headerName: swData.authConfig?.header_name ?? '',
           urlPath: swData.urlPath,
-          staticHeaders: Object.entries(swData.httpHeaders ?? {}).map(([key, value]) => ({ key, value })),
+          staticHeaders: Object.entries(swData.httpHeaders ?? {}).map(([name, value]) => ({ name, value })),
           tags: (swData.tags ?? []).map((t) => ({ key: t.key, value: t.value })),
         }
       : { name: '', description: '', host: '', appProtocol: '', transportProtocol: 'TCP', port: '', forwardToPort: '', tls: false, forwardTls: false, forwardTlsVerification: 'full', authMethod: '', authScheme: '', headerName: '', urlPath: '', staticHeaders: [], tags: [] }
@@ -407,7 +407,7 @@ export async function createPolicy(values: PolicyFormValues): Promise<void> {
         authScheme: values.server.authScheme,
         authConfig: values.server.headerName ? { header_name: values.server.headerName } : {},
         httpHeaders: Object.fromEntries(
-          (values.server.staticHeaders ?? []).filter((h) => h.key).map((h) => [h.key, h.value]),
+          (values.server.staticHeaders ?? []).filter((h) => h.name).map((h) => [h.name, h.value]),
         ),
         urlPath: values.server.urlPath,
         tags: (values.server.tags ?? []).map((t) => ({ key: t.key, value: t.value })),

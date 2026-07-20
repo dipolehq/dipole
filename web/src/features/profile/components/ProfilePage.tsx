@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Copy } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { userProfileData, COUNTRY_CODE_OPTIONS } from '@/data/profile/userProfile'
+import { apiClient } from '@/shared/lib/api-client'
+import { COUNTRY_CODE_OPTIONS } from '@/data/profile/userProfile'
 
 const TABS = [
   { key: 'details', label: 'Details' },
@@ -13,41 +15,81 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]['key']
 
+interface ProfileData {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 export function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabKey>('details')
+
+  const { data } = useQuery<ProfileData>({
+    queryKey: ['profile'],
+    queryFn: () => apiClient.get<ProfileData>('/profile'),
+  })
+
+  if (!data) {
+    return <div className="flex-1" />
+  }
+
+  return <ProfileContent data={data} activeTab={activeTab} setActiveTab={setActiveTab} />
+}
+
+function ProfileContent({
+  data,
+  activeTab,
+  setActiveTab,
+}: {
+  data: ProfileData
+  activeTab: TabKey
+  setActiveTab: (tab: TabKey) => void
+}) {
+  const qc = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
 
-  // Details state
-  const [firstName, setFirstName] = useState(userProfileData.firstName)
-  const [lastName, setLastName] = useState(userProfileData.lastName)
-  const [email, setEmail] = useState(userProfileData.email)
-  const [countryCode, setCountryCode] = useState(userProfileData.countryCode)
-  const [phone, setPhone] = useState(userProfileData.phone)
+  const [firstName, setFirstName] = useState(data.firstName)
+  const [lastName, setLastName] = useState(data.lastName)
+  const [email, setEmail] = useState(data.email)
+  const [countryCode, setCountryCode] = useState('+91')
+  const [phone, setPhone] = useState(data.phone)
 
-  // API Access state
   const [tokenLifetime, setTokenLifetime] = useState('3600')
   const [accessToken, setAccessToken] = useState('')
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiClient.put<ProfileData>('/profile', { firstName, lastName, email, phone }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      setIsEditing(false)
+    },
+    onError: () => {
+      setFirstName(data.firstName)
+      setLastName(data.lastName)
+      setEmail(data.email)
+      setPhone(data.phone)
+      setIsEditing(false)
+    },
+  })
 
   const disabled = !isEditing
 
   function handleEditToggle() {
     if (isEditing) {
-      console.info('[save-profile]', { firstName, lastName, email, countryCode, phone })
-      setIsEditing(false)
+      saveMutation.mutate()
     } else {
       setIsEditing(true)
     }
   }
 
   function handleCancel() {
-    if (isEditing) {
-      setFirstName(userProfileData.firstName)
-      setLastName(userProfileData.lastName)
-      setEmail(userProfileData.email)
-      setCountryCode(userProfileData.countryCode)
-      setPhone(userProfileData.phone)
-      setIsEditing(false)
-    }
+    setFirstName(data.firstName)
+    setLastName(data.lastName)
+    setEmail(data.email)
+    setPhone(data.phone)
+    setIsEditing(false)
   }
 
   function handleGenerateToken() {
@@ -60,12 +102,11 @@ export function ProfilePage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">
-            {isEditing ? 'Save' : 'Edit'}
+          <button type="button" onClick={handleEditToggle} disabled={saveMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+            {saveMutation.isPending ? 'Saving…' : isEditing ? 'Save' : 'Edit'}
           </button>
           {isEditing && (
             <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">
@@ -75,7 +116,6 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* Horizontal tabs */}
       <div className="flex items-center bg-white px-6 pt-4 shrink-0">
         {TABS.map((tab, idx) => (
           <button
@@ -94,10 +134,8 @@ export function ProfilePage() {
         ))}
       </div>
 
-      {/* Tab content */}
       <div className="flex-1 overflow-y-auto bg-white">
         <div className="flex h-full">
-          {/* Left 60% */}
           <div className="w-[60%] px-6 py-6 overflow-y-auto">
             {activeTab === 'details' && (
               <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
@@ -120,7 +158,7 @@ export function ProfilePage() {
 
                 <div className="border border-border rounded-lg p-5">
                   <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
-                  <FloatingInput label="Role" value={userProfileData.role} disabled />
+                  <FloatingInput label="Role" value="SuperAdmin" disabled />
                 </div>
 
                 <div className="border border-border rounded-lg p-5">
@@ -144,9 +182,9 @@ export function ProfilePage() {
                     </div>
                     <p className="text-[10px] text-gray-400">Max lifetime: 604,800 seconds (7 days)</p>
 
-                    <CopyField label="Cloud API Base URL" value={userProfileData.cloudApiBaseUrl} onCopy={copyToClipboard} />
-                    <CopyField label="Edge API Base URL" value={userProfileData.edgeApiBaseUrl} onCopy={copyToClipboard} />
-                    <CopyField label="MCP Service URL" value={userProfileData.mcpServiceUrl} onCopy={copyToClipboard} />
+                    <CopyField label="Cloud API Base URL" value="https://acme42.api.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
+                    <CopyField label="Edge API Base URL" value="https://acme42.ec.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
+                    <CopyField label="MCP Service URL" value="https://acme42.mcp.ap-south-1.dipolehq.com/mcp" onCopy={copyToClipboard} />
                   </div>
                 </div>
               </div>
@@ -177,21 +215,11 @@ export function ProfilePage() {
                   </p>
                   <div className="space-y-0">
                     <div className="flex items-center justify-between py-3 border-b border-border">
-                      <div className="flex items-center gap-3">
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-                        </svg>
-                        <span className="text-sm text-gray-700">Authenticator App</span>
-                      </div>
+                      <span className="text-sm text-gray-700">Authenticator App</span>
                       <button type="button" className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Configure</button>
                     </div>
                     <div className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-                        </svg>
-                        <span className="text-sm text-gray-700">Backup Codes</span>
-                      </div>
+                      <span className="text-sm text-gray-700">Backup Codes</span>
                       <button type="button" className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Generate</button>
                     </div>
                   </div>
@@ -223,13 +251,12 @@ export function ProfilePage() {
             )}
           </div>
 
-          {/* Right 40% — help */}
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               {activeTab === 'details' && (
                 <>
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                    <span className="font-semibold text-orange-600">User Profile</span> displays your account details, role assignments, and API access credentials.
+                    <span className="font-semibold text-orange-600">User Profile</span> displays your account details and API access credentials.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed">
                     Use the <span className="font-semibold">Generate</span> button to create a session access token for programmatic API access. Tokens are short-lived and scoped to your permissions.
@@ -238,7 +265,7 @@ export function ProfilePage() {
               )}
               {activeTab === 'password' && (
                 <p className="text-xs text-gray-700 leading-relaxed">
-                  Update your password here. Passwords must meet minimum complexity requirements. After changing your password, you'll remain signed in on this device.
+                  Update your password here. After changing your password, you'll remain signed in on this device.
                 </p>
               )}
               {activeTab === 'mfa' && (
@@ -247,13 +274,13 @@ export function ProfilePage() {
                     <span className="font-semibold text-orange-600">Multi-Factor Authentication</span> adds a second verification step to your sign-in process.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed">
-                    Use an authenticator app (Google Authenticator, Authy, etc.) for time-based one-time codes. Generate backup codes for emergency access.
+                    Use an authenticator app (Google Authenticator, Authy) for time-based one-time codes. Generate backup codes for emergency access.
                   </p>
                 </>
               )}
               {activeTab === 'preferences' && (
                 <p className="text-xs text-gray-700 leading-relaxed">
-                  Preferences let you customize your Dipole experience including display settings, notification preferences, and timezone configuration.
+                  Preferences let you customize your Dipole experience including display settings and notification preferences.
                 </p>
               )}
             </div>

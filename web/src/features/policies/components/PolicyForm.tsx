@@ -493,7 +493,7 @@ interface DetailsSectionProps {
   metadata?: PolicyMetadata
 }
 
-function DetailsSection({ mode, disabled, metadata }: DetailsSectionProps) {
+function DetailsSection({ mode, disabled }: DetailsSectionProps) {
   if (mode === 'create') {
     return (
       <Controller
