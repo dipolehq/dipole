@@ -11,8 +11,8 @@ import { GlobalPolicySettingsPanel } from '@/features/administration/components/
 import { SignOnPolicyPanel } from '@/features/administration/components/SignOnPolicyPanel'
 import { useUsers } from '@/features/administration/hooks/useUsers'
 import { useRoles } from '@/features/administration/hooks/useRoles'
-import { resourceSetsData } from '@/data/administration/resourceSets'
-import { identityProvidersData } from '@/data/administration/identityProviders'
+import { useResourceSets } from '@/features/administration/hooks/useResourceSets'
+import { useIdentityProviders } from '@/features/administration/hooks/useIdentityProviders'
 import { logStreamsData } from '@/data/administration/logStreams'
 
 const ADMIN_SECTIONS = [
@@ -42,6 +42,14 @@ export function AdministrationPage() {
   const rolesItems = rolesApiData?.items ?? []
   const rolesTotal = rolesApiData?.total ?? 0
 
+  const { data: resourceSetsData, isLoading: resourceSetsLoading } = useResourceSets(currentPage, pageSize, searchQuery)
+  const resourceSetsItems = resourceSetsData?.items ?? []
+  const resourceSetsTotal = resourceSetsData?.total ?? 0
+
+  const { data: idpData, isLoading: idpLoading } = useIdentityProviders(currentPage, pageSize, searchQuery)
+  const idpItems = idpData?.items ?? []
+  const idpTotal = idpData?.total ?? 0
+
   const selectedLabel = ADMIN_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
   const totalItems = selectedSection === 'users'
@@ -49,16 +57,9 @@ export function AdministrationPage() {
     : selectedSection === 'roles'
     ? rolesTotal
     : selectedSection === 'resource_sets'
-    ? resourceSetsData.filter((rs) => {
-        if (!searchQuery) return true
-        return rs.name.toLowerCase().includes(searchQuery.toLowerCase())
-      }).length
+    ? resourceSetsTotal
     : selectedSection === 'identity_providers'
-    ? identityProvidersData.filter((idp) => {
-        if (!searchQuery) return true
-        const q = searchQuery.toLowerCase()
-        return idp.name.toLowerCase().includes(q) || idp.description.toLowerCase().includes(q)
-      }).length
+    ? idpTotal
     : selectedSection === 'log_streams'
     ? logStreamsData.filter((ls) => {
         if (!searchQuery) return true
@@ -94,7 +95,7 @@ export function AdministrationPage() {
             {sectionOpen && (
               <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[220px] overflow-hidden">
                 {ADMIN_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
+                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false); setCurrentPage(1); setSearchQuery('') }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
                 ))}
               </div>
             )}
@@ -109,9 +110,9 @@ export function AdministrationPage() {
         ) : selectedSection === 'roles' ? (
           <RolesTable items={rolesItems} isLoading={rolesLoading} />
         ) : selectedSection === 'resource_sets' ? (
-          <ResourceSetsTable searchQuery={searchQuery} />
+          <ResourceSetsTable items={resourceSetsItems} isLoading={resourceSetsLoading} />
         ) : selectedSection === 'identity_providers' ? (
-          <IdentityProvidersTable searchQuery={searchQuery} />
+          <IdentityProvidersTable items={idpItems} isLoading={idpLoading} />
         ) : selectedSection === 'log_streams' ? (
           <LogStreamsTable searchQuery={searchQuery} />
         ) : selectedSection === 'global_policy_compliance' ? (

@@ -234,6 +234,25 @@ type User struct {
 	UpdatedAt time.Time
 }
 
+type IdentityProvider struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	Name        string
+	Description string
+	IsActive    bool
+	Type        string // "saml_2.0" or "oidc_1.0"
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type SignOnPolicy struct {
+	TenantID   uuid.UUID
+	RequireSSO bool
+	RequireMFA bool
+	UpdatedAt  time.Time
+}
+
 type ListOptions struct {
 	Page    int
 	PerPage int

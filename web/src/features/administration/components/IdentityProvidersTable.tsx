@@ -1,25 +1,14 @@
 import { Fingerprint } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { identityProvidersData } from '@/data/administration/identityProviders'
+import type { IdpListItem } from '@/features/administration/api/identityProvidersApi'
 
 interface IdentityProvidersTableProps {
-  searchQuery: string
+  items: IdpListItem[]
+  isLoading?: boolean
 }
 
-export function IdentityProvidersTable({ searchQuery }: IdentityProvidersTableProps) {
+export function IdentityProvidersTable({ items, isLoading }: IdentityProvidersTableProps) {
   const navigate = useNavigate()
-
-  const filtered = identityProvidersData.filter((idp) => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      return (
-        idp.name.toLowerCase().includes(q) ||
-        idp.description.toLowerCase().includes(q) ||
-        idp.type.toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
 
   return (
     <table className="w-full text-xs table-fixed">
@@ -40,34 +29,40 @@ export function IdentityProvidersTable({ searchQuery }: IdentityProvidersTablePr
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
-        {filtered.length === 0 && (
+        {isLoading && (
+          <tr>
+            <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm" />
+          </tr>
+        )}
+        {!isLoading && items.length === 0 && (
           <tr>
             <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm">
               No identity providers found.
             </td>
           </tr>
         )}
-        {filtered.map((idp) => (
-          <tr
-            key={idp.id}
-            className="hover:bg-gray-50 transition-colors cursor-pointer h-[41px]"
-            onClick={() => navigate(`/administration/identity_providers/${idp.id}`)}
-          >
-            <td className="px-3 py-3 text-center">
-              <Fingerprint size={14} className="text-gray-400" />
-            </td>
-            <td className="px-4 py-3 text-gray-900 font-medium truncate">{idp.name}</td>
-            <td className="px-4 py-3 text-gray-700">{idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'}</td>
-            <td className="px-4 py-3 text-gray-700 truncate">{idp.description}</td>
-            <td className="px-4 py-3 text-center">
-              {idp.isActive ? (
-                <span className="text-xs font-medium text-green-600">Active</span>
-              ) : (
-                <span className="text-xs font-medium text-gray-400">Inactive</span>
-              )}
-            </td>
-          </tr>
-        ))}
+        {!isLoading &&
+          items.map((idp) => (
+            <tr
+              key={idp.id}
+              className="hover:bg-gray-50 transition-colors cursor-pointer h-[41px]"
+              onClick={() => navigate(`/administration/identity_providers/${idp.id}`)}
+            >
+              <td className="px-3 py-3 text-center">
+                <Fingerprint size={14} className="text-gray-400" />
+              </td>
+              <td className="px-4 py-3 text-gray-900 font-medium truncate">{idp.name}</td>
+              <td className="px-4 py-3 text-gray-700">{idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'}</td>
+              <td className="px-4 py-3 text-gray-700 truncate">{idp.description || '—'}</td>
+              <td className="px-4 py-3 text-center">
+                {idp.isActive ? (
+                  <span className="text-xs font-medium text-green-600">Active</span>
+                ) : (
+                  <span className="text-xs font-medium text-gray-400">Inactive</span>
+                )}
+              </td>
+            </tr>
+          ))}
       </tbody>
     </table>
   )

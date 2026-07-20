@@ -42,16 +42,21 @@ func (r *ResourceSetRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uu
 }
 
 func (r *ResourceSetRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ResourceSet, int, error) {
+	search := escapeILIKE(opts.Search)
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM resource_sets WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM resource_sets WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
+		tenantID, search).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count resource sets: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, name, description, created_at, updated_at FROM resource_sets WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		`SELECT id, tenant_id, name, description, created_at, updated_at FROM resource_sets
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
+		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
+		tenantID, search, opts.PerPage, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list resource sets: %w", err)
 	}

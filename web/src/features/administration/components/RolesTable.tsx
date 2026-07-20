@@ -54,7 +54,7 @@ export function RolesTable({ items, isLoading }: RolesTableProps) {
               <td className="px-4 py-3 text-gray-900 font-medium truncate">{role.name}</td>
               <td className="px-4 py-3 text-gray-700 truncate">{role.description || '—'}</td>
               <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                {new Date(role.updatedAt).toLocaleDateString('en-GB')}
+                {new Date(role.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </td>
               <td className="px-4 py-3 text-center">
                 {role.isActive ? (

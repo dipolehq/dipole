@@ -4,6 +4,8 @@ import { Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { IDP_TYPE_OPTIONS } from '@/data/administration/identityProviders'
+import { useCreateIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
+import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/data/administration/identityProviders'
 
 const ROLE_OPTIONS = [
@@ -13,6 +15,8 @@ const ROLE_OPTIONS = [
 
 export function CreateIdentityProviderPage() {
   const navigate = useNavigate()
+  const createMutation = useCreateIdentityProvider()
+  const [error, setError] = useState<string | null>(null)
 
   // Details state
   const [name, setName] = useState('')
@@ -51,9 +55,33 @@ export function CreateIdentityProviderPage() {
     setMappings(updated)
   }
 
-  function handleSave() {
-    console.info('[create-idp] submitted', { name, description, idpType, metadataUrl, baseUrl, clientId, scopes, pkceRequired, authMethod, mappings })
-    navigate('/administration')
+  async function handleSave() {
+    setError(null)
+    const config: Record<string, unknown> = {}
+    if (idpType === 'saml_2.0') {
+      config.metadataUrl = metadataUrl
+      config.metadataXml = metadataXml
+    } else if (idpType === 'oidc_1.0') {
+      config.baseUrl = baseUrl
+      config.clientId = clientId
+      config.scopes = scopes
+      config.pkceRequired = pkceRequired
+      config.authMethod = authMethod
+      if (authMethod === 'client_secret') config.clientSecret = clientSecret
+    }
+    config.mappings = mappings
+    try {
+      await createMutation.mutateAsync({
+        name,
+        description,
+        isActive: true,
+        type: idpType,
+        config,
+      })
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create identity provider'))
+    }
   }
 
   function handleCancel() {
@@ -62,11 +90,18 @@ export function CreateIdentityProviderPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">Save</button>
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+            {createMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
         </div>
       </div>
@@ -158,7 +193,7 @@ export function CreateIdentityProviderPage() {
                 </p>
 
                 {mappings.length > 0 && (
-                  <div className="border border-border rounded-lg overflow-hidden mb-4">
+                  <div className="border border-border rounded-lg mb-4">
                     <table className="w-full text-xs table-fixed">
                       <colgroup>
                         <col className="w-[30%]" />

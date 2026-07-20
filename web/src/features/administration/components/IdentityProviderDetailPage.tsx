@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FileText, Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { identityProvidersData, IDP_TYPE_OPTIONS } from '@/data/administration/identityProviders'
+import { IDP_TYPE_OPTIONS } from '@/data/administration/identityProviders'
+import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
+import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/data/administration/identityProviders'
 
 const ROLE_OPTIONS = [
@@ -22,25 +24,50 @@ type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 export function IdentityProviderDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const idp = identityProvidersData.find((p) => p.id === id)
+
+  const { data: idp, isLoading } = useIdentityProvider(id)
+  const saveMutation = useSaveIdentityProvider(id ?? '')
+  const deleteMutation = useDeleteIdentityProvider()
 
   const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
   const [sectionOpen, setSectionOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const [name, setName] = useState(idp?.name ?? '')
-  const [description, setDescription] = useState(idp?.description ?? '')
-  const [idpType, setIdpType] = useState<IdpType>(idp?.type ?? 'saml_2.0')
-  const [metadataUrl, setMetadataUrl] = useState(idp?.metadataUrl ?? '')
-  const [baseUrl, setBaseUrl] = useState(idp?.baseUrl ?? '')
-  const [clientId, setClientId] = useState(idp?.clientId ?? '')
-  const [scopes, setScopes] = useState(idp?.scopes ?? 'openid profile email')
-  const [pkceRequired, setPkceRequired] = useState(idp?.pkceRequired ?? true)
-  const [authMethod, setAuthMethod] = useState<AuthMethod>(idp?.authMethod ?? 'client_secret')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [idpType, setIdpType] = useState<IdpType>('saml_2.0')
+  const [metadataUrl, setMetadataUrl] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [scopes, setScopes] = useState('openid profile email')
+  const [pkceRequired, setPkceRequired] = useState(true)
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('client_secret')
   const [clientSecret, setClientSecret] = useState('')
   const [mappings, setMappings] = useState<{ attributeName: string; attributeValue: string; role: string }[]>([])
+  const [initialized, setInitialized] = useState(false)
 
-  if (!idp) {
+  if (idp && !initialized) {
+    const config = (idp.config ?? {}) as Record<string, unknown>
+    setName(idp.name)
+    setDescription(idp.description)
+    setIdpType(idp.type as IdpType)
+    setMetadataUrl((config.metadataUrl as string) ?? '')
+    setBaseUrl((config.baseUrl as string) ?? '')
+    setClientId((config.clientId as string) ?? '')
+    setScopes((config.scopes as string) ?? 'openid profile email')
+    setPkceRequired((config.pkceRequired as boolean) ?? true)
+    setAuthMethod((config.authMethod as AuthMethod) ?? 'client_secret')
+    setMappings((config.mappings as typeof mappings) ?? [])
+    setInitialized(true)
+  }
+
+  if (initialized && idp && idp.id !== id) {
+    setInitialized(false)
+  }
+
+  if (!id || (!isLoading && idp === null)) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white"><PageHeader /></div>
@@ -66,30 +93,75 @@ export function IdentityProviderDetailPage() {
 
   function handleEditToggle() {
     if (isEditing) {
-      console.info('[save-idp]', { name, description, idpType, metadataUrl, baseUrl, clientId, scopes, pkceRequired, authMethod, mappings })
-      setIsEditing(false)
+      setError(null)
+      const config: Record<string, unknown> = {}
+      if (idpType === 'saml_2.0') {
+        config.metadataUrl = metadataUrl
+      } else if (idpType === 'oidc_1.0') {
+        config.baseUrl = baseUrl
+        config.clientId = clientId
+        config.scopes = scopes
+        config.pkceRequired = pkceRequired
+        config.authMethod = authMethod
+        if (authMethod === 'client_secret' && clientSecret) config.clientSecret = clientSecret
+      }
+      config.mappings = mappings
+      saveMutation.mutateAsync({
+        name,
+        description,
+        isActive: true,
+        type: idpType,
+        config,
+      }).then(() => setIsEditing(false))
+        .catch((err) => setError(apiErrorMessage(err, 'Failed to save identity provider')))
     } else { setIsEditing(true) }
   }
 
   function handleCancel() {
     if (isEditing) {
-      setName(idp?.name ?? ''); setDescription(idp?.description ?? '')
-      setIdpType(idp?.type ?? 'saml_2.0'); setMetadataUrl(idp?.metadataUrl ?? '')
-      setBaseUrl(idp?.baseUrl ?? ''); setClientId(idp?.clientId ?? '')
-      setScopes(idp?.scopes ?? 'openid profile email')
-      setPkceRequired(idp?.pkceRequired ?? true); setAuthMethod(idp?.authMethod ?? 'client_secret')
+      if (idp) {
+        const config = (idp.config ?? {}) as Record<string, unknown>
+        setName(idp.name)
+        setDescription(idp.description)
+        setIdpType(idp.type as IdpType)
+        setMetadataUrl((config.metadataUrl as string) ?? '')
+        setBaseUrl((config.baseUrl as string) ?? '')
+        setClientId((config.clientId as string) ?? '')
+        setScopes((config.scopes as string) ?? 'openid profile email')
+        setPkceRequired((config.pkceRequired as boolean) ?? true)
+        setAuthMethod((config.authMethod as AuthMethod) ?? 'client_secret')
+        setMappings((config.mappings as typeof mappings) ?? [])
+      }
       setIsEditing(false)
     } else { navigate('/administration') }
   }
 
+  async function handleDelete() {
+    if (!id) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete identity provider'))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
+          {!isEditing && (
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          )}
           <div className="relative">
             <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
               <FileText size={14} className="shrink-0" />
@@ -128,11 +200,11 @@ export function IdentityProviderDetailPage() {
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
-                        <div className="text-xs text-gray-700 font-mono">{idp.spEntityId ?? 'https://acme.dipolehq.com/saml/metadata'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/saml/metadata'}</div>
                       </div>
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Single Sign On URL</label>
-                        <div className="text-xs text-gray-700 font-mono">{idp.ssoUrl ?? 'https://acme.dipolehq.com/saml/acs'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/saml/acs'}</div>
                       </div>
                       <FloatingInput label="Metadata URL" value={metadataUrl} onChange={setMetadataUrl} disabled={disabled} />
                     </div>
@@ -174,7 +246,7 @@ export function IdentityProviderDetailPage() {
                       )}
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL</label>
-                        <div className="text-xs text-gray-700 font-mono">{idp.redirectUrl ?? 'https://acme.dipolehq.com/oidc/callback'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/oidc/callback'}</div>
                       </div>
                     </div>
                   </div>
@@ -184,7 +256,7 @@ export function IdentityProviderDetailPage() {
                   <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Mappings</h4>
                   <p className="text-xs text-gray-600 mb-4">Map your IdP&apos;s group claims to Dipole user roles for automatic user creation.</p>
                   {mappings.length > 0 && (
-                    <div className="border border-border rounded-lg overflow-hidden mb-4">
+                    <div className="border border-border rounded-lg mb-4">
                       <table className="w-full text-xs table-fixed">
                         <colgroup><col className="w-[30%]" /><col className="w-[30%]" /><col className="w-[30%]" /><col className="w-[32px]" /></colgroup>
                         <thead>
@@ -220,9 +292,13 @@ export function IdentityProviderDetailPage() {
               <div className="border border-border rounded-lg p-5 mb-5">
                 <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
                 <div className="space-y-4">
-                  <FloatingInput label="ID" value={idp.id} disabled />
-                  <FloatingInput label="Type" value={idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'} disabled />
-                  <FloatingInput label="Status" value={idp.isActive ? 'Active' : 'Inactive'} disabled />
+                  {idp && (
+                    <>
+                      <FloatingInput label="ID" value={idp.id} disabled />
+                      <FloatingInput label="Type" value={idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'} disabled />
+                      <FloatingInput label="Created At" value={new Date(idp.createdAt).toLocaleString()} disabled />
+                    </>
+                  )}
                 </div>
               </div>
               <div className="border border-border rounded-lg p-5">
@@ -239,6 +315,23 @@ export function IdentityProviderDetailPage() {
         {selectedSection === 'metrics' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Metrics — coming soon</p></div>)}
         {selectedSection === 'logs' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>)}
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Identity Provider</h3>
+            <p className="text-xs text-gray-600 mb-5">
+              Are you sure you want to delete this identity provider? Users authenticating via this provider will no longer be able to sign in.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

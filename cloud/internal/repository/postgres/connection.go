@@ -35,6 +35,8 @@ type Repositories struct {
 	ResourceSets        *ResourceSetRepo
 	Users               *UserRepo
 	Roles               *RoleRepo
+	IdentityProviders   *IdentityProviderRepo
+	SignOnPolicies      *SignOnPolicyRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -71,6 +73,8 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		ResourceSets:        &ResourceSetRepo{pool: pool},
 		Users:               &UserRepo{pool: pool},
 		Roles:               &RoleRepo{pool: pool},
+		IdentityProviders:   &IdentityProviderRepo{pool: pool},
+		SignOnPolicies:      &SignOnPolicyRepo{pool: pool},
 	}
 }
 

@@ -1,38 +1,26 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-
-const AVAILABLE_ROLES = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-  { value: 'Team Lead', label: 'Team Lead' },
-  { value: 'Editor', label: 'Editor' },
-  { value: 'Operator', label: 'Operator' },
-]
+import { FloatingInput, FloatingTextarea } from '@/shared/components/FloatingInput'
+import { useCreateResourceSet } from '@/features/administration/hooks/useResourceSets'
+import { apiErrorMessage } from '@/features/administration/api/resourceSetsApi'
 
 export function CreateResourceSetPage() {
   const navigate = useNavigate()
+  const createMutation = useCreateResourceSet()
+
+  const [error, setError] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
-  const [selectedRole, setSelectedRole] = useState('')
-  const [assignedRoles, setAssignedRoles] = useState<string[]>([])
 
-  function handleAddRole() {
-    if (selectedRole && !assignedRoles.includes(selectedRole)) {
-      setAssignedRoles([...assignedRoles, selectedRole])
-      setSelectedRole('')
+  async function handleSave() {
+    setError(null)
+    try {
+      await createMutation.mutateAsync({ name: displayName, description })
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create resource set'))
     }
-  }
-
-  function handleRemoveRole(role: string) {
-    setAssignedRoles(assignedRoles.filter((r) => r !== role))
-  }
-
-  function handleSave() {
-    console.info('[create-resource-set] submitted', { displayName, description, assignedRoles })
-    navigate('/administration')
   }
 
   function handleCancel() {
@@ -41,19 +29,24 @@ export function CreateResourceSetPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">Save</button>
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+            {createMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
         <div className="flex h-full">
-          {/* Form — left 60% */}
           <div className="w-[60%] px-6 py-6 overflow-y-auto">
             <div className="space-y-5">
               <div className="border border-border rounded-lg p-5">
@@ -63,40 +56,9 @@ export function CreateResourceSetPage() {
                   <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} rows={3} />
                 </div>
               </div>
-
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
-                <div className="flex items-end gap-2 mb-3">
-                  <div className="flex-1">
-                    <FloatingDropdown label="Select Role" options={AVAILABLE_ROLES} value={selectedRole} onChange={setSelectedRole} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddRole}
-                    disabled={!selectedRole}
-                    className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Add
-                  </button>
-                </div>
-
-                {assignedRoles.length > 0 && (
-                  <div className="border border-border rounded-md divide-y divide-border">
-                    {assignedRoles.map((role) => (
-                      <div key={role} className="flex items-center justify-between px-3 py-2">
-                        <span className="text-sm text-gray-700">{role}</span>
-                        <button type="button" onClick={() => handleRemoveRole(role)} className="text-orange-400 hover:text-orange-600 transition-colors">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
-          {/* Help panel — right 40% */}
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               <p className="text-xs text-gray-700 leading-relaxed mb-3">

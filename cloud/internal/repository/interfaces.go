@@ -112,3 +112,11 @@ type RoleRepository interface {
 	AssignResourceSets(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID, resourceSetIDs []uuid.UUID) error
 	GetResourceSetIDs(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID) ([]uuid.UUID, error)
 }
+
+type IdentityProviderRepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, idp *domain.IdentityProvider) error
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.IdentityProvider, error)
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.IdentityProvider, int, error)
+	Update(ctx context.Context, tenantID uuid.UUID, idp *domain.IdentityProvider) error
+	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+}

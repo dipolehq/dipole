@@ -63,7 +63,7 @@ export function AgentControllersTable({ items, isLoading }: AgentControllersTabl
               <td className="px-4 py-3 text-gray-700 truncate">{ac.description || '—'}</td>
               <td className="px-4 py-3 text-gray-500 truncate">{ac.id}</td>
               <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                {ac.updatedAt ? new Date(ac.updatedAt).toLocaleDateString('en-GB') : '—'}
+                {ac.updatedAt ? new Date(ac.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
               </td>
               <td className="px-4 py-3 text-center text-gray-700">
                 {ac.tags?.length ?? 0}

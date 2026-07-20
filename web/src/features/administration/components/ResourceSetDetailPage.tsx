@@ -1,17 +1,10 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { FileText, X } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { resourceSetsData } from '@/data/administration/resourceSets'
-
-const AVAILABLE_ROLES = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-  { value: 'Team Lead', label: 'Team Lead' },
-  { value: 'Editor', label: 'Editor' },
-  { value: 'Operator', label: 'Operator' },
-]
+import { FloatingInput, FloatingTextarea } from '@/shared/components/FloatingInput'
+import { useResourceSet, useSaveResourceSet, useDeleteResourceSet } from '@/features/administration/hooks/useResourceSets'
+import { apiErrorMessage } from '@/features/administration/api/resourceSetsApi'
 
 const DETAIL_SECTIONS = [
   { value: 'details', label: 'Details' },
@@ -24,17 +17,32 @@ type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 export function ResourceSetDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const resourceSet = resourceSetsData.find((rs) => rs.id === id)
+
+  const { data: resourceSet, isLoading } = useResourceSet(id)
+  const saveMutation = useSaveResourceSet(id ?? '')
+  const deleteMutation = useDeleteResourceSet()
 
   const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
   const [sectionOpen, setSectionOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [displayName, setDisplayName] = useState(resourceSet?.name ?? '')
-  const [description, setDescription] = useState('')
-  const [selectedRole, setSelectedRole] = useState('')
-  const [assignedRoles, setAssignedRoles] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  if (!resourceSet) {
+  const [displayName, setDisplayName] = useState('')
+  const [description, setDescription] = useState('')
+  const [initialized, setInitialized] = useState(false)
+
+  if (resourceSet && !initialized) {
+    setDisplayName(resourceSet.name)
+    setDescription(resourceSet.description)
+    setInitialized(true)
+  }
+
+  if (initialized && resourceSet && resourceSet.id !== id) {
+    setInitialized(false)
+  }
+
+  if (!id || (!isLoading && resourceSet === null)) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-border bg-white">
@@ -51,21 +59,15 @@ export function ResourceSetDetailPage() {
   const disabled = !isEditing
   const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
 
-  function handleAddRole() {
-    if (selectedRole && !assignedRoles.includes(selectedRole)) {
-      setAssignedRoles([...assignedRoles, selectedRole])
-      setSelectedRole('')
-    }
-  }
-
-  function handleRemoveRole(role: string) {
-    setAssignedRoles(assignedRoles.filter((r) => r !== role))
-  }
-
-  function handleEditToggle() {
+  async function handleEditToggle() {
     if (isEditing) {
-      console.info('[save-resource-set]', { displayName, description, assignedRoles })
-      setIsEditing(false)
+      setError(null)
+      try {
+        await saveMutation.mutateAsync({ name: displayName, description })
+        setIsEditing(false)
+      } catch (err) {
+        setError(apiErrorMessage(err, 'Failed to save resource set'))
+      }
     } else {
       setIsEditing(true)
     }
@@ -73,23 +75,42 @@ export function ResourceSetDetailPage() {
 
   function handleCancel() {
     if (isEditing) {
-      setDisplayName(resourceSet?.name ?? '')
-      setDescription('')
-      setAssignedRoles([])
+      if (resourceSet) {
+        setDisplayName(resourceSet.name)
+        setDescription(resourceSet.description)
+      }
       setIsEditing(false)
     } else {
       navigate('/administration')
     }
   }
 
+  async function handleDelete() {
+    if (!id) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      navigate('/administration')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete resource set'))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
+      {error && (
+        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+          {error}
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
+          {!isEditing && (
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          )}
           <div className="relative">
             <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
               <FileText size={14} className="shrink-0" />
@@ -107,11 +128,9 @@ export function ResourceSetDetailPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto bg-white">
         {selectedSection === 'details' && (
           <div className="flex h-full">
-            {/* Form — left 60% */}
             <div className="w-[60%] px-6 py-6 overflow-y-auto">
               <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
                 <div className="border border-border rounded-lg p-5">
@@ -121,54 +140,39 @@ export function ResourceSetDetailPage() {
                     <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} disabled={disabled} rows={3} />
                   </div>
                 </div>
-
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
-                  <div className="flex items-end gap-2 mb-3">
-                    <div className="flex-1">
-                      <FloatingDropdown label="Select Role" options={AVAILABLE_ROLES} value={selectedRole} onChange={setSelectedRole} disabled={disabled} />
-                    </div>
-                    <button type="button" onClick={handleAddRole} disabled={!selectedRole || disabled} className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Add</button>
-                  </div>
-                  {assignedRoles.length > 0 && (
-                    <div className="border border-border rounded-md divide-y divide-border">
-                      {assignedRoles.map((role) => (
-                        <div key={role} className="flex items-center justify-between px-3 py-2">
-                          <span className="text-sm text-gray-700">{role}</span>
-                          {!disabled && (
-                            <button type="button" onClick={() => handleRemoveRole(role)} className="text-orange-400 hover:text-orange-600 transition-colors">
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {assignedRoles.length === 0 && (
-                    <p className="text-xs text-gray-400">No roles assigned</p>
-                  )}
-                </div>
               </div>
             </div>
 
-            {/* Right panel — 40% */}
             <div className="w-[40%] px-6 py-6 overflow-y-auto">
-              <div className="border border-border rounded-lg p-5 mb-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
-                <div className="space-y-4">
-                  <FloatingInput label="ID" value={resourceSet.id} disabled />
-                  <FloatingInput label="Roles" value={String(resourceSet.roles)} disabled />
-                  <FloatingInput label="Users" value={String(resourceSet.users)} disabled />
-                </div>
-              </div>
+              <div className="sticky top-0 space-y-5">
+                {resourceSet && (
+                  <div className="border border-border rounded-lg p-5">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">ID</label>
+                        <input type="text" readOnly value={resourceSet.id} className="w-full px-3 py-2 border border-border rounded-md text-sm text-gray-700 bg-gray-50" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">Created At</label>
+                        <input type="text" readOnly value={new Date(resourceSet.createdAt).toLocaleString()} className="w-full px-3 py-2 border border-border rounded-md text-sm text-gray-700 bg-gray-50" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">Last Modified</label>
+                        <input type="text" readOnly value={new Date(resourceSet.updatedAt).toLocaleString()} className="w-full px-3 py-2 border border-border rounded-md text-sm text-gray-700 bg-gray-50" />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-              <div className="border border-border rounded-lg p-5">
-                <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Resource Sets</span> provide multi-tenancy within your organization. Each Resource Set is an isolated group of resources.
-                </p>
-                <p className="text-xs text-gray-700 leading-relaxed">
-                  Assign <span className="font-semibold">Roles</span> to control which users can manage resources within this Resource Set.
-                </p>
+                <div className="border border-border rounded-lg p-5">
+                  <p className="text-xs text-gray-700 leading-relaxed mb-3">
+                    <span className="font-semibold text-orange-600">Resource Sets</span> provide multi-tenancy within your organization. Each Resource Set is an isolated group of resources.
+                  </p>
+                  <p className="text-xs text-gray-700 leading-relaxed">
+                    Assign <span className="font-semibold">Roles</span> to control which users can manage resources within this Resource Set.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -181,6 +185,23 @@ export function ResourceSetDetailPage() {
           <div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>
         )}
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Resource Set</h3>
+            <p className="text-xs text-gray-600 mb-5">
+              Are you sure you want to delete this resource set? All resources within it will become unassigned. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
