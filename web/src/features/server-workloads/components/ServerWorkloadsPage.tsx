@@ -5,6 +5,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { useServerWorkloads } from '@/features/server-workloads/hooks/useServerWorkloads'
 import { SERVER_WORKLOAD_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/data/server-workloads'
 import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
+import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
 export function ServerWorkloadsPage() {
   const navigate = useNavigate()
@@ -118,20 +119,7 @@ export function ServerWorkloadsPage() {
 
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value))
-                  setCurrentPage(1)
-                }}
-                className="border border-border rounded px-2 py-1 text-xs"
-              >
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
+              <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
               <span>
                 Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
                 {Math.min(currentPage * pageSize, total)} of {total} Results

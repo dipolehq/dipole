@@ -14,6 +14,7 @@ import { useRoles } from '@/features/administration/hooks/useRoles'
 import { useResourceSets } from '@/features/administration/hooks/useResourceSets'
 import { useIdentityProviders } from '@/features/administration/hooks/useIdentityProviders'
 import { useLogStreams } from '@/features/administration/hooks/useLogStreams'
+import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
 const ADMIN_SECTIONS = [
   { value: 'users', label: 'Users' },
@@ -26,6 +27,8 @@ const ADMIN_SECTIONS = [
 ] as const
 
 type AdminSection = (typeof ADMIN_SECTIONS)[number]['value']
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 
 export function AdministrationPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -126,9 +129,7 @@ export function AdministrationPage() {
       {showPagination && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
           <div className="flex items-center gap-2 text-xs text-gray-600">
-            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }} className="border border-border rounded px-2 py-1 text-xs">
-              {[10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
+            <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
             <span>Showing {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, totalItems)} of {totalItems} Results</span>
           </div>
           <div className="flex items-center gap-1">

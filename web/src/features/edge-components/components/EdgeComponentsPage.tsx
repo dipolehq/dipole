@@ -6,6 +6,7 @@ import { AgentControllersTable } from '@/features/edge-components/components/Age
 import { DeployEdgePanel } from '@/features/edge-components/components/DeployEdgePanel'
 import { TlsDecryptPanel } from '@/features/edge-components/components/TlsDecryptPanel'
 import { useAgentControllers } from '@/features/edge-components/hooks/useAgentControllers'
+import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
 const EDGE_SECTIONS = [
   { value: 'agent_controllers', label: 'Agent Controllers' },
@@ -83,9 +84,7 @@ export function EdgeComponentsPage() {
       {showPagination && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
           <div className="flex items-center gap-2 text-xs text-gray-600">
-            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }} className="border border-border rounded px-2 py-1 text-xs">
-              {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
+            <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
             <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
           </div>
           <div className="flex items-center gap-1">

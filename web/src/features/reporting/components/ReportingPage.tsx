@@ -8,6 +8,7 @@ import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
 import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
 import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
 import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
+import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS } from '@/data/reporting'
 import type { LogType } from '@/data/reporting'
 
@@ -159,9 +160,7 @@ export function ReportingPage() {
       {/* Pagination footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-gray-600">
-          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1) }} className="border border-border rounded px-2 py-1 text-xs">
-            {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
+          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
           <span>Showing 0 - 0 of 0 Results</span>
         </div>
         <div className="flex items-center gap-1">

@@ -68,7 +68,7 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-51 bg-[#28282B] flex flex-col">
-      <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-white/10">
+      <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-white/10 select-none pointer-events-none">
         <img src="/dipole_logo.svg" alt="Dipole" className="h-9 w-9" />
         <span className="text-white font-semibold text-xl tracking-tight">Dipole</span>
       </div>
