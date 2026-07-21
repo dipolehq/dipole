@@ -4,7 +4,6 @@ import { WorkloadEventsChart } from '@/features/dashboard/components/WorkloadEve
 import { AccessDecisionsChart } from '@/features/dashboard/components/AccessDecisionsChart'
 import { ConnectionsChart } from '@/features/dashboard/components/ConnectionsChart'
 import { DonutChart } from '@/features/dashboard/components/DonutChart'
-import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import {
   STAT_CARDS,
@@ -29,7 +28,6 @@ export function DashboardPage() {
           >
             Getting Started
           </Link>
-          <ResourceSetDropdown />
         </div>
       </div>
 

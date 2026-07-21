@@ -65,7 +65,7 @@ export function AgentControllerDetailPage() {
   if (!id || (!isLoading && controller === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white"><PageHeader /></div>
+        <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Agent Controller not found.</p>
           <button onClick={() => navigate('/edge-components')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Edge Components</button>
@@ -128,7 +128,7 @@ export function AgentControllerDetailPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">

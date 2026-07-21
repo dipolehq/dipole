@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { usePolicies } from '@/features/policies/hooks/usePolicy'
 import { fetchClientWorkloads, fetchServerWorkloads, fetchTrustProviders, fetchAccessConditions, fetchCredentialProviders } from '@/features/policies/api/entityApi'
@@ -68,7 +67,7 @@ export function PoliciesPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -90,7 +89,6 @@ export function PoliciesPage() {
           >
             <Plus size={14} /> New
           </Link>
-          <ResourceSetDropdown />
         </div>
       </div>
 

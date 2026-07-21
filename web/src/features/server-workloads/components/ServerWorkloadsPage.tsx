@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
-import { ResourceSetDropdown } from '@/shared/components/ResourceSetDropdown'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useServerWorkloads } from '@/features/server-workloads/hooks/useServerWorkloads'
 import { SERVER_WORKLOAD_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/data/server-workloads'
@@ -23,7 +22,7 @@ export function ServerWorkloadsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -45,7 +44,6 @@ export function ServerWorkloadsPage() {
           >
             <Plus size={14} /> New
           </Link>
-          <ResourceSetDropdown />
         </div>
       </div>
 

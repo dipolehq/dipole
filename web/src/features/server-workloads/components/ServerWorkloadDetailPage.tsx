@@ -35,7 +35,7 @@ export function ServerWorkloadDetailPage() {
   if (!id || isError || (!isLoading && data === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
+        <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
           <PageHeader />
         </div>
         <div className="flex-1 flex items-center justify-center flex-col">
@@ -92,7 +92,7 @@ export function ServerWorkloadDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[36px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
           <button
