@@ -51,10 +51,15 @@ import {
   LogStreamDetailPage,
 } from '@/features/administration'
 
+import { LoginPage } from '@/features/auth/components/LoginPage'
+
 export function AppRoutes() {
   return (
-    <Layout>
-      <Routes>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/*" element={
+        <Layout>
+          <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<PoliciesPage />} />
         <Route path="/access-policies/new" element={<CreatePolicyPage />} />
@@ -106,5 +111,7 @@ export function AppRoutes() {
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </Layout>
+    } />
+    </Routes>
   )
 }
