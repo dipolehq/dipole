@@ -50,6 +50,9 @@ func main() {
 	cache := dipoletls.NewCertCache(ca)
 	engine := dipoletls.NewMITMEngine(cache)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Connect to Cloud if endpoint configured
 	var cloud *cloudclient.CloudClient
 	if cfg.CloudEndpoint != "" {
@@ -64,12 +67,26 @@ func main() {
 		logger.Warn("no DIPOLE_CLOUD_GRPC_ENDPOINT configured, running without policy evaluation")
 	}
 
+	// Set resource set ID from config
+	if cloud != nil && cfg.ResourceSetID != "" {
+		cloud.SetResourceSetID(cfg.ResourceSetID)
+	}
+
+	// Registration + startup gate
+	if cloud != nil {
+		if cfg.PassThroughBeforeRegistration {
+			// Non-blocking: run registration in background, listeners start immediately
+			go cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, true, cfg.PostStartMaxWaitSec, logger)
+		} else {
+			// Blocking: registration must complete before listeners start.
+			// RunRegistration will os.Exit(1) on failure when passThrough=false.
+			cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, false, cfg.PostStartMaxWaitSec, logger)
+		}
+	}
+
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
 	gatherer := identity.NewEvidenceGatherer(logger)
 	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, cfg, logger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	go func() {
 		if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
