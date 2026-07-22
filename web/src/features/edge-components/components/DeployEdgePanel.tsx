@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Copy, ArrowRight } from 'lucide-react'
 import { Dropdown } from '@/shared/components/Dropdown'
-import { agentControllersData } from '@/data/edge-components/agentControllers'
+import { useAgentControllers, useRegenerateDeviceCode } from '@/features/edge-components/hooks/useAgentControllers'
 
 type Environment = 'kubernetes' | 'ubuntu' | 'redhat' | 'windows'
 
@@ -13,21 +13,31 @@ const ENVIRONMENTS: { value: Environment; label: string; subtitle: string; icon:
   { value: 'windows', label: 'Microsoft', subtitle: 'Windows', icon: '⊞' },
 ]
 
-const AGENT_CONTROLLER_OPTIONS = [
-  { value: '', label: 'Select Existing' },
-  ...agentControllersData.map((ac) => ({ value: ac.id, label: ac.name })),
-]
-
-const TENANT_ID = 'acme42'
+// TODO: Wire to real tenant ID from auth context
+const TENANT_ID = '<YOUR_TENANT_ID>'
 
 export function DeployEdgePanel() {
   const [selectedEnv, setSelectedEnv] = useState<Environment>('kubernetes')
   const [selectedController, setSelectedController] = useState('')
   const [deviceCode, setDeviceCode] = useState('')
 
-  function handleGenerateCode() {
-    const code = String(Math.floor(100000 + Math.random() * 900000))
-    setDeviceCode(code)
+  const { data: controllersData } = useAgentControllers(1, 100)
+  const controllers = controllersData?.items ?? []
+  const regenerateCode = useRegenerateDeviceCode()
+
+  const AGENT_CONTROLLER_OPTIONS = [
+    { value: '', label: 'Select Existing' },
+    ...controllers.map((ac) => ({ value: ac.id, label: ac.name })),
+  ]
+
+  async function handleGenerateCode() {
+    if (!selectedController) return
+    try {
+      const code = await regenerateCode.mutateAsync(selectedController)
+      setDeviceCode(code)
+    } catch (err) {
+      console.error('Failed to generate device code', err)
+    }
   }
 
   function copyToClipboard(text: string) {
@@ -75,9 +85,11 @@ export function DeployEdgePanel() {
             onControllerChange={setSelectedController}
             deviceCode={deviceCode}
             onGenerateCode={handleGenerateCode}
+            isGenerating={regenerateCode.isPending}
             helmRepoCmd={helmRepoCmd}
             helmInstallCmd={helmInstallCmd}
             onCopy={copyToClipboard}
+            controllerOptions={AGENT_CONTROLLER_OPTIONS}
           />
         ) : selectedEnv === 'ubuntu' ? (
           <UbuntuDeployment
@@ -85,7 +97,9 @@ export function DeployEdgePanel() {
             onControllerChange={setSelectedController}
             deviceCode={deviceCode}
             onGenerateCode={handleGenerateCode}
+            isGenerating={regenerateCode.isPending}
             onCopy={copyToClipboard}
+            controllerOptions={AGENT_CONTROLLER_OPTIONS}
           />
         ) : selectedEnv === 'redhat' ? (
           <RedHatDeployment
@@ -93,7 +107,9 @@ export function DeployEdgePanel() {
             onControllerChange={setSelectedController}
             deviceCode={deviceCode}
             onGenerateCode={handleGenerateCode}
+            isGenerating={regenerateCode.isPending}
             onCopy={copyToClipboard}
+            controllerOptions={AGENT_CONTROLLER_OPTIONS}
           />
         ) : selectedEnv === 'windows' ? (
           <WindowsDeployment
@@ -101,7 +117,9 @@ export function DeployEdgePanel() {
             onControllerChange={setSelectedController}
             deviceCode={deviceCode}
             onGenerateCode={handleGenerateCode}
+            isGenerating={regenerateCode.isPending}
             onCopy={copyToClipboard}
+            controllerOptions={AGENT_CONTROLLER_OPTIONS}
           />
         ) : (
           <div className="flex items-center justify-center h-64">
@@ -158,17 +176,21 @@ function KubernetesDeployment({
   onControllerChange,
   deviceCode,
   onGenerateCode,
+  isGenerating,
   helmRepoCmd,
   helmInstallCmd,
   onCopy,
+  controllerOptions,
 }: {
   selectedController: string
   onControllerChange: (v: string) => void
   deviceCode: string
   onGenerateCode: () => void
+  isGenerating: boolean
   helmRepoCmd: string
   helmInstallCmd: string
   onCopy: (text: string) => void
+  controllerOptions: { value: string; label: string }[]
 }) {
   const controllerSelected = selectedController !== ''
 
@@ -211,7 +233,7 @@ function KubernetesDeployment({
           <span className="text-xs text-gray-500 font-medium">OR</span>
           <div className="w-52">
             <Dropdown
-              options={AGENT_CONTROLLER_OPTIONS}
+              options={controllerOptions}
               value={selectedController}
               onChange={onControllerChange}
               placeholder="Select Existing"
@@ -232,9 +254,10 @@ function KubernetesDeployment({
               <button
                 type="button"
                 onClick={onGenerateCode}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                disabled={isGenerating}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
-                Create Device Code
+                {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
               {deviceCode && (
                 <div className="px-4 py-2 border border-border rounded-md text-sm font-mono tracking-widest text-gray-700 bg-gray-50">
@@ -309,13 +332,17 @@ function UbuntuDeployment({
   onControllerChange,
   deviceCode,
   onGenerateCode,
+  isGenerating,
   onCopy,
+  controllerOptions,
 }: {
   selectedController: string
   onControllerChange: (v: string) => void
   deviceCode: string
   onGenerateCode: () => void
+  isGenerating: boolean
   onCopy: (text: string) => void
+  controllerOptions: { value: string; label: string }[]
 }) {
   const controllerSelected = selectedController !== ''
 
@@ -388,7 +415,7 @@ function UbuntuDeployment({
           <span className="text-xs text-gray-500 font-medium">OR</span>
           <div className="w-52">
             <Dropdown
-              options={AGENT_CONTROLLER_OPTIONS}
+              options={controllerOptions}
               value={selectedController}
               onChange={onControllerChange}
               placeholder="Select Existing"
@@ -409,9 +436,10 @@ function UbuntuDeployment({
               <button
                 type="button"
                 onClick={onGenerateCode}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                disabled={isGenerating}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
-                Create Device Code
+                {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
               {deviceCode && (
                 <div className="px-4 py-2 border border-border rounded-md text-sm font-mono tracking-widest text-gray-700 bg-gray-50">
@@ -512,13 +540,17 @@ function RedHatDeployment({
   onControllerChange,
   deviceCode,
   onGenerateCode,
+  isGenerating,
   onCopy,
+  controllerOptions,
 }: {
   selectedController: string
   onControllerChange: (v: string) => void
   deviceCode: string
   onGenerateCode: () => void
+  isGenerating: boolean
   onCopy: (text: string) => void
+  controllerOptions: { value: string; label: string }[]
 }) {
   const controllerSelected = selectedController !== ''
 
@@ -591,7 +623,7 @@ function RedHatDeployment({
           <span className="text-xs text-gray-500 font-medium">OR</span>
           <div className="w-52">
             <Dropdown
-              options={AGENT_CONTROLLER_OPTIONS}
+              options={controllerOptions}
               value={selectedController}
               onChange={onControllerChange}
               placeholder="Select Existing"
@@ -612,9 +644,10 @@ function RedHatDeployment({
               <button
                 type="button"
                 onClick={onGenerateCode}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                disabled={isGenerating}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
-                Create Device Code
+                {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
               {deviceCode && (
                 <div className="px-4 py-2 border border-border rounded-md text-sm font-mono tracking-widest text-gray-700 bg-gray-50">
@@ -729,13 +762,17 @@ function WindowsDeployment({
   onControllerChange,
   deviceCode,
   onGenerateCode,
+  isGenerating,
   onCopy,
+  controllerOptions,
 }: {
   selectedController: string
   onControllerChange: (v: string) => void
   deviceCode: string
   onGenerateCode: () => void
+  isGenerating: boolean
   onCopy: (text: string) => void
+  controllerOptions: { value: string; label: string }[]
 }) {
   const controllerSelected = selectedController !== ''
 
@@ -808,7 +845,7 @@ function WindowsDeployment({
           <span className="text-xs text-gray-500 font-medium">OR</span>
           <div className="w-52">
             <Dropdown
-              options={AGENT_CONTROLLER_OPTIONS}
+              options={controllerOptions}
               value={selectedController}
               onChange={onControllerChange}
               placeholder="Select Existing"
@@ -829,9 +866,10 @@ function WindowsDeployment({
               <button
                 type="button"
                 onClick={onGenerateCode}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                disabled={isGenerating}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
-                Create Device Code
+                {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
               {deviceCode && (
                 <div className="px-4 py-2 border border-border rounded-md text-sm font-mono tracking-widest text-gray-700 bg-gray-50">

@@ -5,6 +5,7 @@ import {
   createAgentController,
   saveAgentController,
   deleteAgentController,
+  regenerateDeviceCode,
 } from '@/features/edge-components/api/agentControllersApi'
 import type { AgentControllerInput } from '@/features/edge-components/api/agentControllersApi'
 
@@ -53,6 +54,16 @@ export function useDeleteAgentController() {
     mutationFn: (id: string) => deleteAgentController(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agent-controllers', 'list'] })
+    },
+  })
+}
+
+export function useRegenerateDeviceCode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (controllerId: string) => regenerateDeviceCode(controllerId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-controllers'] })
     },
   })
 }

@@ -119,4 +119,9 @@ export async function deleteAgentController(id: string): Promise<void> {
   await apiClient.delete(`${BASE}/${id}`)
 }
 
+export async function regenerateDeviceCode(controllerId: string): Promise<string> {
+  const res = await apiClient.post<{ deviceCode: string }>(`${BASE}/${controllerId}/device-code`)
+  return res.deviceCode
+}
+
 export { apiErrorMessage } from '@/shared/lib/api-client'

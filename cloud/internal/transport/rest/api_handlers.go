@@ -32,6 +32,7 @@ type tenantProfileStore interface {
 // so the transport layer doesn't depend on the concrete type.
 type ControllerCreator interface {
 	CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error)
+	RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error)
 }
 
 type APIHandlers struct {
@@ -81,6 +82,7 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/agent-controllers/{id}", h.GetAgentController)
 	mux.HandleFunc("PUT /api/v1/agent-controllers/{id}", h.UpdateAgentController)
 	mux.HandleFunc("DELETE /api/v1/agent-controllers/{id}", h.DeleteAgentController)
+	mux.HandleFunc("POST /api/v1/agent-controllers/{id}/device-code", h.RegenerateDeviceCode)
 
 	mux.HandleFunc("GET /api/v1/users", h.ListUsers)
 	mux.HandleFunc("POST /api/v1/users", h.CreateUser)
@@ -272,6 +274,21 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *APIHandlers) RegenerateDeviceCode(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondBadRequest(w, "invalid id")
+		return
+	}
+	code, err := h.registrationSvc.RegenerateDeviceCode(r.Context(), tenantID, id)
+	if err != nil {
+		respondDomainError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"deviceCode": code})
 }
 
 // Users
