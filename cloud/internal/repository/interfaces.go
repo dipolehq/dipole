@@ -128,3 +128,10 @@ type LogStreamRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 }
+
+type AgentProxyRepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, proxy *domain.AgentProxy) error
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error)
+	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
+	ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error)
+}

@@ -31,6 +31,7 @@ type Repositories struct {
 	AccessConditions       *AccessConditionRepo
 	AccessPolicies         *AccessPolicyRepo
 	AgentControllers       *AgentControllerRepo
+	AgentProxies           *AgentProxyRepo
 	Events                 *EventRepo
 	ResourceSets           *ResourceSetRepo
 	Users                  *UserRepo
@@ -72,6 +73,7 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		AccessConditions:       &AccessConditionRepo{pool: pool},
 		AccessPolicies:         &AccessPolicyRepo{pool: pool},
 		AgentControllers:       &AgentControllerRepo{pool: pool},
+		AgentProxies:           &AgentProxyRepo{pool: pool},
 		Events:                 &EventRepo{pool: pool},
 		ResourceSets:           &ResourceSetRepo{pool: pool},
 		Users:                  &UserRepo{pool: pool},
