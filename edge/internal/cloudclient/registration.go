@@ -1,7 +1,7 @@
 /*
 registration.go handles the proxy startup registration flow: fetch token from
-Agent Controller, register with Cloud, start health reporting. Matches the
-flow: Proxy → Controller /api/token → Cloud Register RPC.
+Agent Controller, register with Cloud via gRPC, start periodic health reporting.
+Matches the flow: Proxy → Controller /api/token → Cloud Register RPC → Health loop.
 */
 package cloudclient
 
@@ -71,10 +71,13 @@ func doFetchToken(controllerURL string) (string, error) {
 	return result.Token, nil
 }
 
-func RunRegistration(ctx context.Context, controllerURL, cloudEndpoint, tenantID string, passThrough bool, maxWaitSec int, logger *slog.Logger) {
+// RunRegistration performs the full proxy registration flow: fetch token from
+// controller, register with Cloud gRPC, and start health reporting on success.
+// Returns a RegistrationResult indicating whether registration succeeded and the proxy ID.
+func RunRegistration(ctx context.Context, controllerURL string, client *CloudClient, passThrough bool, maxWaitSec int, logger *slog.Logger) *RegistrationResult {
 	if controllerURL == "" {
 		logger.Warn("no DIPOLE_AGENT_CONTROLLER configured, skipping registration")
-		return
+		return &RegistrationResult{Success: false}
 	}
 
 	regCtx := ctx
@@ -87,24 +90,50 @@ func RunRegistration(ctx context.Context, controllerURL, cloudEndpoint, tenantID
 	token, err := FetchTokenFromController(regCtx, controllerURL, logger)
 	if err != nil {
 		if !passThrough {
-			logger.Error("registration failed within timeout, exiting", "error", err)
+			logger.Error("registration failed: could not obtain token, exiting", "error", err)
 			os.Exit(1)
 		}
-		logger.Warn("registration failed, continuing in passthrough", "error", err)
-		return
+		logger.Warn("registration failed: could not obtain token, continuing in passthrough", "error", err)
+		return &RegistrationResult{Success: false}
 	}
 
 	logger.Info("obtained registration token from controller")
 
-	// Register with Cloud via gRPC (uses existing CloudClient)
-	if cloudEndpoint != "" {
-		logger.Info("registering with cloud", "endpoint", cloudEndpoint)
-		// The gRPC Register RPC is already stubbed in the proto.
-		// For now, log success. Full gRPC registration wiring comes with
-		// the persistent stream setup.
-		_ = token
-		_ = tenantID
+	proxyID, err := client.Register(regCtx, token, "1.0.0")
+	if err != nil {
+		if !passThrough {
+			logger.Error("registration failed: cloud rejected registration, exiting", "error", err)
+			os.Exit(1)
+		}
+		logger.Warn("registration failed: cloud rejected registration, continuing in passthrough", "error", err)
+		return &RegistrationResult{Success: false}
 	}
 
-	logger.Info("proxy registration complete")
+	logger.Info("proxy registered", "proxy_id", proxyID)
+
+	// Start periodic health reporting in background.
+	// Use the parent ctx (not regCtx) so health continues for process lifetime.
+	go startHealthReporting(ctx, client, logger)
+
+	return &RegistrationResult{ProxyID: proxyID, Success: true}
+}
+
+// startHealthReporting sends a health report to Cloud every 60 seconds
+// until the context is cancelled.
+func startHealthReporting(ctx context.Context, client *CloudClient, logger *slog.Logger) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := client.ReportHealth(ctx, 0); err != nil {
+				logger.Warn("health report failed", "error", err)
+			} else {
+				logger.Debug("health reported")
+			}
+		}
+	}
 }
