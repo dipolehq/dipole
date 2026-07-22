@@ -268,7 +268,7 @@ func (c *AgentController) startHealthReporting(ctx context.Context) {
 func (c *AgentController) reportHealth() error {
 	// For now, use HTTP. Will switch to gRPC ReportHealth in production.
 	url := c.config.CloudEndpoint + "/internal/controllers/health"
-	body := fmt.Sprintf(`{"controller_id":"%s","status":"Healthy"}`, c.controllerID)
+	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s","status":"Healthy"}`, c.config.TenantID, c.controllerID)
 
 	resp, err := http.Post(url, "application/json", strings.NewReader(body))
 	if err != nil {

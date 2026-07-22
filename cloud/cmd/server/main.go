@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
+	"github.com/dipolehq/dipole/cloud/internal/service/registration"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 	grpctransport "github.com/dipolehq/dipole/cloud/internal/transport/grpc"
 	"github.com/dipolehq/dipole/cloud/internal/transport/rest"
@@ -85,8 +87,9 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
+	registrationSvc := registration.NewRegistrationService(repos.AgentControllers)
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -138,6 +141,7 @@ func buildHTTPServer(
 	credentialProviderSvc *service.CredentialProviderService,
 	accessPolicySvc *service.AccessPolicyService,
 	authenticator rest.APIAuthenticator,
+	registrationSvc *registration.RegistrationService,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -161,6 +165,7 @@ func buildHTTPServer(
 	rest.NewCredentialProviderHandler(credentialProviderSvc).RegisterRoutes(mux)
 	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
+	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	handler := applyMiddleware(mux, authenticator)
 
@@ -189,7 +194,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	return path == "/api/v1/health"
+	return path == "/api/v1/health" || strings.HasPrefix(path, "/internal/")
 }
 
 func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
