@@ -28,6 +28,12 @@ type tenantProfileStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
 }
 
+// ControllerCreator abstracts the registration service's controller creation
+// so the transport layer doesn't depend on the concrete type.
+type ControllerCreator interface {
+	CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error)
+}
+
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	users                  repository.UserRepository
@@ -38,6 +44,7 @@ type APIHandlers struct {
 	logStreams             repository.LogStreamRepository
 	globalPolicyCompliance globalPolicyComplianceStore
 	tenantProfiles         tenantProfileStore
+	registrationSvc        ControllerCreator
 }
 
 func NewAPIHandlers(
@@ -50,6 +57,7 @@ func NewAPIHandlers(
 	ls repository.LogStreamRepository,
 	gpc globalPolicyComplianceStore,
 	tp tenantProfileStore,
+	regSvc ControllerCreator,
 ) *APIHandlers {
 	return &APIHandlers{
 		agentControllers:       agc,
@@ -61,6 +69,7 @@ func NewAPIHandlers(
 		logStreams:             ls,
 		globalPolicyCompliance: gpc,
 		tenantProfiles:         tp,
+		registrationSvc:        regSvc,
 	}
 }
 
@@ -137,17 +146,54 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		respondBadRequest(w, err.Error())
 		return
 	}
-	ac := req.toDomain()
-	if err := h.agentControllers.Create(r.Context(), tenantID, &ac); err != nil {
+
+	// Use RegistrationService to create with device code + expiry
+	ac, err := h.registrationSvc.CreateController(r.Context(), tenantID, req.Name)
+	if err != nil {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.agentControllers.GetByID(r.Context(), tenantID, ac.ID)
-	if err != nil || saved == nil {
-		respondJSON(w, http.StatusCreated, toAgentControllerResponse(&ac))
-		return
+
+	// Apply additional fields from request that CreateController doesn't handle
+	needsUpdate := false
+	if req.Description != "" {
+		ac.Description = req.Description
+		needsUpdate = true
 	}
-	respondJSON(w, http.StatusCreated, toAgentControllerResponse(saved))
+	if req.TrustProviderID != nil {
+		ac.TrustProviderID = req.TrustProviderID
+		needsUpdate = true
+	}
+	if req.TLSHostname != "" {
+		ac.TLSHostname = req.TLSHostname
+		needsUpdate = true
+	}
+	if req.ResourceSetID != nil {
+		ac.ResourceSetID = req.ResourceSetID
+		needsUpdate = true
+	}
+	if len(req.Tags) > 0 {
+		tags := make([]domain.Tag, 0, len(req.Tags))
+		for _, t := range req.Tags {
+			tags = append(tags, domain.Tag{Key: t.Key, Value: t.Value})
+		}
+		ac.Tags = tags
+		needsUpdate = true
+	}
+	if req.IsActive != nil && !*req.IsActive {
+		ac.IsActive = false
+		needsUpdate = true
+	}
+
+	// If additional fields were set, update the record
+	if needsUpdate {
+		if err := h.agentControllers.Update(r.Context(), tenantID, ac); err != nil {
+			respondDomainError(w, err)
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusCreated, toAgentControllerResponse(ac))
 }
 
 func (h *APIHandlers) GetAgentController(w http.ResponseWriter, r *http.Request) {
