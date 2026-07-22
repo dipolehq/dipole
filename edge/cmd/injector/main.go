@@ -30,10 +30,11 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := &InjectorConfig{
-		TenantID:      os.Getenv("DIPOLE_TENANT_ID"),
-		ProxyImage:    envOr("DIPOLE_PROXY_IMAGE", "dipole/proxy:latest"),
-		InitImage:     envOr("DIPOLE_INIT_IMAGE", "dipole/init:latest"),
-		ControllerURL: envOr("DIPOLE_CONTROLLER_URL", "http://dipole-agent-controller.dipole-system.svc.cluster.local:80"),
+		TenantID:          os.Getenv("DIPOLE_TENANT_ID"),
+		ProxyImage:        envOr("DIPOLE_PROXY_IMAGE", "dipole/proxy:latest"),
+		InitImage:         envOr("DIPOLE_INIT_IMAGE", "dipole/init:latest"),
+		ControllerURL:     envOr("DIPOLE_CONTROLLER_URL", "http://dipole-agent-controller.dipole-system.svc.cluster.local:80"),
+		CloudGRPCEndpoint: os.Getenv("DIPOLE_CLOUD_GRPC_ENDPOINT"),
 	}
 
 	tlsCert, err := generateSelfSignedCert()
@@ -72,10 +73,11 @@ func main() {
 }
 
 type InjectorConfig struct {
-	TenantID      string
-	ProxyImage    string
-	InitImage     string
-	ControllerURL string
+	TenantID          string
+	ProxyImage        string
+	InitImage         string
+	ControllerURL     string
+	CloudGRPCEndpoint string
 }
 
 type AgentInjector struct {
@@ -189,6 +191,11 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 		{"name": "DIPOLE_TENANT_ID", "value": inj.config.TenantID},
 		{"name": "K8S_POD_NAME", "valueFrom": map[string]interface{}{"fieldRef": map[string]string{"fieldPath": "metadata.name"}}},
 		{"name": "K8S_NAMESPACE", "valueFrom": map[string]interface{}{"fieldRef": map[string]string{"fieldPath": "metadata.namespace"}}},
+	}
+
+	// Cloud gRPC endpoint for policy evaluation
+	if inj.config.CloudGRPCEndpoint != "" {
+		sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": "DIPOLE_CLOUD_GRPC_ENDPOINT", "value": inj.config.CloudGRPCEndpoint})
 	}
 
 	if rsID := annotations["dipolehq.com/resource-set-id"]; rsID != "" {
