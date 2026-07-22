@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,11 +23,12 @@ import (
 
 type RegistrationService struct {
 	controllerRepo repository.AgentControllerRepository
+	proxyRepo      repository.AgentProxyRepository
 	logger         interface{ Info(string, ...interface{}) }
 }
 
-func NewRegistrationService(controllerRepo repository.AgentControllerRepository) *RegistrationService {
-	return &RegistrationService{controllerRepo: controllerRepo}
+func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository) *RegistrationService {
+	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo}
 }
 
 func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (*domain.AgentController, error) {
@@ -105,27 +107,62 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 
 	// Generate token issued by Cloud — Cloud recognizes its own tokens
 	rawBytes := make([]byte, 32)
-	rand.Read(rawBytes)
+	if _, err := rand.Read(rawBytes); err != nil {
+		return "", fmt.Errorf("generate random token: %w", err)
+	}
 	token := fmt.Sprintf("%s:%s:%x", tenantID, controllerID, rawBytes)
 
 	return token, nil
 }
 
 func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error) {
-	// Token was issued by Cloud via IssueProxyToken — Cloud validates it
-	// by checking format contains valid tenant_id:controller_id prefix
 	if registrationToken == "" {
 		return nil, fmt.Errorf("empty registration token")
 	}
 
-	proxyID := uuid.New()
-	now := time.Now()
+	// Parse token format: "tenantID:controllerID:random"
+	parts := strings.SplitN(registrationToken, ":", 3)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid registration token format")
+	}
 
+	tokenTenantID, err := uuid.Parse(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant_id in token")
+	}
+	if tokenTenantID != tenantID {
+		return nil, fmt.Errorf("token tenant mismatch")
+	}
+
+	controllerID, err := uuid.Parse(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid controller_id in token")
+	}
+
+	// Verify controller exists and is registered/healthy
+	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
+	if err != nil {
+		return nil, fmt.Errorf("controller not found")
+	}
+	if controller == nil {
+		return nil, fmt.Errorf("controller not found")
+	}
+	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
+		return nil, fmt.Errorf("controller not in valid state for proxy registration")
+	}
+
+	// Create and persist proxy
+	now := time.Now()
 	proxy := &domain.AgentProxy{
-		ID:           proxyID,
-		TenantID:     tenantID,
-		Status:       domain.AgentStatusRegistered,
-		RegisteredAt: &now,
+		ID:                uuid.New(),
+		TenantID:          tenantID,
+		AgentControllerID: &controllerID,
+		Status:            domain.AgentStatusRegistered,
+		RegisteredAt:      &now,
+	}
+
+	if err := s.proxyRepo.Create(ctx, tenantID, proxy); err != nil {
+		return nil, fmt.Errorf("persist proxy: %w", err)
 	}
 
 	return proxy, nil
