@@ -1,9 +1,11 @@
 /*
 Package cloudclient provides the gRPC client for connecting Agent Proxy to
-Dipole Cloud for policy evaluation.
+Dipole Cloud for policy evaluation, registration, health reporting, and
+event ingestion.
 
-CloudClient maintains a persistent gRPC connection and exposes Evaluate to
-send policy evaluation requests and receive allow/deny decisions with credentials.
+CloudClient maintains a persistent gRPC connection and exposes Evaluate,
+Register, ReportHealth, and IngestEvents to communicate with the Cloud
+control plane.
 */
 package cloudclient
 
@@ -24,11 +26,13 @@ import (
 )
 
 type CloudClient struct {
-	conn      *grpc.ClientConn
-	client    pb.PolicyEvaluationServiceClient
-	tenantID  string
-	logger    *slog.Logger
-	connected atomic.Bool
+	conn          *grpc.ClientConn
+	client        pb.PolicyEvaluationServiceClient
+	tenantID      string
+	proxyID       string // set after successful registration
+	resourceSetID string // from config, set via setter
+	logger        *slog.Logger
+	connected     atomic.Bool
 }
 
 func NewCloudClient(endpoint string, tenantID string, logger *slog.Logger) (*CloudClient, error) {
@@ -56,11 +60,97 @@ func NewCloudClient(endpoint string, tenantID string, logger *slog.Logger) (*Clo
 	return c, nil
 }
 
+// SetResourceSetID sets the resource set ID (called from main.go with config value).
+func (c *CloudClient) SetResourceSetID(id string) {
+	c.resourceSetID = id
+}
+
+// ProxyID returns the proxy ID obtained from registration. Empty if not yet registered.
+func (c *CloudClient) ProxyID() string {
+	return c.proxyID
+}
+
+// Register calls the Cloud Register RPC with the given token and version.
+// On success, it stores the returned proxyID internally and returns it.
+func (c *CloudClient) Register(ctx context.Context, token, version string) (string, error) {
+	req := &pb.RegisterRequest{
+		TenantId:          c.tenantID,
+		RegistrationToken: token,
+		ProxyVersion:      version,
+	}
+
+	resp, err := c.client.Register(ctx, req)
+	if err != nil {
+		c.connected.Store(false)
+		return "", fmt.Errorf("register rpc: %w", err)
+	}
+
+	c.connected.Store(true)
+
+	if !resp.Success {
+		return "", fmt.Errorf("registration denied: %s", resp.ErrorMessage)
+	}
+
+	c.proxyID = resp.ProxyId
+	return resp.ProxyId, nil
+}
+
+// ReportHealth sends a health report to Cloud indicating this proxy is healthy.
+func (c *CloudClient) ReportHealth(ctx context.Context, activeConns int32) error {
+	req := &pb.HealthReport{
+		ComponentId:       c.proxyID,
+		TenantId:          c.tenantID,
+		Status:            "Healthy",
+		ActiveConnections: activeConns,
+		Timestamp:         time.Now().Unix(),
+	}
+
+	resp, err := c.client.ReportHealth(ctx, req)
+	if err != nil {
+		c.connected.Store(false)
+		return fmt.Errorf("health rpc: %w", err)
+	}
+
+	c.connected.Store(true)
+
+	if !resp.Acknowledged {
+		return fmt.Errorf("health report not acknowledged")
+	}
+
+	return nil
+}
+
+// IngestEvents opens a client-streaming RPC and sends a batch of workload events to Cloud.
+func (c *CloudClient) IngestEvents(ctx context.Context, events []*pb.WorkloadEvent) error {
+	stream, err := c.client.IngestEvents(ctx)
+	if err != nil {
+		return fmt.Errorf("open event stream: %w", err)
+	}
+
+	batch := &pb.WorkloadEventBatch{
+		TenantId: c.tenantID,
+		Events:   events,
+	}
+
+	if err := stream.Send(batch); err != nil {
+		return fmt.Errorf("send event batch: %w", err)
+	}
+
+	_, err = stream.CloseAndRecv()
+	if err != nil {
+		return fmt.Errorf("close event stream: %w", err)
+	}
+
+	return nil
+}
+
 func (c *CloudClient) Evaluate(ctx context.Context, evidence *pb.ClientEvidence, host string, port int) (*EvaluationResult, error) {
 	req := &pb.PolicyEvaluationRequest{
-		TenantId: c.tenantID,
-		Client:   evidence,
-		Server:   &pb.ServerTarget{Host: host, Port: int32(port)},
+		TenantId:      c.tenantID,
+		ProxyId:       c.proxyID,
+		ResourceSetId: c.resourceSetID,
+		Client:        evidence,
+		Server:        &pb.ServerTarget{Host: host, Port: int32(port)},
 	}
 
 	resp, err := c.client.Evaluate(ctx, req)
