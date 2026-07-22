@@ -16,26 +16,28 @@ import (
 )
 
 type EvidenceGatherer struct {
-	logger  *slog.Logger
-	awsIMDS *awsIMDSGatherer
-	awsSTS  *awsSTSGatherer
-	azure   *azureGatherer
-	gcp     *gcpGatherer
+	logger         *slog.Logger
+	awsIMDS        *awsIMDSGatherer
+	awsSTS         *awsSTSGatherer
+	azure          *azureGatherer
+	gcp            *gcpGatherer
+	processEnabled bool
 }
 
-func NewEvidenceGatherer(logger *slog.Logger) *EvidenceGatherer {
+func NewEvidenceGatherer(logger *slog.Logger, processEnabled bool) *EvidenceGatherer {
 	imds := newIMDSClient()
 	tenantID := os.Getenv("DIPOLE_TENANT_ID")
 	return &EvidenceGatherer{
-		logger:  logger,
-		awsIMDS: newAWSIMDSGatherer(imds),
-		awsSTS:  newAWSSTSGatherer(imds),
-		azure:   newAzureGatherer(),
-		gcp:     newGCPGatherer(tenantID),
+		logger:         logger,
+		awsIMDS:        newAWSIMDSGatherer(imds),
+		awsSTS:         newAWSSTSGatherer(imds),
+		azure:          newAzureGatherer(),
+		gcp:            newGCPGatherer(tenantID),
+		processEnabled: processEnabled,
 	}
 }
 
-func (g *EvidenceGatherer) Gather(sourceIP string) *pb.ClientEvidence {
+func (g *EvidenceGatherer) Gather(sourceIP string, sourcePort int) *pb.ClientEvidence {
 	ev := &pb.ClientEvidence{
 		SourceIp:       sourceIP,
 		Hostname:       hostname(),
@@ -57,6 +59,12 @@ func (g *EvidenceGatherer) Gather(sourceIP string) *pb.ClientEvidence {
 
 	if gcp := g.gatherGCP(); gcp != nil {
 		ev.Gcp = gcp
+	}
+
+	if g.processEnabled {
+		if proc := gatherProcess(sourcePort); proc != nil {
+			ev.Process = proc
+		}
 	}
 
 	return ev

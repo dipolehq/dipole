@@ -47,8 +47,6 @@ func gatherK8s(logger *slog.Logger) *pb.K8SEvidence {
 	}
 }
 
-// decodeJWTPayload decodes the payload (second segment) of a JWT without
-// verifying the signature. Returns the claims as a generic map.
 func decodeJWTPayload(token string) (map[string]interface{}, error) {
 	parts := strings.SplitN(token, ".", 3)
 	if len(parts) < 2 {
@@ -69,19 +67,6 @@ func decodeJWTPayload(token string) (map[string]interface{}, error) {
 	return claims, nil
 }
 
-// extractServiceAccount navigates the nested kubernetes.io claims to find
-// the service account name and UID.
-//
-// K8s SA token JWT claims structure:
-//
-//	{
-//	  "kubernetes.io": {
-//	    "serviceaccount": {
-//	      "name": "myapp-sa",
-//	      "uid": "abc-123-def"
-//	    }
-//	  }
-//	}
 func extractServiceAccount(claims map[string]interface{}) (name, uid string) {
 	k8sClaims, ok := claims["kubernetes.io"].(map[string]interface{})
 	if !ok {

@@ -53,7 +53,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Connect to Cloud if endpoint configured
 	var cloud *cloudclient.CloudClient
 	if cfg.CloudEndpoint != "" {
 		cloud, err = cloudclient.NewCloudClient(cfg.CloudEndpoint, cfg.TenantID, logger)
@@ -67,25 +66,20 @@ func main() {
 		logger.Warn("no DIPOLE_CLOUD_GRPC_ENDPOINT configured, running without policy evaluation")
 	}
 
-	// Set resource set ID from config
 	if cloud != nil && cfg.ResourceSetID != "" {
 		cloud.SetResourceSetID(cfg.ResourceSetID)
 	}
 
-	// Registration + startup gate
 	if cloud != nil {
 		if cfg.PassThroughBeforeRegistration {
-			// Non-blocking: run registration in background, listeners start immediately
 			go cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, true, cfg.PostStartMaxWaitSec, logger)
 		} else {
-			// Blocking: registration must complete before listeners start.
-			// RunRegistration will os.Exit(1) on failure when passThrough=false.
 			cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, false, cfg.PostStartMaxWaitSec, logger)
 		}
 	}
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
-	gatherer := identity.NewEvidenceGatherer(logger)
+	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)
 	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, cfg, logger)
 
 	go func() {
@@ -115,15 +109,19 @@ func main() {
 func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
 		proto, reader := protocols.Detect(targetHost, targetPort, clientConn)
+
+		sourceIP, sourcePortStr, _ := net.SplitHostPort(clientConn.RemoteAddr().String())
+		sourcePort, _ := strconv.Atoi(sourcePortStr)
+
 		logger.Info("protocol detected", "protocol", proto.String(), "host", targetHost, "port", targetPort, "connection_id", connID)
 		metrics.ConnectionsActive.WithLabelValues(proto.String()).Inc()
 		defer metrics.ConnectionsActive.WithLabelValues(proto.String()).Dec()
 
 		switch proto {
 		case protocols.ProtoHTTPS, protocols.ProtoSnowflake:
-			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
+			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
-			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, logger)
+			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
@@ -132,7 +130,7 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 	}
 }
 
-func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
+func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
@@ -142,7 +140,7 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	defer clientPlain.Close()
 	defer serverConn.Close()
 
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, targetHost, targetPort, connID, logger)
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		return
@@ -152,8 +150,8 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
 }
 
-func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) {
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, targetHost, targetPort, connID, logger)
+func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		clientConn.Close()
@@ -172,12 +170,12 @@ func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClie
 	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
 }
 
-func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
+func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
 	if cloud == nil {
 		return true, nil, nil
 	}
 
-	evidence := gatherer.Gather("")
+	evidence := gatherer.Gather(sourceIP, sourcePort)
 
 	ctx := context.Background()
 	result, err := cloud.Evaluate(ctx, evidence, targetHost, targetPort)
