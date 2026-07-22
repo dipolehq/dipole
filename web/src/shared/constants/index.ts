@@ -8,3 +8,9 @@ export const ROUTES = {
   INTEGRATIONS: '/integrations',
   SETTINGS: '/settings',
 } as const
+
+export * from './policies'
+export * from './credential-providers'
+export * from './administration'
+export * from './tables'
+export * from './reporting'

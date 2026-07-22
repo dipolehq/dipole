@@ -1,7 +1,22 @@
 import { useState } from 'react'
 import { ChevronDown, RefreshCw } from 'lucide-react'
-import { auditLogsData } from '@/data/reporting/auditLogs'
-import type { AuditLog } from '@/data/reporting/auditLogs'
+
+interface AuditLog {
+  externalId: string
+  resourceSetId: string
+  category: string
+  actor: { type: string; displayName: string; userName: string; email: string; credentialProviderId: string; accessPolicyId: string }
+  activity: string
+  target: string
+  client: { ipAddress: string; userAgent: { browser: string; operatingSystem: string; raw: string } }
+  outcome: { reason: string; result: string }
+  trustProvider?: { reason: string; attribute?: string; expectedValue?: string; actualValue?: string }
+  severity: 'Info' | 'Warn' | 'Alert'
+  createdAt: string
+}
+
+// Will be wired to real API later
+const auditLogsData: AuditLog[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)

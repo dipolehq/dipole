@@ -12,7 +12,7 @@ import {
   DENIAL_REASONS_CONFIG,
   ATTESTATION_RESULTS_CONFIG,
 } from '@/features/dashboard/config'
-import { dashboardData } from '@/data/dashboard'
+import { dashboardData } from '@/features/dashboard/data'
 
 export function DashboardPage() {
   const { stats } = dashboardData

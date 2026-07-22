@@ -1,6 +1,15 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
-import { CREDENTIAL_TYPES } from '@/data/policies/geoData'
-import type { CredentialProviderListItem } from '@/data/credential-providers'
+import { CREDENTIAL_TYPES } from '@/shared/constants/credential-providers'
+
+export interface CredentialProviderListItem {
+  id: string
+  name: string
+  type: string
+  description: string
+  tags: number
+  policies: number
+  isActive: boolean
+}
 import type { CredentialProviderFormValues, FormTag } from '@/shared/components/forms/types'
 import { EMPTY_CREDENTIAL_PROVIDER } from '@/shared/components/forms/types'
 

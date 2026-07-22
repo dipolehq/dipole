@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
 import { useLogStream, useSaveLogStream, useDeleteLogStream } from '@/features/administration/hooks/useLogStreams'
 import { apiErrorMessage } from '@/features/administration/api/logStreamsApi'
-import type { LogStreamEventType, LogStreamDestinationType } from '@/data/administration/logStreams'
+import type { LogStreamEventType, LogStreamDestinationType } from '@/shared/constants/administration'
 
 const DETAIL_SECTIONS = [
   { value: 'details', label: 'Details' },

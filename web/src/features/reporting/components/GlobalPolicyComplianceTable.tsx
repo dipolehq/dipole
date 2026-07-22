@@ -1,7 +1,21 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { globalPolicyComplianceData } from '@/data/reporting/globalPolicyCompliance'
-import type { ComplianceLevel } from '@/data/reporting/globalPolicyCompliance'
+
+type ComplianceLevel = 'Required' | 'Recommended' | 'Optional'
+
+interface GlobalPolicyComplianceEntry {
+  id: string
+  policyName: string
+  clientWorkload: string
+  trustProvider: ComplianceLevel
+  accessCondition: ComplianceLevel
+  credentialProvider: string
+  serverWorkload: string
+  resourceSet: string
+}
+
+// Will be wired to real API later
+const globalPolicyComplianceData: GlobalPolicyComplianceEntry[] = []
 
 function ComplianceBadge({ level }: { level: ComplianceLevel }) {
   const colors: Record<ComplianceLevel, string> = {

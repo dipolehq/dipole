@@ -9,13 +9,13 @@ import { GlobalPolicyComplianceTable } from '@/features/reporting/components/Glo
 import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
 import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
 import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
-import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS } from '@/data/reporting'
-import type { LogType } from '@/data/reporting'
+import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, REPORTING_PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS } from '@/shared/constants/reporting'
+import type { LogType } from '@/shared/constants/reporting'
 
 export function ReportingPage() {
   const [selectedLogType, setSelectedLogType] = useState<LogType>('audit_logs')
   const [searchQuery, setSearchQuery] = useState('')
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
+  const [pageSize, setPageSize] = useState<number>(REPORTING_PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
 
   // Filter state
@@ -160,7 +160,7 @@ export function ReportingPage() {
       {/* Pagination footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
+          <PageSizeSelect value={pageSize} options={REPORTING_PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
           <span>Showing 0 - 0 of 0 Results</span>
         </div>
         <div className="flex items-center gap-1">

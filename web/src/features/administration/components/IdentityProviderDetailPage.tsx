@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { FileText, Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { IDP_TYPE_OPTIONS } from '@/data/administration/identityProviders'
+import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
-import type { IdpType, AuthMethod } from '@/data/administration/identityProviders'
+import type { IdpType, AuthMethod } from '@/shared/constants/administration'
 
 const ROLE_OPTIONS = [
   { value: 'SuperAdmin', label: 'SuperAdmin' },

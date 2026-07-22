@@ -1,7 +1,37 @@
 import { useState } from 'react'
 import { ChevronDown, RefreshCw } from 'lucide-react'
-import { workloadEventsData } from '@/data/reporting/workloadEvents'
-import type { WorkloadEvent } from '@/data/reporting/workloadEvents'
+
+interface WorkloadEvent {
+  version: string
+  meta: {
+    timestamp: string
+    eventType: string
+    connectionId: string
+    eventId: string
+    policyId: string
+    action: string
+    severity: 'Info' | 'Warning' | 'Error'
+    resourceSetId: string
+  }
+  workload: {
+    client: { id: string; name: string }
+    server: { id: string; name: string }
+  }
+  network: {
+    clientWorkloadIP: string
+    clientWorkloadPort: number
+    transportProtocol: string
+    serverWorkloadHost: string
+    serverWorkloadIP: string
+    serverWorkloadPort: number
+    proxyPort: number
+  }
+  outcome: { result: 'Passthrough' | 'Modified' | 'Error'; reason?: string }
+  application: Record<string, unknown>
+}
+
+// Will be wired to real API later
+const workloadEventsData: WorkloadEvent[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)

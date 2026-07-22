@@ -2,7 +2,7 @@ import { RotateCw } from 'lucide-react'
 import Chart from 'react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { TimeRangeDropdown } from '@/shared/components/TimeRangeDropdown'
-import { dashboardData } from '@/data/dashboard'
+import { dashboardData } from '@/features/dashboard/data'
 
 const timeLabels = Array.from({ length: 72 }, (_, i) => {
   const now = new Date()

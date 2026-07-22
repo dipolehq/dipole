@@ -1,6 +1,15 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
-import { CONDITION_INTEGRATIONS } from '@/data/policies/geoData'
-import type { AccessConditionListItem } from '@/data/access-conditions'
+import { CONDITION_INTEGRATIONS } from '@/shared/constants/credential-providers'
+
+export interface AccessConditionListItem {
+  id: string
+  name: string
+  type: string
+  description: string
+  tags: number
+  policies: number
+  isActive: boolean
+}
 import type {
   AccessConditionFormValues,
   GeoIpCountryEntry,

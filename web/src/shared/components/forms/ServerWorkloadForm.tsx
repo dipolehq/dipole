@@ -5,7 +5,7 @@ import {
   FloatingTextarea,
   FloatingDropdown,
 } from '@/shared/components/FloatingInput'
-import { APP_PROTOCOLS, TRANSPORT_PROTOCOLS, AUTH_METHODS } from '@/data/policies/config'
+import { APP_PROTOCOLS, TRANSPORT_PROTOCOLS, AUTH_METHODS } from '@/shared/constants/policies'
 import type { ServerWorkloadFormValues, FormHeader } from '@/shared/components/forms/types'
 
 interface ServerWorkloadFormProps {

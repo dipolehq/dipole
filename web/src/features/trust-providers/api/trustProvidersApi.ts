@@ -1,6 +1,15 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
-import { TRUST_PROVIDER_TYPES } from '@/data/policies/config'
-import type { TrustProviderListItem } from '@/data/trust-providers'
+import { TRUST_PROVIDER_TYPES } from '@/shared/constants/policies'
+
+export interface TrustProviderListItem {
+  id: string
+  name: string
+  type: string
+  description: string
+  tags: number
+  policies: number
+  isActive: boolean
+}
 import type {
   TrustProviderFormValues,
   TrustProviderMatchRule,

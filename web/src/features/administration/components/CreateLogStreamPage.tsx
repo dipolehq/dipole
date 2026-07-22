@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
-import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
 import { useCreateLogStream } from '@/features/administration/hooks/useLogStreams'
 import { apiErrorMessage } from '@/features/administration/api/logStreamsApi'
-import type { LogStreamEventType, LogStreamDestinationType } from '@/data/administration/logStreams'
+import type { LogStreamEventType, LogStreamDestinationType } from '@/shared/constants/administration'
 
 export function CreateLogStreamPage() {
   const navigate = useNavigate()

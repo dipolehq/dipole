@@ -4,7 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { apiClient } from '@/shared/lib/api-client'
-import { COUNTRY_CODE_OPTIONS } from '@/data/profile/userProfile'
+
+const COUNTRY_CODE_OPTIONS = [
+  { value: '+91', label: '+91 (India)' },
+  { value: '+1', label: '+1 (US/Canada)' },
+  { value: '+44', label: '+44 (UK)' },
+  { value: '+61', label: '+61 (Australia)' },
+  { value: '+65', label: '+65 (Singapore)' },
+  { value: '+971', label: '+971 (UAE)' },
+] as const
 
 const TABS = [
   { key: 'details', label: 'Details' },

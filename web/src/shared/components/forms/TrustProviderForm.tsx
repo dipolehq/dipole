@@ -5,7 +5,7 @@ import {
   FloatingTextarea,
   FloatingDropdown,
 } from '@/shared/components/FloatingInput'
-import { TRUST_PROVIDER_TYPES } from '@/data/policies/config'
+import { TRUST_PROVIDER_TYPES } from '@/shared/constants/policies'
 import { TrustProviderConfig } from '@/features/policies/components/tabs/trust-provider/TrustProviderConfig'
 import type { TrustProviderFormValues } from '@/shared/components/forms/types'
 

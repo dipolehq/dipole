@@ -5,7 +5,7 @@ import {
   FloatingTextarea,
   FloatingDropdown,
 } from '@/shared/components/FloatingInput'
-import { COUNTRIES, SUBDIVISIONS, TIMEZONES, CONDITION_INTEGRATIONS } from '@/data/policies/geoData'
+import { COUNTRIES, SUBDIVISIONS, TIMEZONES, CONDITION_INTEGRATIONS } from '@/shared/constants'
 import type { AccessConditionFormValues } from '@/shared/components/forms/types'
 
 const INTEGRATION_TYPES = CONDITION_INTEGRATIONS

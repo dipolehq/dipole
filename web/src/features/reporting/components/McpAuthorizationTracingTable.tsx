@@ -1,6 +1,21 @@
 import { Cpu, RefreshCw } from 'lucide-react'
-import { mcpAuthorizationTracingData } from '@/data/reporting/mcpAuthorizationTracing'
-import type { McpAuthorizationTracingEntry, McpPolicyStatus } from '@/data/reporting/mcpAuthorizationTracing'
+
+type McpPolicyStatus = 'Active' | 'Inactive' | 'Unknown'
+
+interface McpAuthorizationTracingEntry {
+  id: string
+  timestamp: string
+  clientIP: string
+  accessPolicy: { name: string; status: McpPolicyStatus }
+  redirectUri: string
+  clientWorkload: { name: string; status: 'Identified' | 'Unknown' }
+  resourceServer: string
+  serverWorkload: { name: string; status: 'Identified' | 'Unknown' }
+  severity: 'Info' | 'Warning' | 'Error'
+}
+
+// Will be wired to real API later
+const mcpAuthorizationTracingData: McpAuthorizationTracingEntry[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)

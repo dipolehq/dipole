@@ -1,5 +1,14 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
-import type { ServerWorkloadListItem } from '@/data/server-workloads'
+
+export interface ServerWorkloadListItem {
+  id: string
+  name: string
+  protocol: string
+  host: string
+  tags: number
+  policies: number
+  isActive: boolean
+}
 import type { ServerWorkloadFormValues, FormTag, FormHeader } from '@/shared/components/forms/types'
 
 const BASE = '/server-workloads'

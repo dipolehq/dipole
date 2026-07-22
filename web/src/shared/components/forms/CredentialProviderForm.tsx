@@ -6,7 +6,7 @@ import {
   FloatingDropdown,
 } from '@/shared/components/FloatingInput'
 import { CredentialTypeConfig } from '@/features/policies/components/tabs/credential-provider/CredentialProviderTab'
-import { CREDENTIAL_TYPES } from '@/data/policies/geoData'
+import { CREDENTIAL_TYPES } from '@/shared/constants/credential-providers'
 import { Dropdown } from '@/shared/components/Dropdown'
 import type { CredentialProviderFormValues } from '@/shared/components/forms/types'
 

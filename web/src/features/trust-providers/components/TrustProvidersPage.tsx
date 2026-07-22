@@ -3,15 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useTrustProviders } from '@/features/trust-providers/hooks/useTrustProviders'
-import { TRUST_PROVIDER_TABLE_COLUMNS, PAGE_SIZE_OPTIONS } from '@/data/trust-providers'
-import { ENTITY_TABLE_COL_WIDTHS } from '@/data/shared/tableWidths'
+import { TRUST_PROVIDER_TABLE_COLUMNS, TRUST_PROVIDER_PAGE_SIZE_OPTIONS, ENTITY_TABLE_COL_WIDTHS } from '@/shared/constants'
 import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
 export function TrustProvidersPage() {
   const navigate = useNavigate()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
+  const [pageSize, setPageSize] = useState<number>(TRUST_PROVIDER_PAGE_SIZE_OPTIONS[0])
   const [currentPage, setCurrentPage] = useState(1)
 
   const { data, isLoading } = useTrustProviders(currentPage, pageSize, searchQuery)
@@ -131,7 +130,7 @@ export function TrustProvidersPage() {
           {/* Pagination footer */}
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
+              <PageSizeSelect value={pageSize} options={TRUST_PROVIDER_PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
               <span>
                 Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
                 {Math.min(currentPage * pageSize, total)} of {total} Results

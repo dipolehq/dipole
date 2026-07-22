@@ -5,7 +5,7 @@ import {
   FloatingTextarea,
   FloatingDropdown,
 } from '@/shared/components/FloatingInput'
-import { CLIENT_IDENTIFIER_TYPES } from '@/data/policies/config'
+import { CLIENT_IDENTIFIER_TYPES } from '@/shared/constants/policies'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
 interface ClientWorkloadFormProps {

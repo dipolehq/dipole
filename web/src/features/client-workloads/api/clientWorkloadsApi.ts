@@ -1,6 +1,15 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
-import { CLIENT_IDENTIFIER_TYPES } from '@/data/policies/config'
-import type { ClientWorkloadListItem } from '@/data/client-workloads'
+import { CLIENT_IDENTIFIER_TYPES } from '@/shared/constants/policies'
+
+export interface ClientWorkloadListItem {
+  id: string
+  name: string
+  type: string
+  description: string
+  tags: number
+  policies: number
+  isActive: boolean
+}
 import type { ClientWorkloadFormValues, FormTag } from '@/shared/components/forms/types'
 
 const BASE = '/client-workloads'

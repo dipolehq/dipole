@@ -1,7 +1,40 @@
 import { useState } from 'react'
 import { ChevronDown, RefreshCw } from 'lucide-react'
-import { accessAuthorizationEventsData } from '@/data/reporting/accessAuthorizationEvents'
-import type { AccessAuthorizationEvent } from '@/data/reporting/accessAuthorizationEvents'
+
+interface AccessAuthorizationEventMeta {
+  clientIP: string
+  timestamp: string
+  eventType: 'access.request' | 'access.authorization' | 'access.discovery' | 'access.credential'
+  eventId: string
+  resourceSetId: string
+  contextId: string
+  severity: 'Info' | 'Warning' | 'Error'
+}
+
+interface AccessAuthorizationEvent {
+  meta: AccessAuthorizationEventMeta
+  outcome?: { result: string; reason?: string }
+  clientRequest?: {
+    version: string
+    network: {
+      sourceIP: string
+      sourcePort: number
+      transportProtocol: string
+      proxyPort: number
+      targetHost: string
+      targetPort: number
+    }
+  }
+  clientWorkload?: { id: string; name: string; result: string; matches?: string[] }
+  serverWorkload?: { id: string; name: string; result: string; matches?: string[] }
+  accessPolicy?: { id: string; name: string; result: string; matches?: string[] }
+  trustProviders?: { id: string; name: string; result: string; reason?: string; attribute?: string; expectedValue?: string; actualValue?: string }[]
+  accessConditions?: { id: string; name: string; result: string; reason?: string; attribute?: string; expectedValue?: string; actualValue?: string }[]
+  credentialProvider?: { id: string; name: string; result: string; type?: string; maxAge?: number; reason?: string }
+}
+
+// Will be wired to real API later
+const accessAuthorizationEventsData: AccessAuthorizationEvent[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)

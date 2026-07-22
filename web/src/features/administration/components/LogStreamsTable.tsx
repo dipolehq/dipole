@@ -1,6 +1,6 @@
 import { Radio } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/data/administration/logStreams'
+import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
 import type { LogStreamListItem } from '@/features/administration/api/logStreamsApi'
 
 interface LogStreamsTableProps {
