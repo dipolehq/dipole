@@ -32,3 +32,18 @@ func (e *ValidationError) Error() string {
 func NewValidationError(field, message string) *ValidationError {
 	return &ValidationError{Field: field, Message: message}
 }
+
+// RegistrationError represents a client-caused registration failure
+// (invalid token, tenant mismatch, controller not found/healthy).
+// Server-side errors (DB failures) should NOT use this type.
+type RegistrationError struct {
+	Message string
+}
+
+func (e *RegistrationError) Error() string {
+	return e.Message
+}
+
+func NewRegistrationError(message string) *RegistrationError {
+	return &RegistrationError{Message: message}
+}

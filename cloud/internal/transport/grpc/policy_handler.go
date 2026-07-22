@@ -3,13 +3,15 @@ policy_handler.go implements the gRPC PolicyEvaluationService RPCs.
 
 PolicyEvaluationServer is a thin transport layer: it maps protobuf messages
 to domain types, delegates to the policy evaluator, and maps results back.
-No business logic lives here. Register, ReportHealth, and IngestEvents are
-stubs for now (implemented in later jobs).
+No business logic lives here. Register and ReportHealth delegate to the
+registration service and agent proxy repository respectively. IngestEvents
+is a stub for now (implemented in a later phase).
 */
 package grpc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -19,18 +21,36 @@ import (
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
+// PolicyEvaluator abstracts the policy evaluation service.
 type PolicyEvaluator interface {
 	Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
 }
 
-type PolicyEvaluationServer struct {
-	pb.UnimplementedPolicyEvaluationServiceServer
-	evaluator PolicyEvaluator
-	logger    *slog.Logger
+// ProxyRegistrar abstracts the registration service for proxy registration.
+type ProxyRegistrar interface {
+	RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error)
 }
 
-func NewPolicyEvaluationServer(evaluator PolicyEvaluator, logger *slog.Logger) *PolicyEvaluationServer {
-	return &PolicyEvaluationServer{evaluator: evaluator, logger: logger}
+// ProxyHealthUpdater abstracts the repository for updating proxy health.
+type ProxyHealthUpdater interface {
+	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
+}
+
+type PolicyEvaluationServer struct {
+	pb.UnimplementedPolicyEvaluationServiceServer
+	evaluator     PolicyEvaluator
+	registrar     ProxyRegistrar
+	healthUpdater ProxyHealthUpdater
+	logger        *slog.Logger
+}
+
+func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, logger *slog.Logger) *PolicyEvaluationServer {
+	return &PolicyEvaluationServer{
+		evaluator:     evaluator,
+		registrar:     registrar,
+		healthUpdater: healthUpdater,
+		logger:        logger,
+	}
 }
 
 func (s *PolicyEvaluationServer) Evaluate(ctx context.Context, req *pb.PolicyEvaluationRequest) (*pb.PolicyEvaluationResponse, error) {
@@ -51,13 +71,47 @@ func (s *PolicyEvaluationServer) Evaluate(ctx context.Context, req *pb.PolicyEva
 	return mapResponse(result), nil
 }
 
-func (s *PolicyEvaluationServer) Register(_ context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	s.logger.Info("register called", "tenant_id", req.TenantId)
-	return &pb.RegisterResponse{Success: true, ProxyId: uuid.New().String()}, nil
+func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	tenantID, err := uuid.Parse(req.TenantId)
+	if err != nil {
+		s.logger.Warn("register: invalid tenant_id", "tenant_id", req.TenantId, "error", err)
+		return &pb.RegisterResponse{Success: false, ErrorMessage: "invalid tenant_id"}, nil
+	}
+
+	proxy, err := s.registrar.RegisterProxy(ctx, tenantID, req.RegistrationToken)
+	if err != nil {
+		var regErr *domain.RegistrationError
+		if errors.As(err, &regErr) {
+			s.logger.Warn("register: registration failed", "tenant_id", tenantID, "error", err)
+		} else {
+			s.logger.Error("register: registration failed", "tenant_id", tenantID, "error", err)
+		}
+		return &pb.RegisterResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+
+	s.logger.Info("proxy registered", "tenant_id", tenantID, "proxy_id", proxy.ID)
+	return &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String()}, nil
 }
 
-func (s *PolicyEvaluationServer) ReportHealth(_ context.Context, req *pb.HealthReport) (*pb.HealthAck, error) {
-	s.logger.Debug("health report", "component_id", req.ComponentId, "status", req.Status)
+func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.HealthReport) (*pb.HealthAck, error) {
+	proxyID, err := uuid.Parse(req.ComponentId)
+	if err != nil {
+		s.logger.Warn("health: invalid component_id", "component_id", req.ComponentId, "error", err)
+		return &pb.HealthAck{Acknowledged: false}, nil
+	}
+
+	tenantID, err := uuid.Parse(req.TenantId)
+	if err != nil {
+		s.logger.Warn("health: invalid tenant_id", "tenant_id", req.TenantId, "error", err)
+		return &pb.HealthAck{Acknowledged: false}, nil
+	}
+
+	if err := s.healthUpdater.UpdateHealth(ctx, tenantID, proxyID, req.Status); err != nil {
+		s.logger.Error("health: update failed", "tenant_id", tenantID, "proxy_id", proxyID, "error", err)
+		return &pb.HealthAck{Acknowledged: false}, nil
+	}
+
+	s.logger.Debug("health report acknowledged", "tenant_id", tenantID, "proxy_id", proxyID, "status", req.Status)
 	return &pb.HealthAck{Acknowledged: true}, nil
 }
 

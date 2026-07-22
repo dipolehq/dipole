@@ -90,7 +90,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies)
 
 	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc)
-	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, logger)
+	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

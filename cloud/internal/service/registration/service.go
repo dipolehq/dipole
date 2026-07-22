@@ -117,38 +117,38 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 
 func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error) {
 	if registrationToken == "" {
-		return nil, fmt.Errorf("empty registration token")
+		return nil, domain.NewRegistrationError("empty registration token")
 	}
 
 	// Parse token format: "tenantID:controllerID:random"
 	parts := strings.SplitN(registrationToken, ":", 3)
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid registration token format")
+		return nil, domain.NewRegistrationError("invalid registration token format")
 	}
 
 	tokenTenantID, err := uuid.Parse(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid tenant_id in token")
+		return nil, domain.NewRegistrationError("invalid tenant_id in token")
 	}
 	if tokenTenantID != tenantID {
-		return nil, fmt.Errorf("token tenant mismatch")
+		return nil, domain.NewRegistrationError("token tenant mismatch")
 	}
 
 	controllerID, err := uuid.Parse(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("invalid controller_id in token")
+		return nil, domain.NewRegistrationError("invalid controller_id in token")
 	}
 
 	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return nil, fmt.Errorf("controller not found")
+		return nil, fmt.Errorf("lookup controller: %w", err)
 	}
 	if controller == nil {
-		return nil, fmt.Errorf("controller not found")
+		return nil, domain.NewRegistrationError("controller not found")
 	}
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return nil, fmt.Errorf("controller not in valid state for proxy registration")
+		return nil, domain.NewRegistrationError("controller not in valid state for proxy registration")
 	}
 
 	// Create and persist proxy
