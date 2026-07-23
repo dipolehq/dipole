@@ -43,8 +43,29 @@ func InjectCredential(req *http.Request, cred *Credential, config *InjectionConf
 		injectHeader(req, config, cred)
 	case "api_key_query":
 		injectQueryParam(req, config, cred)
+	case "sigv4":
+		return injectSigV4(req, cred)
 	default:
 		return fmt.Errorf("unsupported injection method: %s", config.Method)
 	}
 	return nil
+}
+
+func injectSigV4(req *http.Request, cred *Credential) error {
+	if cred.AwsAccessKeyId == "" {
+		return fmt.Errorf("sigv4: missing AWS credentials")
+	}
+
+	service, region, err := ExtractServiceRegion(req.Host)
+	if err != nil {
+		return fmt.Errorf("sigv4: %w", err)
+	}
+
+	awsCreds := &AWSCredentials{
+		AccessKeyID:     cred.AwsAccessKeyId,
+		SecretAccessKey: cred.AwsSecretAccessKey,
+		SessionToken:    cred.AwsSessionToken,
+	}
+
+	return SignAWSRequest(req, awsCreds, region, service)
 }

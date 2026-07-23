@@ -118,8 +118,10 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 		defer metrics.ConnectionsActive.WithLabelValues(proto.String()).Dec()
 
 		switch proto {
-		case protocols.ProtoHTTPS, protocols.ProtoSnowflake:
+		case protocols.ProtoHTTPS:
 			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoSnowflake:
+			handleSnowflake(engine, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
 			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoPostgreSQL:
@@ -154,6 +156,42 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 
 	clientReader := bufio.NewReader(clientPlain)
 	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
+}
+
+func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	bufferedConn := newBufferedConn(reader, clientConn)
+	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
+	if err != nil {
+		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
+		return
+	}
+	defer clientPlain.Close()
+	defer serverConn.Close()
+
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !allowed {
+		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
+		return
+	}
+
+	var snowCred *protocols.SnowflakeCredential
+	if cred != nil && cred.Value != "" {
+		snowCred = &protocols.SnowflakeCredential{
+			Username: cred.Username,
+			Token:    cred.Value,
+		}
+	}
+
+	if snowCred == nil {
+		clientReader := bufio.NewReader(clientPlain)
+		httpHandler := &protocols.HTTPHandler{Logger: logger}
+		httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, nil, nil, connID)
+		return
+	}
+
+	clientReader := bufio.NewReader(clientPlain)
+	sfHandler := &protocols.SnowflakeHandler{Logger: logger}
+	sfHandler.Handle(clientReader, clientPlain, serverConn, snowCred, connID)
 }
 
 func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
