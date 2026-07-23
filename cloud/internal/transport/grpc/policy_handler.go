@@ -205,10 +205,14 @@ func mapResponse(r *domain.EvaluationResult) *pb.PolicyEvaluationResponse {
 
 	if r.Credential != nil {
 		resp.Credential = &pb.Credential{
-			Type:     r.Credential.Type,
-			Value:    r.Credential.Value,
-			Username: r.Credential.Username,
-			Password: r.Credential.Password,
+			Type:               r.Credential.Type,
+			Value:              r.Credential.Value,
+			Username:           r.Credential.Username,
+			Password:           r.Credential.Password,
+			AwsAccessKeyId:     r.Credential.AWSAccessKeyID,
+			AwsSecretAccessKey: r.Credential.AWSSecretAccessKey,
+			AwsSessionToken:    r.Credential.AWSSessionToken,
+			ExpiresAt:          r.Credential.ExpiresAt,
 		}
 	}
 

@@ -7,12 +7,15 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -146,16 +149,49 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 		return
 	}
 	defer clientPlain.Close()
-	defer serverConn.Close()
 
 	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
+		serverConn.Close()
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		return
 	}
 
+	if injCfg != nil && injCfg.Method == "mtls_x509" {
+		serverConn.Close()
+
+		mtlsConn, mtlsErr := dialMTLS(targetHost, targetPort, cred, logger, connID)
+		if mtlsErr != nil {
+			clientPlain.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 17\r\n\r\nmTLS dial failed\n"))
+			return
+		}
+		serverConn = mtlsConn
+	}
+	defer serverConn.Close()
+
 	clientReader := bufio.NewReader(clientPlain)
 	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
+}
+
+func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, logger *slog.Logger, connID uuid.UUID) (net.Conn, error) {
+	if cred == nil || cred.Value == "" || cred.Password == "" {
+		return nil, fmt.Errorf("mtls_x509: missing certificate or private key")
+	}
+
+	tlsCfg, err := injection.BuildMTLSConfig(cred.Value, cred.Password, targetHost)
+	if err != nil {
+		logger.Warn("mtls config failed", "error", err, "connection_id", connID)
+		return nil, err
+	}
+
+	serverAddr := net.JoinHostPort(targetHost, strconv.Itoa(targetPort))
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", serverAddr, tlsCfg)
+	if err != nil {
+		logger.Warn("mtls dial failed", "host", targetHost, "error", err, "connection_id", connID)
+		return nil, err
+	}
+
+	return conn, nil
 }
 
 func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {

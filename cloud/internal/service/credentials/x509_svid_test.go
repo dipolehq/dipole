@@ -82,10 +82,10 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 	}
 
 	// Check private key is returned
-	if cred.Username == "" {
-		t.Error("private key (Username field) should be set")
+	if cred.Password == "" {
+		t.Error("private key should be set")
 	}
-	keyBlock, _ := pem.Decode([]byte(cred.Username))
+	keyBlock, _ := pem.Decode([]byte(cred.Password))
 	if keyBlock == nil || keyBlock.Type != "EC PRIVATE KEY" {
 		t.Error("private key should be EC PRIVATE KEY PEM")
 	}

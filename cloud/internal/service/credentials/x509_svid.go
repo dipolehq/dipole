@@ -1,8 +1,8 @@
 /*
 x509_svid.go issues SPIFFE X.509-SVID certificates for mTLS authentication.
 Generates an ECDSA P-256 key pair in memory, creates a certificate with the
-SPIFFE ID as a URI SAN, and signs it with a standalone CA. The private key
-never leaves memory (for proxy path, the proxy generates the key locally).
+SPIFFE ID as a URI SAN, and signs it with a standalone CA. Returns the full
+certificate chain and private key to the caller.
 */
 package credentials
 
@@ -89,11 +89,9 @@ func (h *X509SVIDHandler) Retrieve(_ context.Context, configJSON []byte, _ *doma
 	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 
 	return &domain.Credential{
-		Type:  "x509",
-		Value: chainPEM,
-		// PrivateKey is returned for CLI/direct usage. For proxy path,
-		// proxy generates key locally and sends CSR instead.
-		Username: keyPEM,
+		Type:     "x509",
+		Value:    chainPEM,
+		Password: keyPEM,
 	}, nil
 }
 
