@@ -13,10 +13,13 @@ import (
 )
 
 type Credential struct {
-	Type     string
-	Value    string
-	Username string
-	Password string
+	Type               string
+	Value              string
+	Username           string
+	Password           string
+	AwsAccessKeyId     string
+	AwsSecretAccessKey string
+	AwsSessionToken    string
 }
 
 type InjectionConfig struct {

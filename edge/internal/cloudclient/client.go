@@ -176,19 +176,23 @@ func (c *CloudClient) Close() error {
 }
 
 type EvaluationResult struct {
-	Allowed          bool
-	DenyReason       string
-	CredentialType   string
-	CredentialValue  string
-	Username         string
-	Password         string
-	InjectionMethod  string
-	InjectionHeader  string
-	InjectionPrefix  string
-	InjectionQuery   string
-	PolicyID         string
-	ClientWorkloadID string
-	ServerWorkloadID string
+	Allowed            bool
+	DenyReason         string
+	CredentialType     string
+	CredentialValue    string
+	Username           string
+	Password           string
+	AwsAccessKeyId     string
+	AwsSecretAccessKey string
+	AwsSessionToken    string
+	ExpiresAt          int64
+	InjectionMethod    string
+	InjectionHeader    string
+	InjectionPrefix    string
+	InjectionQuery     string
+	PolicyID           string
+	ClientWorkloadID   string
+	ServerWorkloadID   string
 }
 
 func mapResult(resp *pb.PolicyEvaluationResponse) *EvaluationResult {
@@ -205,6 +209,10 @@ func mapResult(resp *pb.PolicyEvaluationResponse) *EvaluationResult {
 		r.CredentialValue = resp.Credential.Value
 		r.Username = resp.Credential.Username
 		r.Password = resp.Credential.Password
+		r.AwsAccessKeyId = resp.Credential.AwsAccessKeyId
+		r.AwsSecretAccessKey = resp.Credential.AwsSecretAccessKey
+		r.AwsSessionToken = resp.Credential.AwsSessionToken
+		r.ExpiresAt = resp.Credential.ExpiresAt
 	}
 
 	if resp.Injection != nil {

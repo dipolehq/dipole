@@ -122,6 +122,12 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
 			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoPostgreSQL:
+			handlePostgreSQL(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoMySQL:
+			handleMySQL(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoRedis:
+			handleRedis(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
@@ -170,6 +176,84 @@ func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClie
 	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
 }
 
+func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !allowed {
+		clientConn.Close()
+		return
+	}
+
+	if cred == nil || (cred.Username == "" && cred.Password == "") {
+		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
+		return
+	}
+
+	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
+	if err != nil {
+		logger.Error("postgres dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
+		clientConn.Close()
+		return
+	}
+
+	pgHandler := &protocols.PostgresHandler{Logger: logger}
+	pgHandler.Handle(clientConn, serverConn, &protocols.PGCredential{
+		Username: cred.Username,
+		Password: cred.Password,
+	}, connID)
+}
+
+func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !allowed {
+		clientConn.Close()
+		return
+	}
+
+	if cred == nil || (cred.Username == "" && cred.Password == "") {
+		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
+		return
+	}
+
+	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
+	if err != nil {
+		logger.Error("mysql dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
+		clientConn.Close()
+		return
+	}
+
+	mysqlHandler := &protocols.MySQLHandler{Logger: logger}
+	mysqlHandler.Handle(clientConn, serverConn, &protocols.MySQLCredential{
+		Username: cred.Username,
+		Password: cred.Password,
+	}, connID)
+}
+
+func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !allowed {
+		clientConn.Close()
+		return
+	}
+
+	if cred == nil || cred.Password == "" {
+		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
+		return
+	}
+
+	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
+	if err != nil {
+		logger.Error("redis dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
+		clientConn.Close()
+		return
+	}
+
+	redisHandler := &protocols.RedisHandler{Logger: logger}
+	redisHandler.Handle(clientConn, serverConn, &protocols.RedisCredential{
+		Username: cred.Username,
+		Password: cred.Password,
+	}, connID)
+}
+
 func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
 	if cloud == nil {
 		return true, nil, nil
@@ -197,12 +281,15 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 
 	metrics.PolicyEvaluationsTotal.WithLabelValues("allowed").Inc()
 
-	if result.CredentialValue != "" || result.Username != "" {
+	if result.CredentialValue != "" || result.Username != "" || result.AwsAccessKeyId != "" {
 		cred = &injection.Credential{
-			Type:     result.CredentialType,
-			Value:    result.CredentialValue,
-			Username: result.Username,
-			Password: result.Password,
+			Type:               result.CredentialType,
+			Value:              result.CredentialValue,
+			Username:           result.Username,
+			Password:           result.Password,
+			AwsAccessKeyId:     result.AwsAccessKeyId,
+			AwsSecretAccessKey: result.AwsSecretAccessKey,
+			AwsSessionToken:    result.AwsSessionToken,
 		}
 	}
 
