@@ -74,6 +74,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	writeCAToSharedVolume(ca, logger)
+
 	cache := dipoletls.NewCertCache(ca)
 	engine := dipoletls.NewMITMEngine(cache)
 
@@ -118,6 +120,22 @@ func buildCertificateAuthority(regResult *cloudclient.RegistrationResult, logger
 
 	logger.Info("generating local CA (no tenant CA from cloud)")
 	return dipoletls.NewCertificateAuthority()
+}
+
+func writeCAToSharedVolume(ca *dipoletls.CertificateAuthority, logger *slog.Logger) {
+	const caPath = "/dipole/ca/ca.pem"
+
+	if err := os.MkdirAll("/dipole/ca", 0755); err != nil {
+		logger.Warn("cannot create CA directory for trust injection", "path", caPath, "error", err)
+		return
+	}
+
+	if err := os.WriteFile(caPath, ca.CACertPEM(), 0644); err != nil {
+		logger.Warn("cannot write CA cert for trust injection", "path", caPath, "error", err)
+		return
+	}
+
+	logger.Info("CA certificate written for trust injection", "path", caPath)
 }
 
 func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
