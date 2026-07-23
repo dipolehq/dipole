@@ -43,16 +43,6 @@ func main() {
 		"sigterm_strategy", cfg.SIGTERMStrategy,
 	)
 
-	ca, err := dipoletls.NewCertificateAuthority()
-	if err != nil {
-		logger.Error("failed to create CA", "error", err)
-		os.Exit(1)
-	}
-	logger.Info("root CA generated")
-
-	cache := dipoletls.NewCertCache(ca)
-	engine := dipoletls.NewMITMEngine(cache)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -73,13 +63,19 @@ func main() {
 		cloud.SetResourceSetID(cfg.ResourceSetID)
 	}
 
+	var regResult *cloudclient.RegistrationResult
 	if cloud != nil {
-		if cfg.PassThroughBeforeRegistration {
-			go cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, true, cfg.PostStartMaxWaitSec, logger)
-		} else {
-			cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, false, cfg.PostStartMaxWaitSec, logger)
-		}
+		regResult = cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, cfg.PassThroughBeforeRegistration, cfg.PostStartMaxWaitSec, logger)
 	}
+
+	ca, err := buildCertificateAuthority(regResult, logger)
+	if err != nil {
+		logger.Error("failed to create CA", "error", err)
+		os.Exit(1)
+	}
+
+	cache := dipoletls.NewCertCache(ca)
+	engine := dipoletls.NewMITMEngine(cache)
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
 	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)
@@ -107,6 +103,21 @@ func main() {
 	}()
 
 	waitForShutdown(cancel, cfg, logger, explicitListener)
+}
+
+func buildCertificateAuthority(regResult *cloudclient.RegistrationResult, logger *slog.Logger) (*dipoletls.CertificateAuthority, error) {
+	if regResult != nil && regResult.CACertPEM != "" && regResult.CAKeyPEM != "" {
+		ca, err := dipoletls.LoadCertificateAuthority([]byte(regResult.CACertPEM), []byte(regResult.CAKeyPEM))
+		if err != nil {
+			logger.Error("failed to load tenant CA from cloud, falling back to local CA", "error", err)
+			return dipoletls.NewCertificateAuthority()
+		}
+		logger.Info("using tenant CA from cloud")
+		return ca, nil
+	}
+
+	logger.Info("generating local CA (no tenant CA from cloud)")
+	return dipoletls.NewCertificateAuthority()
 }
 
 func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {

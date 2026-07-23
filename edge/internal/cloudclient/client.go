@@ -70,9 +70,16 @@ func (c *CloudClient) ProxyID() string {
 	return c.proxyID
 }
 
+type RegisterResult struct {
+	ProxyID   string
+	CACertPEM string
+	CAKeyPEM  string
+}
+
 // Register calls the Cloud Register RPC with the given token and version.
-// On success, it stores the returned proxyID internally and returns it.
-func (c *CloudClient) Register(ctx context.Context, token, version string) (string, error) {
+// On success, it stores the returned proxyID internally and returns a RegisterResult
+// containing the proxy ID and optional tenant CA material.
+func (c *CloudClient) Register(ctx context.Context, token, version string) (*RegisterResult, error) {
 	req := &pb.RegisterRequest{
 		TenantId:          c.tenantID,
 		RegistrationToken: token,
@@ -82,17 +89,21 @@ func (c *CloudClient) Register(ctx context.Context, token, version string) (stri
 	resp, err := c.client.Register(ctx, req)
 	if err != nil {
 		c.connected.Store(false)
-		return "", fmt.Errorf("register rpc: %w", err)
+		return nil, fmt.Errorf("register rpc: %w", err)
 	}
 
 	c.connected.Store(true)
 
 	if !resp.Success {
-		return "", fmt.Errorf("registration denied: %s", resp.ErrorMessage)
+		return nil, fmt.Errorf("registration denied: %s", resp.ErrorMessage)
 	}
 
 	c.proxyID = resp.ProxyId
-	return resp.ProxyId, nil
+	return &RegisterResult{
+		ProxyID:   resp.ProxyId,
+		CACertPEM: resp.CaCertPem,
+		CAKeyPEM:  resp.CaKeyPem,
+	}, nil
 }
 
 // ReportHealth sends a health report to Cloud indicating this proxy is healthy.

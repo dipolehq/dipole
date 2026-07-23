@@ -1,10 +1,11 @@
 /*
 Package tls provides the TLS MITM infrastructure for the Agent Proxy.
 
-CertificateAuthority generates an in-memory ECDSA P-256 Root CA on startup.
-The CA private key never leaves this struct — it is used only internally to
-sign leaf certificates. CACertPEM exposes the public certificate for trust
-injection into client workloads.
+CertificateAuthority holds a Root CA used to sign per-hostname leaf certificates.
+NewCertificateAuthority generates a fresh ECDSA P-256 CA in memory (fallback/dev).
+LoadCertificateAuthority accepts PEM material from Cloud for shared per-tenant CA.
+The CA private key never leaves this struct — it is used only internally to sign
+leaf certificates. CACertPEM exposes the public certificate for trust injection.
 */
 package tls
 
@@ -66,6 +67,39 @@ func NewCertificateAuthority() (*CertificateAuthority, error) {
 		caCert:    cert,
 		caCertDER: der,
 		caCertPEM: pemBytes,
+	}, nil
+}
+
+func LoadCertificateAuthority(certPEM, keyPEM []byte) (*CertificateAuthority, error) {
+	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("invalid CA certificate PEM")
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse CA certificate: %w", err)
+	}
+
+	if !cert.IsCA {
+		return nil, fmt.Errorf("certificate is not a CA")
+	}
+
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil || keyBlock.Type != "EC PRIVATE KEY" {
+		return nil, fmt.Errorf("invalid CA private key PEM")
+	}
+
+	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse CA private key: %w", err)
+	}
+
+	return &CertificateAuthority{
+		caKey:     key,
+		caCert:    cert,
+		caCertDER: certBlock.Bytes,
+		caCertPEM: certPEM,
 	}, nil
 }
 

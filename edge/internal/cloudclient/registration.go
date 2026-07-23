@@ -17,8 +17,10 @@ import (
 )
 
 type RegistrationResult struct {
-	ProxyID string
-	Success bool
+	ProxyID   string
+	Success   bool
+	CACertPEM string
+	CAKeyPEM  string
 }
 
 func FetchTokenFromController(ctx context.Context, controllerURL string, logger *slog.Logger) (string, error) {
@@ -81,7 +83,7 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 	}
 
 	regCtx := ctx
-	if !passThrough && maxWaitSec > 0 {
+	if maxWaitSec > 0 {
 		var cancel context.CancelFunc
 		regCtx, cancel = context.WithTimeout(ctx, time.Duration(maxWaitSec)*time.Second)
 		defer cancel()
@@ -99,7 +101,7 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 
 	logger.Info("obtained registration token from controller")
 
-	proxyID, err := client.Register(regCtx, token, "1.0.0")
+	result, err := client.Register(regCtx, token, "1.0.0")
 	if err != nil {
 		if !passThrough {
 			logger.Error("registration failed: cloud rejected registration, exiting", "error", err)
@@ -109,13 +111,16 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 		return &RegistrationResult{Success: false}
 	}
 
-	logger.Info("proxy registered", "proxy_id", proxyID)
+	logger.Info("proxy registered", "proxy_id", result.ProxyID)
 
-	// Start periodic health reporting in background.
-	// Use the parent ctx (not regCtx) so health continues for process lifetime.
 	go startHealthReporting(ctx, client, logger)
 
-	return &RegistrationResult{ProxyID: proxyID, Success: true}
+	return &RegistrationResult{
+		ProxyID:   result.ProxyID,
+		Success:   true,
+		CACertPEM: result.CACertPEM,
+		CAKeyPEM:  result.CAKeyPEM,
+	}
 }
 
 // startHealthReporting sends a health report to Cloud every 60 seconds
