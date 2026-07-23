@@ -41,6 +41,7 @@ type Repositories struct {
 	LogStreams             *LogStreamRepo
 	GlobalPolicyCompliance *GlobalPolicyComplianceRepo
 	TenantProfiles         *TenantProfileRepo
+	TenantCAs              *TenantCARepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -83,6 +84,7 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		LogStreams:             &LogStreamRepo{pool: pool},
 		GlobalPolicyCompliance: &GlobalPolicyComplianceRepo{pool: pool},
 		TenantProfiles:         &TenantProfileRepo{pool: pool},
+		TenantCAs:              &TenantCARepo{pool: pool},
 	}
 }
 
