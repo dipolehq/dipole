@@ -138,6 +138,8 @@ message RegisterResponse {
   string proxy_id = 1;
   bool success = 2;
   string error_message = 3;
+  string ca_cert_pem = 4;
+  string ca_key_pem = 5;
 }
 
 // --- Health ---

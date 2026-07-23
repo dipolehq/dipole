@@ -23,6 +23,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
+	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
@@ -88,9 +89,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies)
+	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 
 	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc)
-	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, logger)
+	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

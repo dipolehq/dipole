@@ -3,9 +3,9 @@ policy_handler.go implements the gRPC PolicyEvaluationService RPCs.
 
 PolicyEvaluationServer is a thin transport layer: it maps protobuf messages
 to domain types, delegates to the policy evaluator, and maps results back.
-No business logic lives here. Register and ReportHealth delegate to the
-registration service and agent proxy repository respectively. IngestEvents
-is a stub for now (implemented in a later phase).
+No business logic lives here. Register delegates to the registration service
+and returns the per-tenant CA from the CA provider. ReportHealth delegates to
+the agent proxy repository. IngestEvents is a stub (implemented in a later phase).
 */
 package grpc
 
@@ -36,19 +36,26 @@ type ProxyHealthUpdater interface {
 	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
 }
 
+// TenantCAProvider abstracts the PKI service for per-tenant CA generation.
+type TenantCAProvider interface {
+	GetOrCreateTenantCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyPEM string, err error)
+}
+
 type PolicyEvaluationServer struct {
 	pb.UnimplementedPolicyEvaluationServiceServer
 	evaluator     PolicyEvaluator
 	registrar     ProxyRegistrar
 	healthUpdater ProxyHealthUpdater
+	caProvider    TenantCAProvider
 	logger        *slog.Logger
 }
 
-func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, logger *slog.Logger) *PolicyEvaluationServer {
+func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, caProvider TenantCAProvider, logger *slog.Logger) *PolicyEvaluationServer {
 	return &PolicyEvaluationServer{
 		evaluator:     evaluator,
 		registrar:     registrar,
 		healthUpdater: healthUpdater,
+		caProvider:    caProvider,
 		logger:        logger,
 	}
 }
@@ -90,7 +97,18 @@ func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterR
 	}
 
 	s.logger.Info("proxy registered", "tenant_id", tenantID, "proxy_id", proxy.ID)
-	return &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String()}, nil
+
+	resp := &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String()}
+
+	certPEM, keyPEM, err := s.caProvider.GetOrCreateTenantCA(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("register: tenant CA generation failed", "tenant_id", tenantID, "error", err)
+		return resp, nil
+	}
+
+	resp.CaCertPem = certPEM
+	resp.CaKeyPem = keyPEM
+	return resp, nil
 }
 
 func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.HealthReport) (*pb.HealthAck, error) {
