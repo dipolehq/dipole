@@ -65,6 +65,10 @@ func (c *CloudClient) SetResourceSetID(id string) {
 	c.resourceSetID = id
 }
 
+func (c *CloudClient) ResourceSetID() string {
+	return c.resourceSetID
+}
+
 // ProxyID returns the proxy ID obtained from registration. Empty if not yet registered.
 func (c *CloudClient) ProxyID() string {
 	return c.proxyID

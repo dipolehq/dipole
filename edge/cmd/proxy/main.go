@@ -28,6 +28,8 @@ import (
 	"github.com/dipolehq/dipole/edge/internal/protocols"
 	"github.com/dipolehq/dipole/edge/internal/proxy"
 	dipoletls "github.com/dipolehq/dipole/edge/internal/tls"
+
+	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
 func main() {
@@ -153,57 +155,72 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 		metrics.ConnectionsActive.WithLabelValues(proto.String()).Inc()
 		defer metrics.ConnectionsActive.WithLabelValues(proto.String()).Dec()
 
+		var httpInfo *protocols.HTTPRequestInfo
+		var credInjected bool
+		var pr *policyResult
+
 		switch proto {
 		case protocols.ProtoHTTPS:
-			handleHTTPS(engine, httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			httpInfo, credInjected, pr = handleHTTPS(engine, httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoSnowflake:
-			handleSnowflake(engine, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			credInjected, pr = handleSnowflake(engine, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
-			handleHTTP(httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			httpInfo, credInjected, pr = handleHTTP(httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoPostgreSQL:
-			handlePostgreSQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			credInjected, pr = handlePostgreSQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoMySQL:
-			handleMySQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			credInjected, pr = handleMySQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoRedis:
-			handleRedis(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			credInjected, pr = handleRedis(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
 
 		metrics.ConnectionsTotal.WithLabelValues(proto.String(), "forwarded").Inc()
+
+		if cloud != nil {
+			var policyID, clientWorkloadID, serverWorkloadID string
+			if pr != nil {
+				policyID = pr.PolicyID
+				clientWorkloadID = pr.ClientWorkloadID
+				serverWorkloadID = pr.ServerWorkloadID
+			}
+			go emitWorkloadEvent(cloud, proto, targetHost, targetPort, sourceIP, sourcePort, connID, credInjected, httpInfo, cfg.ResourceSetID, policyID, clientWorkloadID, serverWorkloadID, logger)
+		}
 	}
 }
 
-func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (*protocols.HTTPRequestInfo, bool, *policyResult) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
 		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
-		return
+		return nil, false, nil
 	}
 	defer clientPlain.Close()
 
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		serverConn.Close()
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
-		return
+		return nil, false, pr
 	}
 
-	if injCfg != nil && injCfg.Method == "mtls_x509" {
+	if pr.InjectionConfig != nil && pr.InjectionConfig.Method == "mtls_x509" {
 		serverConn.Close()
 
-		mtlsConn, mtlsErr := dialMTLS(targetHost, targetPort, cred, logger, connID)
+		mtlsConn, mtlsErr := dialMTLS(targetHost, targetPort, pr.Credential, logger, connID)
 		if mtlsErr != nil {
 			clientPlain.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 17\r\n\r\nmTLS dial failed\n"))
-			return
+			return nil, false, pr
 		}
 		serverConn = mtlsConn
 	}
 	defer serverConn.Close()
 
 	clientReader := bufio.NewReader(clientPlain)
-	_ = httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
+	info := httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, pr.Credential, pr.InjectionConfig, connID)
+	return info, pr.Credential != nil, pr
 }
 
 func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, logger *slog.Logger, connID uuid.UUID) (net.Conn, error) {
@@ -227,27 +244,27 @@ func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, log
 	return conn, nil
 }
 
-func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (bool, *policyResult) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
 		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
-		return
+		return false, nil
 	}
 	defer clientPlain.Close()
 	defer serverConn.Close()
 
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
-		return
+		return false, pr
 	}
 
 	var snowCred *protocols.SnowflakeCredential
-	if cred != nil && cred.Value != "" {
+	if pr.Credential != nil && pr.Credential.Value != "" {
 		snowCred = &protocols.SnowflakeCredential{
-			Username: cred.Username,
-			Token:    cred.Value,
+			Username: pr.Credential.Username,
+			Token:    pr.Credential.Value,
 		}
 	}
 
@@ -255,120 +272,141 @@ func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClien
 		clientReader := bufio.NewReader(clientPlain)
 		httpHandler := &protocols.HTTPHandler{Logger: logger}
 		_ = httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, nil, nil, connID)
-		return
+		return false, pr
 	}
 
 	clientReader := bufio.NewReader(clientPlain)
 	sfHandler := &protocols.SnowflakeHandler{Logger: logger}
 	sfHandler.Handle(clientReader, clientPlain, serverConn, snowCred, connID)
+	return true, pr
 }
 
-func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (*protocols.HTTPRequestInfo, bool, *policyResult) {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		clientConn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		clientConn.Close()
-		return
+		return nil, false, pr
 	}
 
 	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
 	if err != nil {
 		logger.Error("HTTP dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
 		clientConn.Close()
-		return
+		return nil, false, pr
 	}
 	defer clientConn.Close()
 	defer serverConn.Close()
 
-	_ = httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
+	info := httpHandler.Handle(reader, clientConn, serverConn, targetHost, pr.Credential, pr.InjectionConfig, connID)
+	return info, pr.Credential != nil, pr
 }
 
-func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (bool, *policyResult) {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
-	if cred == nil || (cred.Username == "" && cred.Password == "") {
+	if pr.Credential == nil || (pr.Credential.Username == "" && pr.Credential.Password == "") {
 		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
-		return
+		return false, pr
 	}
 
 	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
 	if err != nil {
 		logger.Error("postgres dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
 	pgHandler := &protocols.PostgresHandler{Logger: logger}
 	pgHandler.Handle(clientConn, serverConn, &protocols.PGCredential{
-		Username: cred.Username,
-		Password: cred.Password,
+		Username: pr.Credential.Username,
+		Password: pr.Credential.Password,
 	}, connID)
+	return true, pr
 }
 
-func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (bool, *policyResult) {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
-	if cred == nil || (cred.Username == "" && cred.Password == "") {
+	if pr.Credential == nil || (pr.Credential.Username == "" && pr.Credential.Password == "") {
 		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
-		return
+		return false, pr
 	}
 
 	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
 	if err != nil {
 		logger.Error("mysql dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
 	mysqlHandler := &protocols.MySQLHandler{Logger: logger}
 	mysqlHandler.Handle(clientConn, serverConn, &protocols.MySQLCredential{
-		Username: cred.Username,
-		Password: cred.Password,
+		Username: pr.Credential.Username,
+		Password: pr.Credential.Password,
 	}, connID)
+	return true, pr
 }
 
-func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
-	if !allowed {
+func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (bool, *policyResult) {
+	pr := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	if !pr.Allowed {
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
-	if cred == nil || cred.Password == "" {
+	if pr.Credential == nil || pr.Credential.Password == "" {
 		protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
-		return
+		return false, pr
 	}
 
 	serverConn, err := net.Dial("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)))
 	if err != nil {
 		logger.Error("redis dial failed", "host", targetHost, "port", targetPort, "error", err, "connection_id", connID)
 		clientConn.Close()
-		return
+		return false, pr
 	}
 
 	redisHandler := &protocols.RedisHandler{Logger: logger}
 	redisHandler.Handle(clientConn, serverConn, &protocols.RedisCredential{
-		Username: cred.Username,
-		Password: cred.Password,
+		Username: pr.Credential.Username,
+		Password: pr.Credential.Password,
 	}, connID)
+	return true, pr
 }
 
-func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
+type policyResult struct {
+	Allowed          bool
+	Credential       *injection.Credential
+	InjectionConfig  *injection.InjectionConfig
+	PolicyID         string
+	ClientWorkloadID string
+	ServerWorkloadID string
+}
+
+func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) *policyResult {
 	if cloud == nil {
-		return true, nil, nil
+		return &policyResult{Allowed: true}
 	}
 
 	if entry, ok := credCache.Get(targetHost, targetPort); ok {
 		metrics.CredentialCacheHits.Inc()
-		return entry.Allowed, entry.Credential, entry.InjectionConfig
+		return &policyResult{
+			Allowed:          entry.Allowed,
+			Credential:       entry.Credential,
+			InjectionConfig:  entry.InjectionConfig,
+			PolicyID:         entry.PolicyID,
+			ClientWorkloadID: entry.ClientWorkloadID,
+			ServerWorkloadID: entry.ServerWorkloadID,
+		}
 	}
 
 	evidence := gatherer.Gather(sourceIP, sourcePort)
@@ -381,28 +419,47 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	if err != nil {
 		if entry, ok := credCache.Get(targetHost, targetPort); ok {
 			logger.Debug("serving cached credential during cloud outage", "host", targetHost, "connection_id", connID)
-			return entry.Allowed, entry.Credential, entry.InjectionConfig
+			return &policyResult{
+				Allowed:          entry.Allowed,
+				Credential:       entry.Credential,
+				InjectionConfig:  entry.InjectionConfig,
+				PolicyID:         entry.PolicyID,
+				ClientWorkloadID: entry.ClientWorkloadID,
+				ServerWorkloadID: entry.ServerWorkloadID,
+			}
 		}
 		if cfg.PassThroughBeforeRegistration {
 			logger.Debug("cloud evaluation failed, passthrough mode", "error", err, "connection_id", connID)
-			return true, nil, nil
+			return &policyResult{Allowed: true}
 		}
 		logger.Warn("cloud evaluation failed", "error", err, "connection_id", connID)
 		metrics.PolicyEvaluationsTotal.WithLabelValues("error").Inc()
-		return false, nil, nil
+		return &policyResult{Allowed: false}
 	}
 
 	if !result.Allowed {
 		logger.Warn("access denied", "reason", result.DenyReason, "host", targetHost, "connection_id", connID)
 		metrics.PolicyEvaluationsTotal.WithLabelValues("denied").Inc()
-		return false, nil, nil
+		return &policyResult{
+			Allowed:          false,
+			PolicyID:         result.PolicyID,
+			ClientWorkloadID: result.ClientWorkloadID,
+			ServerWorkloadID: result.ServerWorkloadID,
+		}
 	}
 
 	metrics.PolicyEvaluationsTotal.WithLabelValues("allowed").Inc()
 	metrics.CredentialCacheMisses.Inc()
 
+	pr := &policyResult{
+		Allowed:          true,
+		PolicyID:         result.PolicyID,
+		ClientWorkloadID: result.ClientWorkloadID,
+		ServerWorkloadID: result.ServerWorkloadID,
+	}
+
 	if result.CredentialValue != "" || result.Username != "" || result.AwsAccessKeyId != "" {
-		cred = &injection.Credential{
+		pr.Credential = &injection.Credential{
 			Type:               result.CredentialType,
 			Value:              result.CredentialValue,
 			Username:           result.Username,
@@ -414,7 +471,7 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	}
 
 	if result.InjectionMethod != "" {
-		injCfg = &injection.InjectionConfig{
+		pr.InjectionConfig = &injection.InjectionConfig{
 			Method:     result.InjectionMethod,
 			HeaderName: result.InjectionHeader,
 			Prefix:     result.InjectionPrefix,
@@ -430,14 +487,75 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	}
 
 	credCache.Set(targetHost, targetPort, &credcache.CacheEntry{
-		Allowed:         true,
-		Credential:      cred,
-		InjectionConfig: injCfg,
-		ExpiresAt:       expiresAt,
+		Allowed:          true,
+		Credential:       pr.Credential,
+		InjectionConfig:  pr.InjectionConfig,
+		PolicyID:         pr.PolicyID,
+		ClientWorkloadID: pr.ClientWorkloadID,
+		ServerWorkloadID: pr.ServerWorkloadID,
+		ExpiresAt:        expiresAt,
 	})
 	metrics.CredentialCacheSize.Set(float64(credCache.Size()))
 
-	return true, cred, injCfg
+	return pr
+}
+
+func emitWorkloadEvent(cloud *cloudclient.CloudClient, proto protocols.Protocol, targetHost string, targetPort int, sourceIP string, sourcePort int, connID uuid.UUID, credInjected bool, httpInfo *protocols.HTTPRequestInfo, resourceSetID string, policyID string, clientWorkloadID string, serverWorkloadID string, logger *slog.Logger) {
+	eventType := protocolToEventType(proto)
+
+	outcome := "Passthrough"
+	if credInjected {
+		outcome = "Modified"
+	}
+	if httpInfo != nil && httpInfo.Injected {
+		outcome = "Modified"
+	}
+
+	data := &protocols.EventData{
+		EventType:        eventType,
+		ConnectionID:     connID.String(),
+		PolicyID:         policyID,
+		ClientWorkloadID: clientWorkloadID,
+		ServerWorkloadID: serverWorkloadID,
+		ResourceSetID:    resourceSetID,
+		Outcome:          outcome,
+		TargetHost:       targetHost,
+		TargetPort:       targetPort,
+		SourceIP:         sourceIP,
+		SourcePort:       sourcePort,
+	}
+
+	if httpInfo != nil {
+		data.HTTPMethod = httpInfo.Method
+		data.HTTPUri = httpInfo.URI
+		data.HTTPStatus = httpInfo.StatusCode
+		data.Headers = httpInfo.Headers
+	}
+
+	event := protocols.BuildWorkloadEvent(data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := cloud.IngestEvents(ctx, []*pb.WorkloadEvent{event}); err != nil {
+		logger.Debug("workload event emission failed", "error", err, "connection_id", connID)
+	}
+}
+
+func protocolToEventType(proto protocols.Protocol) string {
+	switch proto {
+	case protocols.ProtoHTTPS, protocols.ProtoHTTP, protocols.ProtoMCP:
+		return "http.request"
+	case protocols.ProtoPostgreSQL:
+		return "postgres.request"
+	case protocols.ProtoMySQL:
+		return "mysql.request"
+	case protocols.ProtoRedis:
+		return "redis.request"
+	case protocols.ProtoSnowflake:
+		return "snowflake.request"
+	default:
+		return "tcp.open"
+	}
 }
 
 func waitForShutdown(cancel context.CancelFunc, cfg *config.ProxyConfig, logger *slog.Logger, listener *proxy.ExplicitListener) {

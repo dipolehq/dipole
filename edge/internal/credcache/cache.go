@@ -16,10 +16,13 @@ import (
 )
 
 type CacheEntry struct {
-	Allowed         bool
-	Credential      *injection.Credential
-	InjectionConfig *injection.InjectionConfig
-	ExpiresAt       time.Time
+	Allowed          bool
+	Credential       *injection.Credential
+	InjectionConfig  *injection.InjectionConfig
+	PolicyID         string
+	ClientWorkloadID string
+	ServerWorkloadID string
+	ExpiresAt        time.Time
 }
 
 type CredentialCache struct {
