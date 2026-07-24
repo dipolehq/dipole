@@ -10,12 +10,14 @@ package policy
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 )
 
 type TrustValidator interface {
@@ -30,19 +32,27 @@ type CredentialBroker interface {
 	Retrieve(ctx context.Context, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
+type EventEmitter interface {
+	Emit(ctx context.Context, eval *events.EvaluationContext) error
+}
+
 type PolicyEvaluationService struct {
 	repo       repository.AccessPolicyRepository
 	trust      TrustValidator
 	conditions ConditionEvaluator
 	broker     CredentialBroker
+	emitter    EventEmitter
+	logger     *slog.Logger
 }
 
-func NewPolicyEvaluationService(repo repository.AccessPolicyRepository, trust TrustValidator, conditions ConditionEvaluator, broker CredentialBroker) *PolicyEvaluationService {
+func NewPolicyEvaluationService(repo repository.AccessPolicyRepository, trust TrustValidator, conditions ConditionEvaluator, broker CredentialBroker, emitter EventEmitter, logger *slog.Logger) *PolicyEvaluationService {
 	return &PolicyEvaluationService{
 		repo:       repo,
 		trust:      trust,
 		conditions: conditions,
 		broker:     broker,
+		emitter:    emitter,
+		logger:     logger,
 	}
 }
 
@@ -52,8 +62,24 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		return nil, err
 	}
 
+	var ec eventContext
+	ec.tenantID = tenantID
+	ec.sourceIP = evidence.SourceIP
+	ec.targetHost = target.Host
+	ec.targetPort = target.Port
+
+	defer func() {
+		s.emitEvents(ctx, &ec)
+	}()
+
 	if len(policies) == 0 {
-		return &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}, nil
+		ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}
+		return ec.result, nil
+	}
+
+	for i := range policies {
+		ec.candidateClientWorkloads = append(ec.candidateClientWorkloads, policies[i].ClientWorkload)
+		ec.candidateServerWorkloads = append(ec.candidateServerWorkloads, policies[i].ServerWorkload)
 	}
 
 	var lastTrustResults []domain.TrustProviderResult
@@ -62,6 +88,11 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		if !matchAllIdentifiers(p.ClientWorkload.Identifiers, evidence) {
 			continue
 		}
+
+		ec.clientWorkload = &p.ClientWorkload
+		ec.serverWorkload = &p.ServerWorkload
+		ec.policy = &p.Policy
+		ec.trustProviders = p.TrustProviders
 
 		// Trust verification (AND logic — all must attest)
 		trustFailed := false
@@ -80,6 +111,10 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		}
 		if trustFailed {
 			lastTrustResults = trustResults
+			ec.clientWorkload = nil
+			ec.serverWorkload = nil
+			ec.policy = nil
+			ec.trustProviders = nil
 			continue
 		}
 
@@ -90,7 +125,8 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 				return nil, err
 			}
 			if !passed {
-				return &domain.EvaluationResult{Allowed: false, DenyReason: "ConditionFailed:" + reason}, nil
+				ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "ConditionFailed:" + reason}
+				return ec.result, nil
 			}
 		}
 
@@ -98,28 +134,80 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		var credential *domain.Credential
 		if len(p.CredentialProviders) > 0 {
 			cp := &p.CredentialProviders[0]
+			ec.credentialProvider = cp
 			cred, err := s.broker.Retrieve(ctx, cp, evidence, nil)
 			if err != nil {
-				return &domain.EvaluationResult{Allowed: false, DenyReason: "CredentialRetrievalFailed"}, nil
+				ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "CredentialRetrievalFailed"}
+				return ec.result, nil
 			}
 			credential = cred
 		}
 
-		return &domain.EvaluationResult{
+		ec.result = &domain.EvaluationResult{
 			Allowed:          true,
 			Credential:       credential,
 			InjectionConfig:  buildInjectionConfig(&p.ServerWorkload),
 			PolicyID:         p.Policy.ID,
 			ClientWorkloadID: p.ClientWorkload.ID,
 			ServerWorkloadID: p.ServerWorkload.ID,
-		}, nil
+		}
+		return ec.result, nil
 	}
 
 	if len(lastTrustResults) > 0 {
-		return &domain.EvaluationResult{Allowed: false, DenyReason: "AttestationFailed", TrustResults: lastTrustResults}, nil
+		ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "AttestationFailed", TrustResults: lastTrustResults}
+		return ec.result, nil
 	}
 
-	return &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}, nil
+	ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}
+	return ec.result, nil
+}
+
+type eventContext struct {
+	tenantID                 uuid.UUID
+	sourceIP                 string
+	targetHost               string
+	targetPort               int
+	result                   *domain.EvaluationResult
+	clientWorkload           *domain.ClientWorkload
+	serverWorkload           *domain.ServerWorkload
+	policy                   *domain.AccessPolicy
+	trustProviders           []domain.TrustProvider
+	credentialProvider       *domain.CredentialProvider
+	candidateClientWorkloads []domain.ClientWorkload
+	candidateServerWorkloads []domain.ServerWorkload
+}
+
+func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventContext) {
+	if s.emitter == nil || ec.result == nil {
+		return
+	}
+
+	evalCtx := &events.EvaluationContext{
+		TenantID:                 ec.tenantID,
+		SourceIP:                 ec.sourceIP,
+		TargetHost:               ec.targetHost,
+		TargetPort:               ec.targetPort,
+		Result:                   ec.result,
+		ClientWorkload:           ec.clientWorkload,
+		ServerWorkload:           ec.serverWorkload,
+		CandidateClientWorkloads: ec.candidateClientWorkloads,
+		CandidateServerWorkloads: ec.candidateServerWorkloads,
+	}
+
+	if ec.policy != nil {
+		evalCtx.Policy = ec.policy
+	}
+	if ec.credentialProvider != nil {
+		evalCtx.CredentialProvider = ec.credentialProvider
+	}
+	if ec.trustProviders != nil {
+		evalCtx.TrustProviders = ec.trustProviders
+	}
+
+	if err := s.emitter.Emit(ctx, evalCtx); err != nil {
+		s.logger.Error("failed to emit auth events", "tenant_id", ec.tenantID, "error", err)
+	}
 }
 
 // matchAllIdentifiers implements Aembit's identifier semantics: values of the

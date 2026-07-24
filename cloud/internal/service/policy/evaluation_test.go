@@ -3,11 +3,13 @@ package policy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 )
 
 type mockRepo struct {
@@ -49,12 +51,25 @@ func (m *mockBroker) Retrieve(_ context.Context, _ *domain.CredentialProvider, _
 	return m.cred, m.err
 }
 
+type mockEmitter struct {
+	called bool
+	ctx    *events.EvaluationContext
+}
+
+func (m *mockEmitter) Emit(_ context.Context, eval *events.EvaluationContext) error {
+	m.called = true
+	m.ctx = eval
+	return nil
+}
+
 func newTestService(policies []domain.AccessPolicyWithRelations, repoErr error, cred *domain.Credential, brokerErr error) *PolicyEvaluationService {
 	return NewPolicyEvaluationService(
 		&mockRepo{policies: policies, err: repoErr},
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{cred: cred, err: brokerErr},
+		&mockEmitter{},
+		slog.Default(),
 	)
 }
 
@@ -256,6 +271,8 @@ func TestEvaluate_CredentialRetrievalFails_ReturnsDeny(t *testing.T) {
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{err: fmt.Errorf("decryption failed")},
+		&mockEmitter{},
+		slog.Default(),
 	)
 
 	result, _ := svc.Evaluate(context.Background(), uuid.New(), &domain.ClientEvidence{}, &domain.ServerTarget{Host: "x", Port: 443})
@@ -274,6 +291,8 @@ func TestEvaluate_DBError_ReturnsError(t *testing.T) {
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{},
+		&mockEmitter{},
+		slog.Default(),
 	)
 
 	_, err := svc.Evaluate(context.Background(), uuid.New(), &domain.ClientEvidence{}, &domain.ServerTarget{Host: "x", Port: 443})

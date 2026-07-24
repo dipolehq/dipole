@@ -22,6 +22,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
@@ -79,7 +80,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	broker := credentials.NewCredentialBroker(encKey, issuer)
 	trustValidator := trust.NewConfiguredService(logger)
 	conditionEval := conditions.NewConditionEvaluator("")
-	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker)
+	authEmitter := events.NewAuthEventEmitter(repos.Events)
+	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, authEmitter, logger)
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
