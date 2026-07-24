@@ -42,6 +42,8 @@ type Repositories struct {
 	GlobalPolicyCompliance *GlobalPolicyComplianceRepo
 	TenantProfiles         *TenantProfileRepo
 	TenantCAs              *TenantCARepo
+	MCPClients             *MCPClientRepo
+	MCPUserCredentials     *MCPUserCredentialRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -85,7 +87,13 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		GlobalPolicyCompliance: &GlobalPolicyComplianceRepo{pool: pool},
 		TenantProfiles:         &TenantProfileRepo{pool: pool},
 		TenantCAs:              &TenantCARepo{pool: pool},
+		MCPClients:             NewMCPClientRepo(pool),
+		MCPUserCredentials:     NewMCPUserCredentialRepo(pool, nil),
 	}
+}
+
+func (r *Repositories) SetMCPEncryptionKey(key []byte) {
+	r.MCPUserCredentials.encKey = key
 }
 
 func (r *Repositories) Close() {

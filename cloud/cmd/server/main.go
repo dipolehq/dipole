@@ -71,6 +71,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	logger.Info("database connected")
 
 	repos := postgres.NewRepositories(pool)
+	repos.SetMCPEncryptionKey(encKey)
 
 	issuer, err := identity.NewIdentityIssuer("dipole", cfg.Region)
 	if err != nil {
