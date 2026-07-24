@@ -144,7 +144,9 @@ func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid
 	rows, err := r.pool.Query(ctx,
 		`SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.is_active, ap.client_workload_id, ap.server_workload_id, ap.tags, ap.resource_set_id, ap.created_at, ap.updated_at,
 		        cw.id, cw.name, cw.identifiers, cw.tags,
-		        sw.id, sw.name, sw.host, sw.port, sw.app_protocol, sw.tls, sw.auth_method, sw.auth_scheme, sw.auth_config, sw.url_path
+		        sw.id, sw.name, sw.host, sw.port, sw.app_protocol, sw.tls, sw.auth_method, sw.auth_scheme, sw.auth_config, sw.url_path,
+		        (SELECT pcp.credential_provider_id FROM policy_credential_providers pcp WHERE pcp.policy_id = ap.id LIMIT 1),
+		        (SELECT cp.type FROM policy_credential_providers pcp2 JOIN credential_providers cp ON cp.id = pcp2.credential_provider_id WHERE pcp2.policy_id = ap.id LIMIT 1)
 		 FROM access_policies ap
 		 JOIN client_workloads cw ON ap.client_workload_id = cw.id
 		 JOIN server_workloads sw ON ap.server_workload_id = sw.id
@@ -162,11 +164,14 @@ func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid
 	for rows.Next() {
 		var rel domain.AccessPolicyWithRelations
 		var pTags, cwIdentifiers, cwTags, swAuthConfig []byte
+		var cpID *uuid.UUID
+		var cpType *string
 
 		if err := rows.Scan(
 			&rel.Policy.ID, &rel.Policy.TenantID, &rel.Policy.Name, &rel.Policy.Description, &rel.Policy.IsActive, &rel.Policy.ClientWorkloadID, &rel.Policy.ServerWorkloadID, &pTags, &rel.Policy.ResourceSetID, &rel.Policy.CreatedAt, &rel.Policy.UpdatedAt,
 			&rel.ClientWorkload.ID, &rel.ClientWorkload.Name, &cwIdentifiers, &cwTags,
 			&rel.ServerWorkload.ID, &rel.ServerWorkload.Name, &rel.ServerWorkload.Host, &rel.ServerWorkload.Port, &rel.ServerWorkload.AppProtocol, &rel.ServerWorkload.TLS, &rel.ServerWorkload.AuthMethod, &rel.ServerWorkload.AuthScheme, &swAuthConfig, &rel.ServerWorkload.URLPath,
+			&cpID, &cpType,
 		); err != nil {
 			return nil, fmt.Errorf("scan policy relation: %w", err)
 		}
@@ -175,6 +180,64 @@ func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid
 		json.Unmarshal(cwIdentifiers, &rel.ClientWorkload.Identifiers)
 		json.Unmarshal(cwTags, &rel.ClientWorkload.Tags)
 		json.Unmarshal(swAuthConfig, &rel.ServerWorkload.AuthConfig)
+
+		if cpID != nil {
+			rel.Policy.CredentialProviderIDs = []domain.PolicyCredentialProvider{{CredentialProviderID: *cpID}}
+			if cpType != nil {
+				rel.CredentialProviders = []domain.CredentialProvider{{ID: *cpID, Type: *cpType}}
+			}
+		}
+
+		results = append(results, rel)
+	}
+	return results, nil
+}
+
+func (r *AccessPolicyRepo) FindByAppProtocol(ctx context.Context, tenantID uuid.UUID, protocol string) ([]domain.AccessPolicyWithRelations, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.is_active, ap.client_workload_id, ap.server_workload_id, ap.tags, ap.resource_set_id, ap.created_at, ap.updated_at,
+		        cw.id, cw.name, cw.identifiers, cw.tags,
+		        sw.id, sw.name, sw.host, sw.port, sw.app_protocol, sw.tls, sw.auth_method, sw.auth_scheme, sw.auth_config, sw.url_path,
+		        (SELECT pcp.credential_provider_id FROM policy_credential_providers pcp WHERE pcp.policy_id = ap.id LIMIT 1),
+		        (SELECT cp.type FROM policy_credential_providers pcp2 JOIN credential_providers cp ON cp.id = pcp2.credential_provider_id WHERE pcp2.policy_id = ap.id LIMIT 1)
+		 FROM access_policies ap
+		 JOIN client_workloads cw ON ap.client_workload_id = cw.id
+		 JOIN server_workloads sw ON ap.server_workload_id = sw.id
+		 WHERE ap.tenant_id = $1 AND ap.is_active = true AND sw.app_protocol = $2
+		 ORDER BY ap.created_at ASC`,
+		tenantID, protocol)
+	if err != nil {
+		return nil, fmt.Errorf("find policies by app protocol: %w", err)
+	}
+	defer rows.Close()
+
+	var results []domain.AccessPolicyWithRelations
+	for rows.Next() {
+		var rel domain.AccessPolicyWithRelations
+		var pTags, cwIdentifiers, cwTags, swAuthConfig []byte
+		var cpID *uuid.UUID
+		var cpType *string
+
+		if err := rows.Scan(
+			&rel.Policy.ID, &rel.Policy.TenantID, &rel.Policy.Name, &rel.Policy.Description, &rel.Policy.IsActive, &rel.Policy.ClientWorkloadID, &rel.Policy.ServerWorkloadID, &pTags, &rel.Policy.ResourceSetID, &rel.Policy.CreatedAt, &rel.Policy.UpdatedAt,
+			&rel.ClientWorkload.ID, &rel.ClientWorkload.Name, &cwIdentifiers, &cwTags,
+			&rel.ServerWorkload.ID, &rel.ServerWorkload.Name, &rel.ServerWorkload.Host, &rel.ServerWorkload.Port, &rel.ServerWorkload.AppProtocol, &rel.ServerWorkload.TLS, &rel.ServerWorkload.AuthMethod, &rel.ServerWorkload.AuthScheme, &swAuthConfig, &rel.ServerWorkload.URLPath,
+			&cpID, &cpType,
+		); err != nil {
+			return nil, fmt.Errorf("scan policy relation: %w", err)
+		}
+
+		json.Unmarshal(pTags, &rel.Policy.Tags)
+		json.Unmarshal(cwIdentifiers, &rel.ClientWorkload.Identifiers)
+		json.Unmarshal(cwTags, &rel.ClientWorkload.Tags)
+		json.Unmarshal(swAuthConfig, &rel.ServerWorkload.AuthConfig)
+
+		if cpID != nil {
+			rel.Policy.CredentialProviderIDs = []domain.PolicyCredentialProvider{{CredentialProviderID: *cpID}}
+			if cpType != nil {
+				rel.CredentialProviders = []domain.CredentialProvider{{ID: *cpID, Type: *cpType}}
+			}
+		}
 
 		results = append(results, rel)
 	}

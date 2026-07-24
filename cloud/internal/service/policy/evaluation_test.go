@@ -29,6 +29,9 @@ func (m *mockRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error    
 func (m *mockRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.AccessPolicyWithRelations, error) {
 	return m.policies, m.err
 }
+func (m *mockRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {
+	return m.policies, m.err
+}
 
 type mockTrust struct{ attested bool }
 
