@@ -203,7 +203,7 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	defer serverConn.Close()
 
 	clientReader := bufio.NewReader(clientPlain)
-	httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
+	_ = httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, cred, injCfg, connID)
 }
 
 func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, logger *slog.Logger, connID uuid.UUID) (net.Conn, error) {
@@ -254,7 +254,7 @@ func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClien
 	if snowCred == nil {
 		clientReader := bufio.NewReader(clientPlain)
 		httpHandler := &protocols.HTTPHandler{Logger: logger}
-		httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, nil, nil, connID)
+		_ = httpHandler.Handle(clientReader, clientPlain, serverConn, targetHost, nil, nil, connID)
 		return
 	}
 
@@ -280,7 +280,7 @@ func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClie
 	defer clientConn.Close()
 	defer serverConn.Close()
 
-	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
+	_ = httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
 }
 
 func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
