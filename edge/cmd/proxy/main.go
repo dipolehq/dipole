@@ -21,6 +21,7 @@ import (
 
 	"github.com/dipolehq/dipole/edge/internal/cloudclient"
 	"github.com/dipolehq/dipole/edge/internal/config"
+	"github.com/dipolehq/dipole/edge/internal/credcache"
 	"github.com/dipolehq/dipole/edge/internal/identity"
 	"github.com/dipolehq/dipole/edge/internal/injection"
 	"github.com/dipolehq/dipole/edge/internal/metrics"
@@ -76,12 +77,15 @@ func main() {
 
 	writeCAToSharedVolume(ca, logger)
 
+	credentialCache := credcache.NewCredentialCache(60 * time.Second)
+	go credentialCache.StartCleanupLoop(ctx, 5*time.Minute)
+
 	cache := dipoletls.NewCertCache(ca)
 	engine := dipoletls.NewMITMEngine(cache)
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
 	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)
-	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, cfg, logger)
+	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, credentialCache, cfg, logger)
 
 	go func() {
 		if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
@@ -138,7 +142,7 @@ func writeCAToSharedVolume(ca *dipoletls.CertificateAuthority, logger *slog.Logg
 	logger.Info("CA certificate written for trust injection", "path", caPath)
 }
 
-func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
+func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
 		proto, reader := protocols.Detect(targetHost, targetPort, clientConn)
 
@@ -151,17 +155,17 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 
 		switch proto {
 		case protocols.ProtoHTTPS:
-			handleHTTPS(engine, httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handleHTTPS(engine, httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoSnowflake:
-			handleSnowflake(engine, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handleSnowflake(engine, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoHTTP, protocols.ProtoMCP:
-			handleHTTP(httpHandler, cloud, gatherer, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handleHTTP(httpHandler, cloud, gatherer, credCache, cfg, clientConn, reader, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoPostgreSQL:
-			handlePostgreSQL(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handlePostgreSQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoMySQL:
-			handleMySQL(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handleMySQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoRedis:
-			handleRedis(cloud, gatherer, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+			handleRedis(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
@@ -170,7 +174,7 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 	}
 }
 
-func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
@@ -179,7 +183,7 @@ func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandle
 	}
 	defer clientPlain.Close()
 
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		serverConn.Close()
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
@@ -223,7 +227,7 @@ func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, log
 	return conn, nil
 }
 
-func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
 	bufferedConn := newBufferedConn(reader, clientConn)
 	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
 	if err != nil {
@@ -233,7 +237,7 @@ func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClien
 	defer clientPlain.Close()
 	defer serverConn.Close()
 
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientPlain.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		return
@@ -259,8 +263,8 @@ func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClien
 	sfHandler.Handle(clientReader, clientPlain, serverConn, snowCred, connID)
 }
 
-func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, injCfg := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 14\r\n\r\nAccess Denied\n"))
 		clientConn.Close()
@@ -279,8 +283,8 @@ func handleHTTP(httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClie
 	httpHandler.Handle(reader, clientConn, serverConn, targetHost, cred, injCfg, connID)
 }
 
-func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Close()
 		return
@@ -305,8 +309,8 @@ func handlePostgreSQL(cloud *cloudclient.CloudClient, gatherer *identity.Evidenc
 	}, connID)
 }
 
-func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Close()
 		return
@@ -331,8 +335,8 @@ func handleMySQL(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGath
 	}, connID)
 }
 
-func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
-	allowed, cred, _ := evaluatePolicy(cloud, gatherer, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) {
+	allowed, cred, _ := evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
 	if !allowed {
 		clientConn.Close()
 		return
@@ -357,16 +361,28 @@ func handleRedis(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGath
 	}, connID)
 }
 
-func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
+func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) (allowed bool, cred *injection.Credential, injCfg *injection.InjectionConfig) {
 	if cloud == nil {
 		return true, nil, nil
+	}
+
+	if entry, ok := credCache.Get(targetHost, targetPort); ok {
+		metrics.CredentialCacheHits.Inc()
+		return entry.Allowed, entry.Credential, entry.InjectionConfig
 	}
 
 	evidence := gatherer.Gather(sourceIP, sourcePort)
 
 	ctx := context.Background()
+	start := time.Now()
 	result, err := cloud.Evaluate(ctx, evidence, targetHost, targetPort)
+	metrics.PolicyEvaluationDuration.Observe(time.Since(start).Seconds())
+
 	if err != nil {
+		if entry, ok := credCache.Get(targetHost, targetPort); ok {
+			logger.Debug("serving cached credential during cloud outage", "host", targetHost, "connection_id", connID)
+			return entry.Allowed, entry.Credential, entry.InjectionConfig
+		}
 		if cfg.PassThroughBeforeRegistration {
 			logger.Debug("cloud evaluation failed, passthrough mode", "error", err, "connection_id", connID)
 			return true, nil, nil
@@ -383,6 +399,7 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	}
 
 	metrics.PolicyEvaluationsTotal.WithLabelValues("allowed").Inc()
+	metrics.CredentialCacheMisses.Inc()
 
 	if result.CredentialValue != "" || result.Username != "" || result.AwsAccessKeyId != "" {
 		cred = &injection.Credential{
@@ -404,6 +421,21 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 			QueryParam: result.InjectionQuery,
 		}
 	}
+
+	var expiresAt time.Time
+	if result.ExpiresAt > 0 {
+		expiresAt = time.Unix(result.ExpiresAt, 0)
+	} else {
+		expiresAt = time.Now().Add(credCache.DefaultTTL())
+	}
+
+	credCache.Set(targetHost, targetPort, &credcache.CacheEntry{
+		Allowed:         true,
+		Credential:      cred,
+		InjectionConfig: injCfg,
+		ExpiresAt:       expiresAt,
+	})
+	metrics.CredentialCacheSize.Set(float64(credCache.Size()))
 
 	return true, cred, injCfg
 }
