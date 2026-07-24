@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
+	"github.com/dipolehq/dipole/edge/internal/metrics"
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
@@ -57,6 +58,7 @@ func NewCloudClient(endpoint string, tenantID string, logger *slog.Logger) (*Clo
 		logger:   logger,
 	}
 	c.connected.Store(true)
+	metrics.GRPCConnectionStatus.Set(1)
 	return c, nil
 }
 
@@ -93,10 +95,12 @@ func (c *CloudClient) Register(ctx context.Context, token, version string) (*Reg
 	resp, err := c.client.Register(ctx, req)
 	if err != nil {
 		c.connected.Store(false)
+		metrics.GRPCConnectionStatus.Set(0)
 		return nil, fmt.Errorf("register rpc: %w", err)
 	}
 
 	c.connected.Store(true)
+	metrics.GRPCConnectionStatus.Set(1)
 
 	if !resp.Success {
 		return nil, fmt.Errorf("registration denied: %s", resp.ErrorMessage)
@@ -123,10 +127,12 @@ func (c *CloudClient) ReportHealth(ctx context.Context, activeConns int32) error
 	resp, err := c.client.ReportHealth(ctx, req)
 	if err != nil {
 		c.connected.Store(false)
+		metrics.GRPCConnectionStatus.Set(0)
 		return fmt.Errorf("health rpc: %w", err)
 	}
 
 	c.connected.Store(true)
+	metrics.GRPCConnectionStatus.Set(1)
 
 	if !resp.Acknowledged {
 		return fmt.Errorf("health report not acknowledged")
@@ -173,12 +179,14 @@ func (c *CloudClient) Evaluate(ctx context.Context, evidence *pb.ClientEvidence,
 		st, _ := status.FromError(err)
 		if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
 			c.connected.Store(false)
+			metrics.GRPCConnectionStatus.Set(0)
 			c.logger.Error("cloud unreachable", "endpoint", c.conn.Target(), "error", err)
 		}
 		return nil, fmt.Errorf("evaluate rpc: %w", err)
 	}
 
 	c.connected.Store(true)
+	metrics.GRPCConnectionStatus.Set(1)
 	return mapResult(resp), nil
 }
 

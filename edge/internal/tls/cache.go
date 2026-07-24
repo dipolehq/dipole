@@ -12,6 +12,8 @@ import (
 	"crypto/tls"
 	"sync"
 	"time"
+
+	"github.com/dipolehq/dipole/edge/internal/metrics"
 )
 
 type cacheEntry struct {
@@ -60,6 +62,10 @@ func (c *CertCache) GetOrGenerate(hostname string) (*tls.Certificate, error) {
 		cert:      cert,
 		expiresAt: time.Now().Add(c.ttl),
 	}
+
+	metrics.TLSCertsGenerated.Inc()
+	metrics.TLSCertCacheSize.Set(float64(len(c.entries)))
+
 	return cert, nil
 }
 
@@ -86,4 +92,5 @@ func (c *CertCache) evictExpired() {
 			delete(c.entries, host)
 		}
 	}
+	metrics.TLSCertCacheSize.Set(float64(len(c.entries)))
 }

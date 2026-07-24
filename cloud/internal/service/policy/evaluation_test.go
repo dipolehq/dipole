@@ -332,3 +332,81 @@ func TestEvaluate_ZeroTrustProviders_ReturnsDeny(t *testing.T) {
 		t.Errorf("reason = %q, want %q", result.DenyReason, "NoTrustProvider")
 	}
 }
+
+func TestEvaluate_EmitterCalledOnAllow(t *testing.T) {
+	emitter := &mockEmitter{}
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+
+	svc := NewPolicyEvaluationService(
+		&mockRepo{policies: policies},
+		&mockTrust{attested: true},
+		&mockConditions{passed: true},
+		&mockBroker{cred: &domain.Credential{Value: "token"}},
+		emitter,
+		slog.Default(),
+	)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "prod"}}
+	result, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Allowed {
+		t.Fatal("expected allow")
+	}
+	if !emitter.called {
+		t.Error("emitter was not called on allow decision")
+	}
+	if emitter.ctx == nil {
+		t.Fatal("emitter context is nil")
+	}
+	if !emitter.ctx.Result.Allowed {
+		t.Error("emitter received denied result, expected allowed")
+	}
+}
+
+func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
+	emitter := &mockEmitter{}
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+
+	svc := NewPolicyEvaluationService(
+		&mockRepo{policies: policies},
+		&mockTrust{attested: false},
+		&mockConditions{passed: true},
+		&mockBroker{},
+		emitter,
+		slog.Default(),
+	)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "prod"}}
+	result, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Allowed {
+		t.Fatal("expected deny")
+	}
+	if !emitter.called {
+		t.Error("emitter was not called on deny decision")
+	}
+	if emitter.ctx == nil {
+		t.Fatal("emitter context is nil")
+	}
+	if emitter.ctx.Result.Allowed {
+		t.Error("emitter received allowed result, expected denied")
+	}
+}
