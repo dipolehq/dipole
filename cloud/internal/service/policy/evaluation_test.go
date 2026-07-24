@@ -78,6 +78,7 @@ func TestEvaluate_MatchingPolicy_ReturnsAllow(t *testing.T) {
 		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
 		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "production"}}},
 		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 	}}
 	cred := &domain.Credential{Type: "bearer", Value: "sk_live_123"}
@@ -160,6 +161,7 @@ func TestEvaluate_SameType_ORLogic_OneValueMatches(t *testing.T) {
 			{Type: "k8s_namespace", Value: "staging"},
 		}},
 		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 	}}
 	cred := &domain.Credential{Type: "bearer", Value: "key"}
@@ -202,6 +204,7 @@ func TestEvaluate_PodNamePrefix_Matches(t *testing.T) {
 			{Type: "k8s_pod_name_prefix", Value: "myapp-"},
 		}},
 		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 	}}
 	cred := &domain.Credential{Type: "bearer", Value: "key"}
@@ -221,12 +224,14 @@ func TestEvaluate_FirstMatchWins(t *testing.T) {
 			Policy:              domain.AccessPolicy{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), IsActive: true},
 			ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "production"}}},
 			ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+			TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 			CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 		},
 		{
 			Policy:              domain.AccessPolicy{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), IsActive: true},
 			ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "production"}}},
 			ServerWorkload:      domain.ServerWorkload{AuthMethod: "api_key_header", AuthConfig: map[string]string{"header_name": "X-Key"}},
+			TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 			CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 		},
 	}
@@ -246,6 +251,7 @@ func TestEvaluate_NilCredentialProvider_AllowsWithNilCred(t *testing.T) {
 		Policy:         domain.AccessPolicy{ID: uuid.New(), IsActive: true},
 		ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{}},
 		ServerWorkload: domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders: []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 	}}
 	svc := newTestService(policies, nil, nil, nil)
 
@@ -264,6 +270,7 @@ func TestEvaluate_CredentialRetrievalFails_ReturnsDeny(t *testing.T) {
 		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
 		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{}},
 		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
 		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
 	}}
 	svc := NewPolicyEvaluationService(
@@ -299,5 +306,29 @@ func TestEvaluate_DBError_ReturnsError(t *testing.T) {
 
 	if err == nil {
 		t.Error("expected error from DB failure")
+	}
+}
+
+func TestEvaluate_ZeroTrustProviders_ReturnsDeny(t *testing.T) {
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "production"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+	svc := newTestService(policies, nil, &domain.Credential{Value: "token"}, nil)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "production"}}
+	result, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "api.stripe.com", Port: 443})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Allowed {
+		t.Error("allowed = true, want false (zero trust providers)")
+	}
+	if result.DenyReason != "NoTrustProvider" {
+		t.Errorf("reason = %q, want %q", result.DenyReason, "NoTrustProvider")
 	}
 }

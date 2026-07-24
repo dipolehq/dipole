@@ -5,19 +5,23 @@ PolicyEvaluationServer is a thin transport layer: it maps protobuf messages
 to domain types, delegates to the policy evaluator, and maps results back.
 No business logic lives here. Register delegates to the registration service
 and returns the per-tenant CA from the CA provider. ReportHealth delegates to
-the agent proxy repository. IngestEvents is a stub (implemented in a later phase).
+the agent proxy repository. IngestEvents persists workload events via the
+event ingester (which handles header redaction before storage).
 */
 package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
@@ -41,21 +45,28 @@ type TenantCAProvider interface {
 	GetOrCreateTenantCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyPEM string, err error)
 }
 
+// WorkloadEventPersister abstracts workload event ingestion and persistence.
+type WorkloadEventPersister interface {
+	Ingest(ctx context.Context, event *events.IncomingWorkloadEvent) error
+}
+
 type PolicyEvaluationServer struct {
 	pb.UnimplementedPolicyEvaluationServiceServer
 	evaluator     PolicyEvaluator
 	registrar     ProxyRegistrar
 	healthUpdater ProxyHealthUpdater
 	caProvider    TenantCAProvider
+	eventIngester WorkloadEventPersister
 	logger        *slog.Logger
 }
 
-func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, caProvider TenantCAProvider, logger *slog.Logger) *PolicyEvaluationServer {
+func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, caProvider TenantCAProvider, eventIngester WorkloadEventPersister, logger *slog.Logger) *PolicyEvaluationServer {
 	return &PolicyEvaluationServer{
 		evaluator:     evaluator,
 		registrar:     registrar,
 		healthUpdater: healthUpdater,
 		caProvider:    caProvider,
+		eventIngester: eventIngester,
 		logger:        logger,
 	}
 }
@@ -134,15 +145,77 @@ func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.Healt
 }
 
 func (s *PolicyEvaluationServer) IngestEvents(stream grpc.ClientStreamingServer[pb.WorkloadEventBatch, pb.EventAck]) error {
-	count := 0
+	var accepted int32
 	for {
-		_, err := stream.Recv()
+		batch, err := stream.Recv()
 		if err != nil {
 			break
 		}
-		count++
+
+		tenantID, err := uuid.Parse(batch.TenantId)
+		if err != nil {
+			s.logger.Warn("ingest: invalid tenant_id", "tenant_id", batch.TenantId)
+			continue
+		}
+
+		for _, ev := range batch.Events {
+			incoming := mapWorkloadEvent(tenantID, ev)
+			if err := s.eventIngester.Ingest(stream.Context(), incoming); err != nil {
+				s.logger.Error("ingest: persist failed", "tenant_id", tenantID, "event_id", ev.EventId, "error", err)
+				continue
+			}
+			accepted++
+		}
 	}
-	return stream.SendAndClose(&pb.EventAck{Accepted: int32(count)})
+	return stream.SendAndClose(&pb.EventAck{Accepted: accepted})
+}
+
+func mapWorkloadEvent(tenantID uuid.UUID, ev *pb.WorkloadEvent) *events.IncomingWorkloadEvent {
+	incoming := &events.IncomingWorkloadEvent{
+		TenantID:  tenantID,
+		EventType: ev.EventType,
+		Severity:  ev.Severity,
+		Outcome:   ev.Outcome,
+		Payload:   json.RawMessage(ev.Payload),
+	}
+
+	if ev.ConnectionId != "" {
+		if id, err := uuid.Parse(ev.ConnectionId); err == nil {
+			incoming.ConnectionID = id
+		}
+	}
+
+	if ev.PolicyId != "" {
+		if id, err := uuid.Parse(ev.PolicyId); err == nil {
+			incoming.PolicyID = &id
+		}
+	}
+
+	if ev.ClientWorkloadId != "" {
+		if id, err := uuid.Parse(ev.ClientWorkloadId); err == nil {
+			incoming.ClientWorkloadID = &id
+		}
+	}
+
+	if ev.ServerWorkloadId != "" {
+		if id, err := uuid.Parse(ev.ServerWorkloadId); err == nil {
+			incoming.ServerWorkloadID = &id
+		}
+	}
+
+	if ev.ResourceSetId != "" {
+		if id, err := uuid.Parse(ev.ResourceSetId); err == nil {
+			incoming.ResourceSetID = &id
+		}
+	}
+
+	if ev.Timestamp > 0 {
+		incoming.Timestamp = time.Unix(ev.Timestamp, 0)
+	} else {
+		incoming.Timestamp = time.Now()
+	}
+
+	return incoming
 }
 
 func mapEvidence(c *pb.ClientEvidence) *domain.ClientEvidence {

@@ -94,6 +94,11 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		ec.policy = &p.Policy
 		ec.trustProviders = p.TrustProviders
 
+		if len(p.TrustProviders) == 0 {
+			ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "NoTrustProvider"}
+			return ec.result, nil
+		}
+
 		// Trust verification (AND logic — all must attest)
 		trustFailed := false
 		var trustResults []domain.TrustProviderResult
