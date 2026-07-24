@@ -53,6 +53,21 @@ var (
 		Name: "dipole_proxy_grpc_connection_status",
 		Help: "gRPC connection to Cloud (1=connected, 0=disconnected)",
 	})
+
+	CredentialCacheHits = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dipole_proxy_credential_cache_hits_total",
+		Help: "Total credential cache hits (served from cache, skipped Cloud call)",
+	})
+
+	CredentialCacheMisses = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dipole_proxy_credential_cache_misses_total",
+		Help: "Total credential cache misses (expired or not found, called Cloud)",
+	})
+
+	CredentialCacheSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "dipole_proxy_credential_cache_size",
+		Help: "Current number of entries in the credential cache",
+	})
 )
 
 func init() {
@@ -65,6 +80,9 @@ func init() {
 		TLSCertsGenerated,
 		TLSCertCacheSize,
 		GRPCConnectionStatus,
+		CredentialCacheHits,
+		CredentialCacheMisses,
+		CredentialCacheSize,
 	)
 }
 
