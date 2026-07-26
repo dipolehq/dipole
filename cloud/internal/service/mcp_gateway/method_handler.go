@@ -72,6 +72,8 @@ func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClie
 
 func (h *MethodHandler) HandleMethod(rCtx *RequestContext, method string, params json.RawMessage) (any, error) {
 	switch method {
+	case "initialize":
+		return h.handleInitialize()
 	case "ping":
 		return h.handlePing()
 	case "tools/list":
@@ -89,6 +91,20 @@ func (h *MethodHandler) HandleMethod(rCtx *RequestContext, method string, params
 
 func (h *MethodHandler) handlePing() (any, error) {
 	return map[string]any{}, nil
+}
+
+func (h *MethodHandler) handleInitialize() (any, error) {
+	return map[string]any{
+		"protocolVersion": "2024-11-05",
+		"serverInfo": map[string]any{
+			"name":    "Dipole MCP Identity Gateway",
+			"version": "0.1.0",
+		},
+		"capabilities": map[string]any{
+			"tools":     map[string]any{},
+			"resources": map[string]any{},
+		},
+	}, nil
 }
 
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {

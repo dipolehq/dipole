@@ -241,3 +241,46 @@ func TestPing_RespondsDirect(t *testing.T) {
 		t.Fatal("expected non-nil result for ping")
 	}
 }
+
+func TestInitialize_ReturnsCapabilities(t *testing.T) {
+	tenantID := uuid.New()
+	policyFinder := &mockRightSidePolicyFinder{}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
+
+	result, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "initialize", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resp, ok := result.(map[string]any)
+	if !ok {
+		t.Fatal("expected map result")
+	}
+
+	if resp["protocolVersion"] != "2024-11-05" {
+		t.Errorf("expected protocolVersion '2024-11-05', got '%v'", resp["protocolVersion"])
+	}
+
+	serverInfo, ok := resp["serverInfo"].(map[string]any)
+	if !ok {
+		t.Fatal("expected serverInfo map")
+	}
+	if serverInfo["name"] != "Dipole MCP Identity Gateway" {
+		t.Errorf("unexpected server name: %v", serverInfo["name"])
+	}
+	if serverInfo["version"] != "0.1.0" {
+		t.Errorf("unexpected server version: %v", serverInfo["version"])
+	}
+
+	capabilities, ok := resp["capabilities"].(map[string]any)
+	if !ok {
+		t.Fatal("expected capabilities map")
+	}
+	if _, ok := capabilities["tools"]; !ok {
+		t.Error("missing tools capability")
+	}
+	if _, ok := capabilities["resources"]; !ok {
+		t.Error("missing resources capability")
+	}
+}
