@@ -7,22 +7,26 @@ import (
 )
 
 type Config struct {
-	DatabaseURL   string
-	EncryptionKey string
-	GRPCPort      int
-	HTTPPort      int
-	LogLevel      string
-	Region        string
+	DatabaseURL     string
+	EncryptionKey   string
+	GRPCPort        int
+	HTTPPort        int
+	LogLevel        string
+	Region          string
+	TenantID        string
+	TenantSubdomain string
 }
 
 func LoadFromEnv() (*Config, error) {
 	cfg := &Config{
-		DatabaseURL:   os.Getenv("DIPOLE_DATABASE_URL"),
-		EncryptionKey: os.Getenv("DIPOLE_ENCRYPTION_KEY"),
-		GRPCPort:      envInt("DIPOLE_GRPC_PORT", 50051),
-		HTTPPort:      envInt("DIPOLE_HTTP_PORT", 8080),
-		LogLevel:      envStr("DIPOLE_LOG_LEVEL", "info"),
-		Region:        envStr("DIPOLE_REGION", "ap-south-1"),
+		DatabaseURL:     os.Getenv("DIPOLE_DATABASE_URL"),
+		EncryptionKey:   os.Getenv("DIPOLE_ENCRYPTION_KEY"),
+		GRPCPort:        envInt("DIPOLE_GRPC_PORT", 50051),
+		HTTPPort:        envInt("DIPOLE_HTTP_PORT", 8080),
+		LogLevel:        envStr("DIPOLE_LOG_LEVEL", "info"),
+		Region:          envStr("DIPOLE_REGION", "ap-south-1"),
+		TenantID:        os.Getenv("DIPOLE_TENANT_ID"),
+		TenantSubdomain: envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
 	}
 
 	if err := cfg.validate(); err != nil {

@@ -40,6 +40,12 @@ func (a *APITokenAuthenticator) ValidateToken(ctx context.Context, token string)
 	return tenant.ID, "apitoken@" + tenant.Subdomain, nil
 }
 
+// ValidateAPIToken implements rest.TenantAuthenticator for the Dipole MCP Server.
+func (a *APITokenAuthenticator) ValidateAPIToken(token string) (uuid.UUID, error) {
+	tenantID, _, err := a.ValidateToken(context.Background(), token)
+	return tenantID, err
+}
+
 func HashAPIToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
