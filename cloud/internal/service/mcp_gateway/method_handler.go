@@ -58,13 +58,15 @@ type MethodHandler struct {
 	rightAuth *RightSideAuth
 	clients   map[string]MCPServerClient
 	tenantID  uuid.UUID
+	emitter   *GatewayEventEmitter
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClient, tenantID uuid.UUID) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClient, tenantID uuid.UUID, emitter *GatewayEventEmitter) *MethodHandler {
 	return &MethodHandler{
 		rightAuth: rightAuth,
 		clients:   clients,
 		tenantID:  tenantID,
+		emitter:   emitter,
 	}
 }
 
@@ -140,7 +142,20 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 		return nil, err
 	}
 
-	return client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
+	result, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
+	if err != nil {
+		if h.emitter != nil {
+			h.emitter.EmitResponse(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 500)
+		}
+		return nil, err
+	}
+
+	if h.emitter != nil {
+		h.emitter.EmitRequest(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID)
+		h.emitter.EmitResponse(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 200)
+	}
+
+	return result, nil
 }
 
 func (h *MethodHandler) handleResourcesList(ctx context.Context, rCtx *RequestContext) (any, error) {
@@ -188,6 +203,10 @@ func (h *MethodHandler) handleResourcesRead(ctx context.Context, rCtx *RequestCo
 
 		content, err := client.ReadResource(ctx, cred.AccessToken, req.URI)
 		if err == nil && content != nil {
+			if h.emitter != nil {
+				h.emitter.EmitRequest(rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
+				h.emitter.EmitResponse(rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
+			}
 			return content, nil
 		}
 	}
