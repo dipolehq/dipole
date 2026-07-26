@@ -9,6 +9,7 @@ Served at https://<tenant>.mcpgateway.<region>.dipolehq.com/mcp in production.
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -24,6 +25,10 @@ type GatewayAuthenticator interface {
 
 type GatewayMethodHandler interface {
 	HandleMethod(ctx *gw.RequestContext, method string, params json.RawMessage) (any, error)
+}
+
+type ConsentCallbackHandler interface {
+	HandleCallback(ctx context.Context, code string, state string) error
 }
 
 type JSONRPCRequest struct {
@@ -46,22 +51,25 @@ type JSONRPCError struct {
 }
 
 type MCPGatewayServer struct {
-	auth          GatewayAuthenticator
-	methodHandler GatewayMethodHandler
-	logger        *slog.Logger
+	auth           GatewayAuthenticator
+	methodHandler  GatewayMethodHandler
+	consentHandler ConsentCallbackHandler
+	logger         *slog.Logger
 }
 
-func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, logger *slog.Logger) *MCPGatewayServer {
+func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, consentHandler ConsentCallbackHandler, logger *slog.Logger) *MCPGatewayServer {
 	return &MCPGatewayServer{
-		auth:          auth,
-		methodHandler: handler,
-		logger:        logger,
+		auth:           auth,
+		methodHandler:  handler,
+		consentHandler: consentHandler,
+		logger:         logger,
 	}
 }
 
 func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mcp", s.HandleMCP)
 	mux.HandleFunc("DELETE /mcp", s.HandleSessionDelete)
+	mux.HandleFunc("GET /mcp/consent/callback", s.HandleConsentCallback)
 }
 
 // HandleMCP processes all MCP protocol traffic. Validates the Bearer token,
@@ -154,3 +162,33 @@ func writeJSONRPCResponse(w http.ResponseWriter, id any, result any) {
 		Result:  result,
 	})
 }
+
+func (s *MCPGatewayServer) HandleConsentCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	if code == "" || state == "" {
+		http.Error(w, "missing code or state parameter", http.StatusBadRequest)
+		return
+	}
+
+	if s.consentHandler == nil {
+		http.Error(w, "consent handling not configured", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.consentHandler.HandleCallback(r.Context(), code, state); err != nil {
+		s.logger.Error("consent callback failed", "error", err)
+		http.Error(w, "authorization failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(consentSuccessHTML))
+}
+
+const consentSuccessHTML = `<!DOCTYPE html>
+<html><head><title>Authorization Successful</title></head>
+<body><h1>Authorization successful</h1><p>You can close this window.</p></body>
+</html>`

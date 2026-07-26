@@ -19,7 +19,9 @@ import (
 
 type ConsentConfig struct {
 	AuthorizationEndpoint string
+	TokenEndpoint         string
 	ClientID              string
+	ClientSecret          string
 	Scopes                string
 	GatewayCallbackURL    string
 }
