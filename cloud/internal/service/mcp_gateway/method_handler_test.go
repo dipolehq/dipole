@@ -284,3 +284,123 @@ func TestInitialize_ReturnsCapabilities(t *testing.T) {
 		t.Error("missing resources capability")
 	}
 }
+
+func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
+	jiraID := uuid.New()
+	slackID := uuid.New()
+	tenantID := uuid.New()
+
+	jiraClient := &mockMCPClient{
+		resources: []MCPResource{
+			{URI: "file:///jira/boards.json", Name: "Jira Boards", MimeType: "application/json"},
+		},
+	}
+	slackClient := &mockMCPClient{
+		resources: []MCPResource{
+			{URI: "file:///slack/channels.json", Name: "Channels"},
+		},
+	}
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
+			{ServerWorkload: ServerInfo{ID: slackID, Name: "slack"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "slack-token"},
+		},
+	}
+
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
+	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/list", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resp, ok := result.(map[string]any)
+	if !ok {
+		t.Fatal("expected map result")
+	}
+	resources, ok := resp["resources"].([]MCPResource)
+	if !ok {
+		t.Fatal("expected resources array")
+	}
+	if len(resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(resources))
+	}
+
+	// Resources should NOT have server-name prefixes (unlike tools)
+	uris := map[string]bool{}
+	for _, r := range resources {
+		uris[r.URI] = true
+	}
+	if !uris["file:///jira/boards.json"] {
+		t.Error("missing jira resource")
+	}
+	if !uris["file:///slack/channels.json"] {
+		t.Error("missing slack resource")
+	}
+}
+
+func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
+	jiraID := uuid.New()
+	tenantID := uuid.New()
+
+	jiraClient := &mockMCPClient{
+		resources: []MCPResource{
+			{URI: "file:///jira/board.json"},
+		},
+	}
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
+		},
+	}
+
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	clients := map[string]MCPServerClient{"jira": jiraClient}
+	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+
+	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/read", params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, ok := result.(*MCPResourceContent)
+	if !ok {
+		t.Fatal("expected *MCPResourceContent result")
+	}
+	if content.URI != "file:///jira/board.json" {
+		t.Errorf("expected URI 'file:///jira/board.json', got '%s'", content.URI)
+	}
+	if jiraClient.lastToken != "jira-token" {
+		t.Errorf("expected jira-token, got '%s'", jiraClient.lastToken)
+	}
+}
+
+func TestResourcesRead_NotFound_Error(t *testing.T) {
+	jiraID := uuid.New()
+	tenantID := uuid.New()
+
+	jiraClient := &mockMCPClient{
+		resources: []MCPResource{}, // No resources — ReadResource returns nil
+	}
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
+		},
+	}
+
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	clients := map[string]MCPServerClient{"jira": jiraClient}
+	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+
+	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/read", params)
+	if err == nil {
+		t.Fatal("expected error for resource not found")
+	}
+}
