@@ -111,7 +111,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
 
-	result, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "tools/list", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	// Call jira tool
 	params := json.RawMessage(`{"name": "jira__create_issue", "arguments": {"project": "PROJ"}}`)
-	_, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	// Call github tool
 	params = json.RawMessage(`{"name": "github__create_pr", "arguments": {"title": "fix"}}`)
-	_, err = handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
-	_, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
 	if err == nil {
 		t.Fatal("expected error for unknown server prefix")
 	}
@@ -221,7 +221,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
-	_, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
 	if err == nil {
 		t.Fatal("expected error for tool name without prefix")
 	}
@@ -233,7 +233,7 @@ func TestPing_RespondsDirect(t *testing.T) {
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
-	result, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "ping", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "ping", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
-	result, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "initialize", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "initialize", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

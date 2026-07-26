@@ -70,20 +70,20 @@ func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClie
 	}
 }
 
-func (h *MethodHandler) HandleMethod(rCtx *RequestContext, method string, params json.RawMessage) (any, error) {
+func (h *MethodHandler) HandleMethod(ctx context.Context, rCtx *RequestContext, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case "initialize":
 		return h.handleInitialize()
 	case "ping":
 		return h.handlePing()
 	case "tools/list":
-		return h.handleToolsList(context.Background(), rCtx)
+		return h.handleToolsList(ctx, rCtx)
 	case "tools/call":
-		return h.handleToolsCall(context.Background(), rCtx, params)
+		return h.handleToolsCall(ctx, rCtx, params)
 	case "resources/list":
-		return h.handleResourcesList(context.Background(), rCtx)
+		return h.handleResourcesList(ctx, rCtx)
 	case "resources/read":
-		return h.handleResourcesRead(context.Background(), rCtx, params)
+		return h.handleResourcesRead(ctx, rCtx, params)
 	default:
 		return nil, ErrMethodNotFound
 	}

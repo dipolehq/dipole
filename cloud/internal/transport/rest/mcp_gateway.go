@@ -24,7 +24,7 @@ type GatewayAuthenticator interface {
 }
 
 type GatewayMethodHandler interface {
-	HandleMethod(ctx *gw.RequestContext, method string, params json.RawMessage) (any, error)
+	HandleMethod(ctx context.Context, rCtx *gw.RequestContext, method string, params json.RawMessage) (any, error)
 }
 
 type ConsentCallbackHandler interface {
@@ -106,12 +106,12 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := &gw.RequestContext{
+	rCtx := &gw.RequestContext{
 		UserID: authResult.UserID,
 		Claims: authResult.Claims,
 	}
 
-	result, err := s.methodHandler.HandleMethod(ctx, rpcReq.Method, rpcReq.Params)
+	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)
 	if err != nil {
 		writeJSONRPCError(w, rpcReq.ID, -32603, err.Error())
 		return
