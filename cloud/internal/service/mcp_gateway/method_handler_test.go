@@ -107,7 +107,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
 
@@ -170,7 +170,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	clients := map[string]MCPServerClient{"jira": jiraClient, "github": githubClient}
 	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
 
@@ -204,7 +204,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
@@ -217,7 +217,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
@@ -230,7 +230,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
 	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
 
 	result, err := handler.HandleMethod(&RequestContext{UserID: "alice@corp.com"}, "ping", nil)

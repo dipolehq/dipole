@@ -60,16 +60,22 @@ type RightSidePolicy struct {
 	SharedAccessToken    string
 }
 
+type TokenRefresher interface {
+	Refresh(ctx context.Context, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
+}
+
 type RightSideAuth struct {
 	policyFinder RightSidePolicyFinder
 	tokenStore   UserTokenStore
+	refresher    TokenRefresher
 	gatewayURL   string
 }
 
-func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, gatewayURL string) *RightSideAuth {
+func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, gatewayURL string) *RightSideAuth {
 	return &RightSideAuth{
 		policyFinder: policyFinder,
 		tokenStore:   tokenStore,
+		refresher:    refresher,
 		gatewayURL:   gatewayURL,
 	}
 }
@@ -157,7 +163,18 @@ func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, 
 		return entry.AccessToken, nil
 	}
 
-	// Token expired — in a full implementation we'd refresh here.
-	// For now, signal that re-consent is needed.
-	return "", ErrCredentialExpired
+	if a.refresher == nil || entry.RefreshToken == "" {
+		return "", ErrCredentialExpired
+	}
+
+	refreshed, err := a.refresher.Refresh(ctx, entry.RefreshToken, policy.ServerWorkload.ID)
+	if err != nil {
+		return "", ErrCredentialExpired
+	}
+
+	if storeErr := a.tokenStore.Store(ctx, tenantID, userID, policy.ServerWorkload.ID, refreshed); storeErr != nil {
+		return "", ErrCredentialExpired
+	}
+
+	return refreshed.AccessToken, nil
 }
