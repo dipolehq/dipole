@@ -14,14 +14,27 @@ agentController:
     limits:
       cpu: 500m
       memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 agentInjector:
   image:
     repository: dipole/injector
     tag: latest
     pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
   filters:
     namespaces: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 agentProxy:
   image:
@@ -52,3 +65,4 @@ serviceAccount:
 cloud:
   region: "ap-south-1"
   domain: "dipolehq.com"
+  grpcEndpoint: ""

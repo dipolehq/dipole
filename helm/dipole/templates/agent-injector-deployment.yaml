@@ -31,6 +31,14 @@ spec:
               value: "{{ .Values.agentProxy.image.repository }}:{{ .Values.agentProxy.image.tag }}"
             - name: DIPOLE_INIT_IMAGE
               value: "{{ .Values.init.image.repository }}:{{ .Values.init.image.tag }}"
+            - name: DIPOLE_WEBHOOK_NAME
+              value: {{ include "dipole.injectorName" . }}
+            - name: DIPOLE_CONTROLLER_URL
+              value: "http://{{ include "dipole.controllerName" . }}.{{ include "dipole.namespace" . }}.svc.cluster.local:80"
+            {{- if .Values.cloud.grpcEndpoint }}
+            - name: DIPOLE_CLOUD_GRPC_ENDPOINT
+              value: {{ .Values.cloud.grpcEndpoint | quote }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /health
@@ -38,10 +46,23 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
           resources:
-            requests:
-              cpu: 100m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
+            {{- toYaml .Values.agentInjector.resources | nindent 12 }}
+      {{- with .Values.agentInjector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentInjector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentInjector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

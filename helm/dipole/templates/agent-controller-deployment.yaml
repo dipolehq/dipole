@@ -43,5 +43,24 @@ spec:
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.agentController.resources | nindent 12 }}
+      {{- with .Values.agentController.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentController.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentController.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
