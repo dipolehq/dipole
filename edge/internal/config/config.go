@@ -30,6 +30,8 @@ type ProxyConfig struct {
 	ResourceSetID                 string
 	ClientWorkloadID              string
 	ProcessIdentificationEnabled  bool
+	AgentTrustPath                string
+	GRPCInsecure                  bool
 }
 
 func LoadFromEnv() (*ProxyConfig, error) {
@@ -49,6 +51,8 @@ func LoadFromEnv() (*ProxyConfig, error) {
 		ResourceSetID:                 os.Getenv("DIPOLE_RESOURCE_SET_ID"),
 		ClientWorkloadID:              os.Getenv("CLIENT_WORKLOAD_ID"),
 		ProcessIdentificationEnabled:  envBool("DIPOLE_CLIENT_WORKLOAD_PROCESS_IDENTIFICATION_ENABLED", false),
+		AgentTrustPath:                os.Getenv("AGENT_TRUST_PATH"),
+		GRPCInsecure:                  envBool("DIPOLE_GRPC_INSECURE", false),
 	}
 
 	if hosts := os.Getenv("DIPOLE_STEERING_ALLOWED_HOSTS"); hosts != "" {

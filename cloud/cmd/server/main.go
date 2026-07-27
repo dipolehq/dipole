@@ -188,7 +188,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := grpctransport.StartServer(runCtx, cfg.GRPCPort, grpcHandler, logger); err != nil {
+		if err := grpctransport.StartServer(runCtx, cfg.GRPCPort, grpcHandler, cfg.GRPCTLSCert, cfg.GRPCTLSKey, logger); err != nil {
 			errCh <- fmt.Errorf("grpc server: %w", err)
 		}
 	}()

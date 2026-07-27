@@ -11,13 +11,17 @@ package cloudclient
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
@@ -36,15 +40,20 @@ type CloudClient struct {
 	connected     atomic.Bool
 }
 
-func NewCloudClient(endpoint string, tenantID string, logger *slog.Logger) (*CloudClient, error) {
+func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInsecure bool, logger *slog.Logger) (*CloudClient, error) {
 	kaParams := keepalive.ClientParameters{
 		Time:                60 * time.Second,
 		Timeout:             20 * time.Second,
 		PermitWithoutStream: true,
 	}
 
+	creds, err := buildTransportCredentials(trustPath, grpcInsecure)
+	if err != nil {
+		return nil, fmt.Errorf("build transport credentials: %w", err)
+	}
+
 	conn, err := grpc.NewClient(endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(kaParams),
 	)
 	if err != nil {
@@ -60,6 +69,24 @@ func NewCloudClient(endpoint string, tenantID string, logger *slog.Logger) (*Clo
 	c.connected.Store(true)
 	metrics.GRPCConnectionStatus.Set(1)
 	return c, nil
+}
+
+func buildTransportCredentials(trustPath string, grpcInsecure bool) (credentials.TransportCredentials, error) {
+	if grpcInsecure {
+		return insecure.NewCredentials(), nil
+	}
+	var certPool *x509.CertPool
+	if trustPath != "" {
+		pem, err := os.ReadFile(trustPath)
+		if err != nil {
+			return nil, fmt.Errorf("read CA cert %s: %w", trustPath, err)
+		}
+		certPool = x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("failed to parse CA cert from %s", trustPath)
+		}
+	}
+	return credentials.NewTLS(&tls.Config{RootCAs: certPool}), nil
 }
 
 // SetResourceSetID sets the resource set ID (called from main.go with config value).

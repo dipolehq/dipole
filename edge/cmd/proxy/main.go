@@ -51,7 +51,7 @@ func main() {
 
 	var cloud *cloudclient.CloudClient
 	if cfg.CloudEndpoint != "" {
-		cloud, err = cloudclient.NewCloudClient(cfg.CloudEndpoint, cfg.TenantID, logger)
+		cloud, err = cloudclient.NewCloudClient(cfg.CloudEndpoint, cfg.TenantID, cfg.AgentTrustPath, cfg.GRPCInsecure, logger)
 		if err != nil {
 			logger.Error("failed to connect to cloud", "endpoint", cfg.CloudEndpoint, "error", err)
 			os.Exit(1)

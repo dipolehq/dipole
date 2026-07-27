@@ -15,6 +15,8 @@ type Config struct {
 	Region          string
 	TenantID        string
 	TenantSubdomain string
+	GRPCTLSCert     string
+	GRPCTLSKey      string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -27,6 +29,8 @@ func LoadFromEnv() (*Config, error) {
 		Region:          envStr("DIPOLE_REGION", "ap-south-1"),
 		TenantID:        os.Getenv("DIPOLE_TENANT_ID"),
 		TenantSubdomain: envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
+		GRPCTLSCert:     os.Getenv("DIPOLE_GRPC_TLS_CERT"),
+		GRPCTLSKey:      os.Getenv("DIPOLE_GRPC_TLS_KEY"),
 	}
 
 	if err := cfg.validate(); err != nil {

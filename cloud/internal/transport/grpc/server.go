@@ -9,6 +9,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,13 +17,14 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
-func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServiceServer, logger *slog.Logger) error {
+func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServiceServer, tlsCert, tlsKey string, logger *slog.Logger) error {
 	kaParams := keepalive.ServerParameters{
 		MaxConnectionIdle: 5 * time.Minute,
 		MaxConnectionAge:  30 * time.Minute,
@@ -30,7 +32,8 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 		Timeout:           20 * time.Second,
 	}
 
-	srv := grpc.NewServer(
+	var opts []grpc.ServerOption
+	opts = append(opts,
 		grpc.KeepaliveParams(kaParams),
 		grpc.ChainUnaryInterceptor(
 			loggingInterceptor(logger),
@@ -38,6 +41,20 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 			timeoutInterceptor(30*time.Second),
 		),
 	)
+
+	if tlsCert != "" && tlsKey != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCert, tlsKey)
+		if err != nil {
+			return fmt.Errorf("load grpc tls cert: %w", err)
+		}
+		opts = append(opts, grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		})))
+		logger.Info("grpc server TLS enabled", "cert", tlsCert)
+	}
+
+	srv := grpc.NewServer(opts...)
 
 	pb.RegisterPolicyEvaluationServiceServer(srv, handler)
 
