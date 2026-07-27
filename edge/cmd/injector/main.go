@@ -37,10 +37,16 @@ func main() {
 		CloudGRPCEndpoint: os.Getenv("DIPOLE_CLOUD_GRPC_ENDPOINT"),
 	}
 
-	tlsCert, err := generateSelfSignedCert()
+	tlsCert, caCertDER, err := generateSelfSignedCert()
 	if err != nil {
 		logger.Error("generate tls cert", "error", err)
 		os.Exit(1)
+	}
+
+	webhookName := envOr("DIPOLE_WEBHOOK_NAME", "dipole-agent-injector")
+	if err := patchWebhookCABundle(webhookName, caCertDER, logger); err != nil {
+		logger.Error("patch caBundle failed", "error", err)
+		// Non-fatal: the webhook might still work if caBundle was set externally (cert-manager)
 	}
 
 	injector := &AgentInjector{config: cfg, logger: logger}
@@ -246,10 +252,10 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 	return patches
 }
 
-func generateSelfSignedCert() (tls.Certificate, error) {
+func generateSelfSignedCert() (tls.Certificate, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, nil, err
 	}
 
 	template := &x509.Certificate{
@@ -257,20 +263,21 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 		Subject:      pkix.Name{CommonName: "dipole-agent-injector"},
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
+		IsCA:         true,
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		DNSNames:     []string{"dipole-agent-injector", "dipole-agent-injector.dipole-system", "dipole-agent-injector.dipole-system.svc"},
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, nil, err
 	}
 
 	return tls.Certificate{
 		Certificate: [][]byte{certDER},
 		PrivateKey:  key,
-	}, nil
+	}, certDER, nil
 }
 
 func envOr(key, fallback string) string {
