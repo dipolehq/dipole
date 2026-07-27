@@ -12,7 +12,7 @@ const COUNTRY_CODE_OPTIONS = [
   { value: '+61', label: '+61 (Australia)' },
   { value: '+65', label: '+65 (Singapore)' },
   { value: '+971', label: '+971 (UAE)' },
-] as const
+]
 
 const TABS = [
   { key: 'details', label: 'Details' },

@@ -3,7 +3,8 @@ import { apiClient, ApiError } from '@/shared/lib/api-client'
 export interface ServerWorkloadListItem {
   id: string
   name: string
-  protocol: string
+  appProtocol: string
+  description: string
   host: string
   tags: number
   policies: number
@@ -56,6 +57,7 @@ function toListItem(dto: ServerWorkloadDTO): ServerWorkloadListItem {
     name: dto.name,
     appProtocol: dto.appProtocol || '—',
     description: dto.description,
+    host: dto.host,
     tags: dto.tags?.length ?? 0,
     policies: dto.policyCount ?? 0,
     isActive: dto.isActive,

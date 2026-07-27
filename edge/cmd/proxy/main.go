@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -67,8 +68,12 @@ func main() {
 	}
 
 	var regResult *cloudclient.RegistrationResult
+	var activeConnCount atomic.Int64
 	if cloud != nil {
-		regResult = cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, cfg.PassThroughBeforeRegistration, cfg.PostStartMaxWaitSec, logger)
+		regResult = cloudclient.RunRegistration(ctx, cfg.AgentController, cloud, cfg.PassThroughBeforeRegistration, cfg.PostStartMaxWaitSec, func() int32 { return int32(activeConnCount.Load()) }, logger)
+		if regResult != nil && regResult.Success {
+			cfg.Registered.Store(true)
+		}
 	}
 
 	ca, err := buildCertificateAuthority(regResult, logger)
@@ -87,7 +92,7 @@ func main() {
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
 	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)
-	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, credentialCache, cfg, logger)
+	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, credentialCache, cfg, &activeConnCount, logger)
 
 	go func() {
 		if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
@@ -144,7 +149,7 @@ func writeCAToSharedVolume(ca *dipoletls.CertificateAuthority, logger *slog.Logg
 	logger.Info("CA certificate written for trust injection", "path", caPath)
 }
 
-func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, logger *slog.Logger) proxy.ConnectionHandler {
+func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, activeConnCount *atomic.Int64, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
 		proto, reader := protocols.Detect(targetHost, targetPort, clientConn)
 
@@ -153,7 +158,9 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 
 		logger.Info("protocol detected", "protocol", proto.String(), "host", targetHost, "port", targetPort, "connection_id", connID)
 		metrics.ConnectionsActive.WithLabelValues(proto.String()).Inc()
+		activeConnCount.Add(1)
 		defer metrics.ConnectionsActive.WithLabelValues(proto.String()).Dec()
+		defer activeConnCount.Add(-1)
 
 		var httpInfo *protocols.HTTPRequestInfo
 		var credInjected bool
@@ -394,6 +401,10 @@ type policyResult struct {
 
 func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, sourceIP string, sourcePort int, targetHost string, targetPort int, connID uuid.UUID, logger *slog.Logger) *policyResult {
 	if cloud == nil {
+		if !cfg.DevMode {
+			logger.Error("no cloud endpoint configured and DIPOLE_DEV_MODE is not enabled, denying", "connection_id", connID)
+			return &policyResult{Allowed: false}
+		}
 		return &policyResult{Allowed: true}
 	}
 
@@ -433,8 +444,8 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 				ServerWorkloadID: entry.ServerWorkloadID,
 			}
 		}
-		if cfg.PassThroughBeforeRegistration {
-			logger.Debug("cloud evaluation failed, passthrough mode", "error", err, "connection_id", connID)
+		if cfg.PassThroughBeforeRegistration && !cfg.Registered.Load() {
+			logger.Debug("cloud evaluation failed, passthrough mode (pre-registration)", "error", err, "connection_id", connID)
 			return &policyResult{Allowed: true}
 		}
 		logger.Warn("cloud evaluation failed", "error", err, "connection_id", connID)

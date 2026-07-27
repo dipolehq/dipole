@@ -73,10 +73,7 @@ func doFetchToken(controllerURL string) (string, error) {
 	return result.Token, nil
 }
 
-// RunRegistration performs the full proxy registration flow: fetch token from
-// controller, register with Cloud gRPC, and start health reporting on success.
-// Returns a RegistrationResult indicating whether registration succeeded and the proxy ID.
-func RunRegistration(ctx context.Context, controllerURL string, client *CloudClient, passThrough bool, maxWaitSec int, logger *slog.Logger) *RegistrationResult {
+func RunRegistration(ctx context.Context, controllerURL string, client *CloudClient, passThrough bool, maxWaitSec int, activeConns func() int32, logger *slog.Logger) *RegistrationResult {
 	if controllerURL == "" {
 		logger.Warn("no DIPOLE_AGENT_CONTROLLER configured, skipping registration")
 		return &RegistrationResult{Success: false}
@@ -113,7 +110,7 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 
 	logger.Info("proxy registered", "proxy_id", result.ProxyID)
 
-	go startHealthReporting(ctx, client, logger)
+	go startHealthReporting(ctx, client, activeConns, logger)
 
 	return &RegistrationResult{
 		ProxyID:   result.ProxyID,
@@ -123,9 +120,7 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 	}
 }
 
-// startHealthReporting sends a health report to Cloud every 60 seconds
-// until the context is cancelled.
-func startHealthReporting(ctx context.Context, client *CloudClient, logger *slog.Logger) {
+func startHealthReporting(ctx context.Context, client *CloudClient, activeConns func() int32, logger *slog.Logger) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
@@ -134,7 +129,7 @@ func startHealthReporting(ctx context.Context, client *CloudClient, logger *slog
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := client.ReportHealth(ctx, 0); err != nil {
+			if err := client.ReportHealth(ctx, activeConns()); err != nil {
 				logger.Warn("health report failed", "error", err)
 			} else {
 				logger.Debug("health reported")

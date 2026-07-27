@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 type ProxyConfig struct {
@@ -32,6 +33,8 @@ type ProxyConfig struct {
 	ProcessIdentificationEnabled  bool
 	AgentTrustPath                string
 	GRPCInsecure                  bool
+	DevMode                       bool
+	Registered                    *atomic.Bool
 }
 
 func LoadFromEnv() (*ProxyConfig, error) {
@@ -53,6 +56,8 @@ func LoadFromEnv() (*ProxyConfig, error) {
 		ProcessIdentificationEnabled:  envBool("DIPOLE_CLIENT_WORKLOAD_PROCESS_IDENTIFICATION_ENABLED", false),
 		AgentTrustPath:                os.Getenv("AGENT_TRUST_PATH"),
 		GRPCInsecure:                  envBool("DIPOLE_GRPC_INSECURE", false),
+		DevMode:                       envBool("DIPOLE_DEV_MODE", false),
+		Registered:                    &atomic.Bool{},
 	}
 
 	if hosts := os.Getenv("DIPOLE_STEERING_ALLOWED_HOSTS"); hosts != "" {
