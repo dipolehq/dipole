@@ -397,7 +397,12 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 		return &policyResult{Allowed: true}
 	}
 
-	if entry, ok := credCache.Get(targetHost, targetPort); ok {
+	clientID := sourceIP
+	if cfg.ClientWorkloadID != "" {
+		clientID = cfg.ClientWorkloadID
+	}
+
+	if entry, ok := credCache.Get(clientID, targetHost, targetPort); ok {
 		metrics.CredentialCacheHits.Inc()
 		return &policyResult{
 			Allowed:          entry.Allowed,
@@ -417,7 +422,7 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	metrics.PolicyEvaluationDuration.Observe(time.Since(start).Seconds())
 
 	if err != nil {
-		if entry, ok := credCache.Get(targetHost, targetPort); ok {
+		if entry, ok := credCache.Get(clientID, targetHost, targetPort); ok {
 			logger.Debug("serving cached credential during cloud outage", "host", targetHost, "connection_id", connID)
 			return &policyResult{
 				Allowed:          entry.Allowed,
@@ -486,7 +491,7 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 		expiresAt = time.Now().Add(credCache.DefaultTTL())
 	}
 
-	credCache.Set(targetHost, targetPort, &credcache.CacheEntry{
+	credCache.Set(clientID, targetHost, targetPort, &credcache.CacheEntry{
 		Allowed:          true,
 		Credential:       pr.Credential,
 		InjectionConfig:  pr.InjectionConfig,

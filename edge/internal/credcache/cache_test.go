@@ -12,7 +12,7 @@ import (
 func TestGet_Miss_EmptyCache(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	entry, ok := c.Get("api.stripe.com", 443)
+	entry, ok := c.Get("10.0.0.1", "api.stripe.com", 443)
 	if ok {
 		t.Fatal("expected miss on empty cache")
 	}
@@ -27,14 +27,14 @@ func TestGet_Hit_ValidEntry(t *testing.T) {
 	cred := &injection.Credential{Type: "http_bearer", Value: "token123"}
 	injCfg := &injection.InjectionConfig{Method: "http_bearer", HeaderName: "Authorization", Prefix: "Bearer "}
 
-	c.Set("api.stripe.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "api.stripe.com", 443, &CacheEntry{
 		Allowed:         true,
 		Credential:      cred,
 		InjectionConfig: injCfg,
 		ExpiresAt:       time.Now().Add(5 * time.Minute),
 	})
 
-	entry, ok := c.Get("api.stripe.com", 443)
+	entry, ok := c.Get("10.0.0.1", "api.stripe.com", 443)
 	if !ok {
 		t.Fatal("expected hit")
 	}
@@ -52,13 +52,13 @@ func TestGet_Hit_ValidEntry(t *testing.T) {
 func TestGet_Miss_ExpiredEntry(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("api.stripe.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "api.stripe.com", 443, &CacheEntry{
 		Allowed:    true,
 		Credential: &injection.Credential{Value: "expired-token"},
 		ExpiresAt:  time.Now().Add(-1 * time.Second),
 	})
 
-	entry, ok := c.Get("api.stripe.com", 443)
+	entry, ok := c.Get("10.0.0.1", "api.stripe.com", 443)
 	if ok {
 		t.Fatal("expected miss for expired entry")
 	}
@@ -70,38 +70,63 @@ func TestGet_Miss_ExpiredEntry(t *testing.T) {
 func TestGet_DifferentHostPort(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("api.stripe.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "api.stripe.com", 443, &CacheEntry{
 		Allowed:   true,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	})
 
-	_, ok := c.Get("api.stripe.com", 8443)
+	_, ok := c.Get("10.0.0.1", "api.stripe.com", 8443)
 	if ok {
 		t.Fatal("expected miss for different port")
 	}
 
-	_, ok = c.Get("other.host.com", 443)
+	_, ok = c.Get("10.0.0.1", "other.host.com", 443)
 	if ok {
 		t.Fatal("expected miss for different host")
+	}
+}
+
+func TestGet_DifferentClientID_Isolates(t *testing.T) {
+	c := NewCredentialCache(60 * time.Second)
+
+	c.Set("pod-a", "api.stripe.com", 443, &CacheEntry{
+		Allowed:    true,
+		Credential: &injection.Credential{Value: "token-for-pod-a"},
+		ExpiresAt:  time.Now().Add(5 * time.Minute),
+	})
+
+	// Same host:port, different client — must NOT get pod-a's credential
+	_, ok := c.Get("pod-b", "api.stripe.com", 443)
+	if ok {
+		t.Fatal("expected miss for different clientID — workload isolation violated")
+	}
+
+	// Original client still gets its entry
+	entry, ok := c.Get("pod-a", "api.stripe.com", 443)
+	if !ok {
+		t.Fatal("expected hit for original clientID")
+	}
+	if entry.Credential.Value != "token-for-pod-a" {
+		t.Fatalf("credential = %q, want %q", entry.Credential.Value, "token-for-pod-a")
 	}
 }
 
 func TestSet_OverwritesExisting(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("api.stripe.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "api.stripe.com", 443, &CacheEntry{
 		Allowed:    true,
 		Credential: &injection.Credential{Value: "old-token"},
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	})
 
-	c.Set("api.stripe.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "api.stripe.com", 443, &CacheEntry{
 		Allowed:    true,
 		Credential: &injection.Credential{Value: "new-token"},
 		ExpiresAt:  time.Now().Add(10 * time.Minute),
 	})
 
-	entry, ok := c.Get("api.stripe.com", 443)
+	entry, ok := c.Get("10.0.0.1", "api.stripe.com", 443)
 	if !ok {
 		t.Fatal("expected hit after overwrite")
 	}
@@ -117,34 +142,41 @@ func TestSize_ReflectsCurrentEntries(t *testing.T) {
 		t.Fatalf("size = %d, want 0", c.Size())
 	}
 
-	c.Set("host1.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
+	c.Set("client-1", "host1.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
 	if c.Size() != 1 {
 		t.Fatalf("size = %d, want 1", c.Size())
 	}
 
-	c.Set("host2.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
+	c.Set("client-1", "host2.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
 	if c.Size() != 2 {
 		t.Fatalf("size = %d, want 2", c.Size())
 	}
 
-	c.Set("host1.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
+	// Same client+host+port = overwrite, not new entry
+	c.Set("client-1", "host1.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
 	if c.Size() != 2 {
 		t.Fatalf("size after overwrite = %d, want 2", c.Size())
+	}
+
+	// Different client, same host+port = new entry (isolation)
+	c.Set("client-2", "host1.com", 443, &CacheEntry{ExpiresAt: time.Now().Add(time.Minute)})
+	if c.Size() != 3 {
+		t.Fatalf("size after different client = %d, want 3", c.Size())
 	}
 }
 
 func TestCleanup_RemovesExpiredEntries(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("expired.com", 443, &CacheEntry{
+	c.Set("c1", "expired.com", 443, &CacheEntry{
 		Allowed:   true,
 		ExpiresAt: time.Now().Add(-1 * time.Minute),
 	})
-	c.Set("valid.com", 443, &CacheEntry{
+	c.Set("c1", "valid.com", 443, &CacheEntry{
 		Allowed:   true,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 	})
-	c.Set("also-expired.com", 8080, &CacheEntry{
+	c.Set("c2", "also-expired.com", 8080, &CacheEntry{
 		Allowed:   true,
 		ExpiresAt: time.Now().Add(-30 * time.Second),
 	})
@@ -159,12 +191,12 @@ func TestCleanup_RemovesExpiredEntries(t *testing.T) {
 		t.Fatalf("size after cleanup = %d, want 1", c.Size())
 	}
 
-	_, ok := c.Get("valid.com", 443)
+	_, ok := c.Get("c1", "valid.com", 443)
 	if !ok {
 		t.Fatal("valid entry should still be accessible after cleanup")
 	}
 
-	_, ok = c.Get("expired.com", 443)
+	_, ok = c.Get("c1", "expired.com", 443)
 	if ok {
 		t.Fatal("expired entry should be gone after cleanup")
 	}
@@ -188,13 +220,13 @@ func TestDefaultTTL(t *testing.T) {
 func TestGet_NilCredentialEntry(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("passthrough.com", 443, &CacheEntry{
+	c.Set("10.0.0.1", "passthrough.com", 443, &CacheEntry{
 		Allowed:    true,
 		Credential: nil,
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	})
 
-	entry, ok := c.Get("passthrough.com", 443)
+	entry, ok := c.Get("10.0.0.1", "passthrough.com", 443)
 	if !ok {
 		t.Fatal("expected hit")
 	}
@@ -209,7 +241,7 @@ func TestGet_NilCredentialEntry(t *testing.T) {
 func TestStartCleanupLoop_StopsOnContextCancel(t *testing.T) {
 	c := NewCredentialCache(60 * time.Second)
 
-	c.Set("expired.com", 443, &CacheEntry{
+	c.Set("c1", "expired.com", 443, &CacheEntry{
 		ExpiresAt: time.Now().Add(-1 * time.Minute),
 	})
 
@@ -247,16 +279,17 @@ func TestConcurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				host := "host" + string(rune('A'+id%26))
+				clientID := "client-" + string(rune('A'+id%26))
+				host := "host" + string(rune('A'+j%26))
 				port := 443 + (j % 10)
 
-				c.Set(host+".com", port, &CacheEntry{
+				c.Set(clientID, host+".com", port, &CacheEntry{
 					Allowed:    true,
 					Credential: &injection.Credential{Value: "token"},
 					ExpiresAt:  time.Now().Add(time.Minute),
 				})
 
-				c.Get(host+".com", port)
+				c.Get(clientID, host+".com", port)
 				c.Size()
 
 				if j%50 == 0 {

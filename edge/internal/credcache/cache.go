@@ -1,8 +1,9 @@
 /*
 Package credcache provides an in-memory credential cache for policy evaluation
-results. Keyed by target host:port, entries expire based on TTL from Cloud or
-a configurable default. Thread-safe via sync.RWMutex. Serves cached credentials
-during brief Cloud outages (static stability).
+results. Keyed by (clientID, target host, port) to maintain per-workload
+isolation — different client workloads accessing the same server get separate
+cache entries. Thread-safe via sync.RWMutex. Serves cached credentials during
+brief Cloud outages (static stability).
 */
 package credcache
 
@@ -38,8 +39,8 @@ func NewCredentialCache(defaultTTL time.Duration) *CredentialCache {
 	}
 }
 
-func (c *CredentialCache) Get(host string, port int) (*CacheEntry, bool) {
-	key := cacheKey(host, port)
+func (c *CredentialCache) Get(clientID string, host string, port int) (*CacheEntry, bool) {
+	key := cacheKey(clientID, host, port)
 
 	c.mu.RLock()
 	entry, ok := c.entries[key]
@@ -56,8 +57,8 @@ func (c *CredentialCache) Get(host string, port int) (*CacheEntry, bool) {
 	return entry, true
 }
 
-func (c *CredentialCache) Set(host string, port int, entry *CacheEntry) {
-	key := cacheKey(host, port)
+func (c *CredentialCache) Set(clientID string, host string, port int, entry *CacheEntry) {
+	key := cacheKey(clientID, host, port)
 
 	c.mu.Lock()
 	c.entries[key] = entry
@@ -101,6 +102,6 @@ func (c *CredentialCache) StartCleanupLoop(ctx context.Context, interval time.Du
 	}
 }
 
-func cacheKey(host string, port int) string {
-	return fmt.Sprintf("%s:%d", host, port)
+func cacheKey(clientID string, host string, port int) string {
+	return fmt.Sprintf("%s|%s:%d", clientID, host, port)
 }
