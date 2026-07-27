@@ -179,6 +179,22 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 			credInjected, pr = handleMySQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
 		case protocols.ProtoRedis:
 			credInjected, pr = handleRedis(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoRedshift:
+			credInjected, pr = handlePostgreSQL(cloud, gatherer, credCache, cfg, clientConn, targetHost, targetPort, connID, sourceIP, sourcePort, logger)
+		case protocols.ProtoOracle:
+			pr = evaluatePolicy(cloud, gatherer, credCache, cfg, sourceIP, sourcePort, targetHost, targetPort, connID, logger)
+			if !pr.Allowed {
+				clientConn.Close()
+			} else {
+				oracleHandler := &protocols.OracleHandler{Logger: logger}
+				serverConn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)), 10*time.Second)
+				if dialErr != nil {
+					logger.Error("oracle dial failed", "host", targetHost, "port", targetPort, "error", dialErr, "connection_id", connID)
+					clientConn.Close()
+				} else {
+					oracleHandler.Handle(clientConn, serverConn, connID)
+				}
+			}
 		default:
 			protocols.Passthrough(clientConn, targetHost, targetPort, connID, logger)
 		}
@@ -569,6 +585,10 @@ func protocolToEventType(proto protocols.Protocol) string {
 		return "redis.request"
 	case protocols.ProtoSnowflake:
 		return "snowflake.request"
+	case protocols.ProtoRedshift:
+		return "redshift.request"
+	case protocols.ProtoOracle:
+		return "oracleDatabase.request"
 	default:
 		return "tcp.open"
 	}

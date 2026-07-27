@@ -1,19 +1,23 @@
 /*
 Package identity gathers workload identity evidence from the local environment.
 
-EvidenceGatherer is called on every intercepted request to collect fresh
-evidence (K8s SA token, AWS IMDS/STS, Azure IMDS, GCP metadata, env vars,
-source IP). Sub-gatherers that fail (e.g., not in K8s, not on AWS) are
-skipped gracefully — we send whatever evidence is available.
+EvidenceGatherer collects identity evidence (K8s SA token, AWS IMDS/STS, Azure
+IMDS, GCP metadata, env vars, source IP) and caches it with a short TTL to
+avoid repeated I/O on every request. Sub-gatherers that fail (e.g., not in K8s,
+not on AWS) are skipped gracefully — we send whatever evidence is available.
 */
 package identity
 
 import (
 	"log/slog"
 	"os"
+	"sync"
+	"time"
 
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
+
+const evidenceCacheTTL = 30 * time.Second
 
 type EvidenceGatherer struct {
 	logger         *slog.Logger
@@ -22,6 +26,17 @@ type EvidenceGatherer struct {
 	azure          *azureGatherer
 	gcp            *gcpGatherer
 	processEnabled bool
+
+	mu     sync.RWMutex
+	cached *cachedEvidence
+}
+
+type cachedEvidence struct {
+	k8s       *pb.K8SEvidence
+	aws       *pb.AwsEvidence
+	azure     *pb.AzureEvidence
+	gcp       *pb.GcpEvidence
+	expiresAt time.Time
 }
 
 func NewEvidenceGatherer(logger *slog.Logger, processEnabled bool) *EvidenceGatherer {
@@ -45,21 +60,11 @@ func (g *EvidenceGatherer) Gather(sourceIP string, sourcePort int) *pb.ClientEvi
 		Environment:    gatherEnv(),
 	}
 
-	if k8s := gatherK8s(g.logger); k8s != nil {
-		ev.K8S = k8s
-	}
-
-	if aws := g.gatherAWS(); aws != nil {
-		ev.Aws = aws
-	}
-
-	if azure := g.gatherAzure(); azure != nil {
-		ev.Azure = azure
-	}
-
-	if gcp := g.gatherGCP(); gcp != nil {
-		ev.Gcp = gcp
-	}
+	platform := g.getPlatformEvidence()
+	ev.K8S = platform.k8s
+	ev.Aws = platform.aws
+	ev.Azure = platform.azure
+	ev.Gcp = platform.gcp
 
 	if g.processEnabled {
 		if proc := gatherProcess(sourcePort); proc != nil {
@@ -68,6 +73,37 @@ func (g *EvidenceGatherer) Gather(sourceIP string, sourcePort int) *pb.ClientEvi
 	}
 
 	return ev
+}
+
+func (g *EvidenceGatherer) getPlatformEvidence() *cachedEvidence {
+	g.mu.RLock()
+	if g.cached != nil && time.Now().Before(g.cached.expiresAt) {
+		c := g.cached
+		g.mu.RUnlock()
+		return c
+	}
+	g.mu.RUnlock()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.cached != nil && time.Now().Before(g.cached.expiresAt) {
+		return g.cached
+	}
+
+	g.cached = &cachedEvidence{
+		k8s:       g.gatherK8s(),
+		aws:       g.gatherAWS(),
+		azure:     g.gatherAzure(),
+		gcp:       g.gatherGCP(),
+		expiresAt: time.Now().Add(evidenceCacheTTL),
+	}
+
+	return g.cached
+}
+
+func (g *EvidenceGatherer) gatherK8s() *pb.K8SEvidence {
+	return gatherK8s(g.logger)
 }
 
 func (g *EvidenceGatherer) gatherAWS() *pb.AwsEvidence {
