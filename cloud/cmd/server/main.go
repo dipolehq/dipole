@@ -101,6 +101,12 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
+	// Edge API (proxyless credential retrieval for CI/CD)
+	edgeTrustValidator := trust.NewEdgeTrustValidator(repos.TrustProviders, trustValidator)
+	edgePolicyAdapter := policy.NewEdgePolicyAdapter(policyService)
+	edgeTenantResolver := service.NewTenantResolverAdapter(repos.Tenants)
+	edgeAPI := rest.NewEdgeAPIHandler(issuer, edgeTrustValidator, edgePolicyAdapter, edgeTenantResolver)
+
 	// MCP services (wired only when tenant is configured for MCP)
 	var mcpAuthServer *rest.MCPAuthServer
 	var mcpGatewayServer *rest.MCPGatewayServer
@@ -161,7 +167,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		)
 	}
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, mcpAuthServer, mcpGatewayServer, mcpDipoleServer)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -214,6 +220,7 @@ func buildHTTPServer(
 	accessPolicySvc *service.AccessPolicyService,
 	authenticator rest.APIAuthenticator,
 	registrationSvc *registration.RegistrationService,
+	edgeAPI *rest.EdgeAPIHandler,
 	mcpAuth *rest.MCPAuthServer,
 	mcpGateway *rest.MCPGatewayServer,
 	mcpDipole *rest.DipoleMCPServer,
@@ -242,6 +249,9 @@ func buildHTTPServer(
 	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
+
+	// Edge API routes (always available — handles its own authentication)
+	edgeAPI.RegisterEdgeRoutes(mux)
 
 	// MCP routes (registered only when MCP is configured)
 	if mcpAuth != nil {
@@ -282,6 +292,10 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 
 func isPublicPath(path string) bool {
 	if path == "/api/v1/health" || strings.HasPrefix(path, "/internal/") {
+		return true
+	}
+	// Edge API handles its own authentication
+	if strings.HasPrefix(path, "/edge/") {
 		return true
 	}
 	// MCP routes handle their own authentication
