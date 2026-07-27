@@ -10,6 +10,8 @@ package registration
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
@@ -24,11 +26,12 @@ import (
 type RegistrationService struct {
 	controllerRepo repository.AgentControllerRepository
 	proxyRepo      repository.AgentProxyRepository
+	tokenRepo      repository.RegistrationTokenRepository
 	logger         interface{ Info(string, ...interface{}) }
 }
 
-func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository) *RegistrationService {
-	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo}
+func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository) *RegistrationService {
+	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo}
 }
 
 func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (*domain.AgentController, error) {
@@ -105,12 +108,19 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 		return "", fmt.Errorf("controller not registered")
 	}
 
-	// Generate token issued by Cloud — Cloud recognizes its own tokens
 	rawBytes := make([]byte, 32)
 	if _, err := rand.Read(rawBytes); err != nil {
 		return "", fmt.Errorf("generate random token: %w", err)
 	}
 	token := fmt.Sprintf("%s:%s:%x", tenantID, controllerID, rawBytes)
+
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+	expiresAt := time.Now().Add(1 * time.Hour)
+
+	if err := s.tokenRepo.Store(ctx, tenantID, tokenHash, controllerID, expiresAt); err != nil {
+		return "", fmt.Errorf("store token hash: %w", err)
+	}
 
 	return token, nil
 }
@@ -120,7 +130,6 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 		return nil, domain.NewRegistrationError("empty registration token")
 	}
 
-	// Parse token format: "tenantID:controllerID:random"
 	parts := strings.SplitN(registrationToken, ":", 3)
 	if len(parts) != 3 {
 		return nil, domain.NewRegistrationError("invalid registration token format")
@@ -139,6 +148,15 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 		return nil, domain.NewRegistrationError("invalid controller_id in token")
 	}
 
+	// Verify token is valid, not consumed, not expired — and consume it atomically
+	hash := sha256.Sum256([]byte(registrationToken))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	consumed, err := s.tokenRepo.Consume(ctx, tenantID, tokenHash)
+	if err != nil || consumed == nil {
+		return nil, domain.NewRegistrationError("invalid or already consumed registration token")
+	}
+
 	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
@@ -151,7 +169,6 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 		return nil, domain.NewRegistrationError("controller not in valid state for proxy registration")
 	}
 
-	// Create and persist proxy
 	now := time.Now()
 	proxy := &domain.AgentProxy{
 		ID:                uuid.New(),

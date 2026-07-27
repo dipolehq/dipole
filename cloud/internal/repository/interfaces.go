@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -139,4 +140,9 @@ type AgentProxyRepository interface {
 
 type TenantCARepository interface {
 	GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (storedCertPEM string, storedKeyEncrypted []byte, err error)
+}
+
+type RegistrationTokenRepository interface {
+	Store(ctx context.Context, tenantID uuid.UUID, tokenHash string, controllerID uuid.UUID, expiresAt time.Time) error
+	Consume(ctx context.Context, tenantID uuid.UUID, tokenHash string) (*domain.RegistrationToken, error)
 }

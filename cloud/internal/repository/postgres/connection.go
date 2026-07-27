@@ -44,6 +44,7 @@ type Repositories struct {
 	TenantCAs              *TenantCARepo
 	MCPClients             *MCPClientRepo
 	MCPUserCredentials     *MCPUserCredentialRepo
+	RegistrationTokens     *RegistrationTokenRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -89,6 +90,7 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		TenantCAs:              &TenantCARepo{pool: pool},
 		MCPClients:             NewMCPClientRepo(pool),
 		MCPUserCredentials:     NewMCPUserCredentialRepo(pool, nil),
+		RegistrationTokens:     &RegistrationTokenRepo{pool: pool},
 	}
 }
 

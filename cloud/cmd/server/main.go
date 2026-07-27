@@ -97,7 +97,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
-	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies)
+	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
