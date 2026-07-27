@@ -138,6 +138,9 @@ func buildCanonicalHeaders(headers http.Header) (canonicalHeaders, signedHeaders
 	var entries []headerEntry
 	for name, values := range headers {
 		lowerName := strings.ToLower(name)
+		if !shouldSignHeader(lowerName) {
+			continue
+		}
 		trimmedValue := strings.TrimSpace(strings.Join(values, ","))
 		entries = append(entries, headerEntry{lowerName, trimmedValue})
 	}
@@ -154,6 +157,19 @@ func buildCanonicalHeaders(headers http.Header) (canonicalHeaders, signedHeaders
 	}
 
 	return strings.Join(headerLines, ""), strings.Join(headerNames, ";")
+}
+
+func shouldSignHeader(name string) bool {
+	switch {
+	case name == "host":
+		return true
+	case name == "content-type":
+		return true
+	case strings.HasPrefix(name, "x-amz-"):
+		return true
+	default:
+		return false
+	}
 }
 
 func sha256Hex(data []byte) string {

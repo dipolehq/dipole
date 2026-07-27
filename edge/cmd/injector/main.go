@@ -115,6 +115,9 @@ type podObject struct {
 		Annotations map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Spec struct {
+		InitContainers []struct {
+			Name string `json:"name"`
+		} `json:"initContainers"`
 		Containers []struct {
 			Name string `json:"name"`
 		} `json:"containers"`
@@ -143,7 +146,7 @@ func (inj *AgentInjector) handleMutate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pod.Metadata.Annotations["dipolehq.com/agent-inject"] == "enabled" {
-		patches := inj.buildPatches(pod.Metadata.Annotations, len(pod.Spec.Containers))
+		patches := inj.buildPatches(pod.Metadata.Annotations, len(pod.Spec.Containers), len(pod.Spec.InitContainers) > 0)
 		patchBytes, _ := json.Marshal(patches)
 		patchType := "JSONPatch"
 		resp.PatchType = &patchType
@@ -166,29 +169,30 @@ type jsonPatch struct {
 	Value interface{} `json:"value"`
 }
 
-func (inj *AgentInjector) buildPatches(annotations map[string]string, containerCount int) []jsonPatch {
+func (inj *AgentInjector) buildPatches(annotations map[string]string, containerCount int, hasInitContainers bool) []jsonPatch {
 	var patches []jsonPatch
 
 	steeringMode := annotations["dipolehq.com/steering-mode"]
 
-	// Init container (skip for explicit steering)
 	if steeringMode != "explicit" {
-		patches = append(patches, jsonPatch{
-			Op:   "add",
-			Path: "/spec/initContainers/-",
-			Value: map[string]interface{}{
-				"name":  "dipole-init",
-				"image": inj.config.InitImage,
-				"securityContext": map[string]interface{}{
-					"runAsUser":    26248,
-					"capabilities": map[string]interface{}{"add": []string{"NET_ADMIN"}},
-				},
-				"env": []map[string]interface{}{
-					{"name": "DIPOLE_PROXY_UID", "value": "65534"},
-					{"name": "DIPOLE_PROXY_PORT", "value": "15001"},
-				},
+		initContainer := map[string]interface{}{
+			"name":  "dipole-init",
+			"image": inj.config.InitImage,
+			"securityContext": map[string]interface{}{
+				"runAsUser":    26248,
+				"capabilities": map[string]interface{}{"add": []string{"NET_ADMIN"}},
 			},
-		})
+			"env": []map[string]interface{}{
+				{"name": "DIPOLE_PROXY_UID", "value": "65534"},
+				{"name": "DIPOLE_PROXY_PORT", "value": "15001"},
+			},
+		}
+
+		if hasInitContainers {
+			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers/-", Value: initContainer})
+		} else {
+			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers", Value: []interface{}{initContainer}})
+		}
 	}
 
 	// Sidecar container env vars

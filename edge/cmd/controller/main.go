@@ -9,6 +9,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -35,15 +37,14 @@ func main() {
 		logger:       logger,
 		controllerID: uuid.Nil,
 		usedTokens:   make(map[string]bool),
+		cloudClient:  buildCloudHTTPClient(cfg.AgentTrustPath),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Register with Cloud
 	go ctrl.registerWithRetry(ctx)
 
-	// Start HTTP server
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", ctrl.handleHealth)
 	mux.HandleFunc("GET /api/token", ctrl.handleGetToken)
@@ -55,13 +56,19 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("controller http server starting", "port", cfg.HTTPPort)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("http server error", "error", err)
+		if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
+			logger.Info("controller https server starting", "port", cfg.HTTPPort)
+			if err := server.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath); err != nil && err != http.ErrServerClosed {
+				logger.Error("https server error", "error", err)
+			}
+		} else {
+			logger.Info("controller http server starting", "port", cfg.HTTPPort)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("http server error", "error", err)
+			}
 		}
 	}()
 
-	// Wait for shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	<-sigCh
@@ -74,21 +81,25 @@ type AgentController struct {
 	config           *ControllerConfig
 	logger           *slog.Logger
 	controllerID     uuid.UUID
-	sharedSecret     []byte // HMAC key for signing Kerberos attestations
+	sharedSecret     []byte
 	registered       atomic.Bool
 	registeredAt     time.Time
 	lastCloudContact time.Time
 	usedTokens       map[string]bool
 	tokenMu          sync.Mutex
+	cloudClient      *http.Client
 }
 
 type ControllerConfig struct {
-	TenantID      string
-	DeviceCode    string
-	ControllerID  string
-	CloudEndpoint string
-	HTTPPort      int
-	LogLevel      string
+	TenantID       string
+	DeviceCode     string
+	ControllerID   string
+	CloudEndpoint  string
+	HTTPPort       int
+	LogLevel       string
+	AgentTrustPath string
+	TLSCertPath    string
+	TLSKeyPath     string
 }
 
 func loadControllerConfig() *ControllerConfig {
@@ -109,12 +120,34 @@ func loadControllerConfig() *ControllerConfig {
 	}
 
 	return &ControllerConfig{
-		TenantID:      tenantID,
-		DeviceCode:    os.Getenv("DIPOLE_DEVICE_CODE"),
-		ControllerID:  os.Getenv("DIPOLE_AGENT_CONTROLLER_ID"),
-		CloudEndpoint: cloudEndpoint,
-		HTTPPort:      port,
-		LogLevel:      envOr("DIPOLE_LOG_LEVEL", "information"),
+		TenantID:       tenantID,
+		DeviceCode:     os.Getenv("DIPOLE_DEVICE_CODE"),
+		ControllerID:   os.Getenv("DIPOLE_AGENT_CONTROLLER_ID"),
+		CloudEndpoint:  cloudEndpoint,
+		HTTPPort:       port,
+		LogLevel:       envOr("DIPOLE_LOG_LEVEL", "information"),
+		AgentTrustPath: os.Getenv("AGENT_TRUST_PATH"),
+		TLSCertPath:    os.Getenv("TLS_PEM_PATH"),
+		TLSKeyPath:     os.Getenv("TLS_KEY_PATH"),
+	}
+}
+
+func buildCloudHTTPClient(trustPath string) *http.Client {
+	transport := &http.Transport{}
+
+	if trustPath != "" {
+		pem, err := os.ReadFile(trustPath)
+		if err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(pem) {
+				transport.TLSClientConfig = &tls.Config{RootCAs: pool}
+			}
+		}
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
 	}
 }
 
@@ -161,7 +194,7 @@ func (c *AgentController) requestTokenFromCloud() (string, error) {
 	url := c.config.CloudEndpoint + "/internal/controllers/token"
 	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s"}`, c.config.TenantID, c.controllerID)
 
-	resp, err := http.Post(url, "application/json", strings.NewReader(body))
+	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("cloud unreachable: %w", err)
 	}
@@ -228,7 +261,7 @@ func (c *AgentController) registerWithDeviceCode() error {
 	url := c.config.CloudEndpoint + "/internal/controllers/register"
 	body := fmt.Sprintf(`{"tenant_id":"%s","device_code":"%s"}`, c.config.TenantID, c.config.DeviceCode)
 
-	resp, err := http.Post(url, "application/json", strings.NewReader(body))
+	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("cloud unreachable: %w", err)
 	}
@@ -252,7 +285,6 @@ func (c *AgentController) registerWithDeviceCode() error {
 	}
 	c.controllerID = id
 
-	// Store shared secret for Kerberos attestation signing
 	if result.SharedSecret != "" {
 		secretBytes, err := hex.DecodeString(result.SharedSecret)
 		if err != nil {
@@ -283,11 +315,10 @@ func (c *AgentController) startHealthReporting(ctx context.Context) {
 }
 
 func (c *AgentController) reportHealth() error {
-	// For now, use HTTP. Will switch to gRPC ReportHealth in production.
 	url := c.config.CloudEndpoint + "/internal/controllers/health"
 	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s","status":"Healthy"}`, c.config.TenantID, c.controllerID)
 
-	resp, err := http.Post(url, "application/json", strings.NewReader(body))
+	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -328,9 +359,6 @@ func newControllerLogger(level string) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
 }
 
-// handleKerberosAttest validates a Kerberos ticket (keytab validation assumed
-// already performed by the caller) and signs an attestation document with
-// HMAC-SHA256 using the shared secret from Cloud registration.
 func (c *AgentController) handleKerberosAttest(w http.ResponseWriter, r *http.Request) {
 	if !c.registered.Load() {
 		http.Error(w, `{"error":"controller not registered"}`, http.StatusServiceUnavailable)
