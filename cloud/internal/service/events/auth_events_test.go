@@ -130,7 +130,7 @@ func TestWorkloadEventIngester_RedactsSensitiveHeaders(t *testing.T) {
 	repo := &mockEventRepo{}
 	ingester := NewWorkloadEventIngester(repo)
 
-	payload := json.RawMessage(`{"application":{"http":{"headers":[{"content-type":"application/json"},{"authorization":"Bearer secret"},{"set-cookie":"session=abc"}]}}}`)
+	payload := json.RawMessage(`{"application":{"http":{"headers":[{"content-type":"application/json"},{"authorization":"Bearer secret"},{"set-cookie":"session=abc"},{"cookie":"session_id=s3cr3t"},{"x-api-key":"sk_live_key123"}]}}}`)
 
 	err := ingester.Ingest(context.Background(), &IncomingWorkloadEvent{
 		TenantID:     uuid.New(),
@@ -157,6 +157,12 @@ func TestWorkloadEventIngester_RedactsSensitiveHeaders(t *testing.T) {
 	}
 	if contains(stored, "session=abc") {
 		t.Error("set-cookie header should be redacted")
+	}
+	if contains(stored, "s3cr3t") {
+		t.Error("cookie header should be redacted")
+	}
+	if contains(stored, "sk_live_key123") {
+		t.Error("x-api-key header should be redacted")
 	}
 	if !contains(stored, "[REDACTED]") {
 		t.Error("expected [REDACTED] placeholder")

@@ -115,6 +115,8 @@ func TestBuildWorkloadEvent_RedactsAuthorizationHeader(t *testing.T) {
 			{"Content-Type": "application/json"},
 			{"Authorization": "Bearer sk_live_secret_key"},
 			{"Set-Cookie": "session=abc123"},
+			{"Cookie": "session_id=s3cr3t_cookie_value"},
+			{"X-API-Key": "sk_live_apikey123"},
 			{"X-Request-Id": "req-456"},
 		},
 	}
@@ -131,6 +133,12 @@ func TestBuildWorkloadEvent_RedactsAuthorizationHeader(t *testing.T) {
 	}
 	if strings.Contains(payloadStr, "session=abc123") {
 		t.Error("Set-Cookie value should be redacted")
+	}
+	if strings.Contains(payloadStr, "s3cr3t_cookie_value") {
+		t.Error("Cookie header value should be redacted")
+	}
+	if strings.Contains(payloadStr, "sk_live_apikey123") {
+		t.Error("X-API-Key header value should be redacted")
 	}
 	if !strings.Contains(payloadStr, "[REDACTED]") {
 		t.Error("expected [REDACTED] placeholder in payload")

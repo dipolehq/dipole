@@ -2,7 +2,7 @@
 events.go provides workload event construction for the Agent Proxy.
 
 BuildWorkloadEvent constructs a protobuf WorkloadEvent from connection
-metadata. Sensitive HTTP headers (Authorization, Set-Cookie) are redacted
+metadata. Sensitive HTTP headers (Authorization, Set-Cookie, Cookie, X-API-Key) are redacted
 from the JSON payload before the event leaves the proxy, providing
 defense-in-depth alongside Cloud-side redaction.
 */
@@ -169,7 +169,7 @@ func redactSensitiveHeaders(headers []any) []any {
 		shouldRedact := false
 		for key := range header {
 			lower := strings.ToLower(key)
-			if lower == "authorization" || lower == "set-cookie" {
+			if lower == "authorization" || lower == "set-cookie" || lower == "cookie" || lower == "x-api-key" {
 				shouldRedact = true
 				break
 			}

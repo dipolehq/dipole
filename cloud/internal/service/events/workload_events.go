@@ -2,8 +2,8 @@
 workload_events.go implements Workload Event ingestion from the Agent Proxy.
 
 WorkloadEventIngester receives events streamed via gRPC, redacts sensitive
-headers (Authorization, Set-Cookie) from HTTP/MCP payloads before storage,
-and writes to the workload_events table. Events include protocol-specific
+headers (Authorization, Set-Cookie, Cookie, X-API-Key) from HTTP/MCP payloads
+before storage, and writes to the workload_events table. Events include protocol-specific
 application data (HTTP methods, DB queries, MCP tool calls, etc.).
 */
 package events
@@ -120,7 +120,7 @@ func redactHeaders(headers []any) []any {
 		shouldRedact := false
 		for key := range header {
 			lower := strings.ToLower(key)
-			if lower == "authorization" || lower == "set-cookie" {
+			if lower == "authorization" || lower == "set-cookie" || lower == "cookie" || lower == "x-api-key" {
 				shouldRedact = true
 				break
 			}
