@@ -121,6 +121,9 @@ type podObject struct {
 		Containers []struct {
 			Name string `json:"name"`
 		} `json:"containers"`
+		Volumes []struct {
+			Name string `json:"name"`
+		} `json:"volumes"`
 	} `json:"spec"`
 }
 
@@ -146,7 +149,7 @@ func (inj *AgentInjector) handleMutate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pod.Metadata.Annotations["dipolehq.com/agent-inject"] == "enabled" {
-		patches := inj.buildPatches(pod.Metadata.Annotations, len(pod.Spec.Containers), len(pod.Spec.InitContainers) > 0)
+		patches := inj.buildPatches(pod.Metadata.Annotations, len(pod.Spec.Containers), len(pod.Spec.InitContainers) > 0, len(pod.Spec.Volumes) > 0)
 		patchBytes, _ := json.Marshal(patches)
 		patchType := "JSONPatch"
 		resp.PatchType = &patchType
@@ -169,7 +172,7 @@ type jsonPatch struct {
 	Value interface{} `json:"value"`
 }
 
-func (inj *AgentInjector) buildPatches(annotations map[string]string, containerCount int, hasInitContainers bool) []jsonPatch {
+func (inj *AgentInjector) buildPatches(annotations map[string]string, containerCount int, hasInitContainers bool, hasVolumes bool) []jsonPatch {
 	var patches []jsonPatch
 
 	steeringMode := annotations["dipolehq.com/steering-mode"]
@@ -192,6 +195,20 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers/-", Value: initContainer})
 		} else {
 			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/initContainers", Value: []interface{}{initContainer}})
+		}
+	}
+
+	// Shared volume for CA cert (proxy writes, app containers read)
+	// Only needed for transparent steering where TLS MITM is active
+	if steeringMode != "explicit" {
+		caVolume := map[string]interface{}{
+			"name":     "dipole-ca",
+			"emptyDir": map[string]interface{}{},
+		}
+		if hasVolumes {
+			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes/-", Value: caVolume})
+		} else {
+			patches = append(patches, jsonPatch{Op: "add", Path: "/spec/volumes", Value: []interface{}{caVolume}})
 		}
 	}
 
@@ -223,19 +240,46 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 	}
 
 	// Sidecar container
-	patches = append(patches, jsonPatch{
-		Op:   "add",
-		Path: "/spec/containers/-",
-		Value: map[string]interface{}{
-			"name":            "dipole-agent-proxy",
-			"image":           inj.config.ProxyImage,
-			"securityContext": map[string]interface{}{"runAsUser": 65534},
-			"ports": []map[string]interface{}{
-				{"containerPort": 9099, "name": "metrics", "protocol": "TCP"},
-			},
-			"env": sidecarEnv,
+	sidecarDef := map[string]interface{}{
+		"name":            "dipole-agent-proxy",
+		"image":           inj.config.ProxyImage,
+		"securityContext": map[string]interface{}{"runAsUser": 65534},
+		"ports": []map[string]interface{}{
+			{"containerPort": 9099, "name": "metrics", "protocol": "TCP"},
 		},
+		"env": sidecarEnv,
+	}
+	if steeringMode != "explicit" {
+		sidecarDef["volumeMounts"] = []map[string]interface{}{
+			{"name": "dipole-ca", "mountPath": "/dipole/ca"},
+		}
+	}
+	patches = append(patches, jsonPatch{
+		Op:    "add",
+		Path:  "/spec/containers/-",
+		Value: sidecarDef,
 	})
+
+	// Mount CA cert into all existing app containers + set SSL_CERT_FILE
+	// Only needed for transparent steering where TLS MITM is active
+	if steeringMode != "explicit" {
+		for i := 0; i < containerCount; i++ {
+			patches = append(patches, jsonPatch{
+				Op:   "add",
+				Path: fmt.Sprintf("/spec/containers/%d/volumeMounts/-", i),
+				Value: map[string]interface{}{
+					"name":      "dipole-ca",
+					"mountPath": "/dipole/ca",
+					"readOnly":  true,
+				},
+			})
+			patches = append(patches, jsonPatch{
+				Op:    "add",
+				Path:  fmt.Sprintf("/spec/containers/%d/env/-", i),
+				Value: map[string]interface{}{"name": "SSL_CERT_FILE", "value": "/dipole/ca/ca.pem"},
+			})
+		}
+	}
 
 	// Explicit mode: add HTTP_PROXY/HTTPS_PROXY to ALL existing containers
 	if steeringMode == "explicit" {

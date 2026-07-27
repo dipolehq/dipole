@@ -14,16 +14,38 @@ func TestBuildPatches_NoExistingInitContainers_CreatesArray(t *testing.T) {
 		ControllerURL: "http://controller.dipole:80",
 	}}
 
-	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, false)
+	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, false, false)
 
-	if len(patches) != 2 {
-		t.Fatalf("expected 2 patches (init + sidecar), got %d", len(patches))
-	}
 	if patches[0].Path != "/spec/initContainers" {
 		t.Errorf("patch[0] path = %q, want /spec/initContainers (create array)", patches[0].Path)
 	}
-	if patches[1].Path != "/spec/containers/-" {
-		t.Errorf("patch[1] path = %q", patches[1].Path)
+
+	hasVolumePatch := false
+	hasSidecar := false
+	hasSSLCertFile := false
+	for _, p := range patches {
+		if p.Path == "/spec/volumes" {
+			hasVolumePatch = true
+		}
+		if p.Path == "/spec/containers/-" {
+			hasSidecar = true
+		}
+		if strings.Contains(p.Path, "/env/-") {
+			if val, ok := p.Value.(map[string]interface{}); ok {
+				if val["name"] == "SSL_CERT_FILE" {
+					hasSSLCertFile = true
+				}
+			}
+		}
+	}
+	if !hasVolumePatch {
+		t.Error("expected /spec/volumes patch for CA volume")
+	}
+	if !hasSidecar {
+		t.Error("expected sidecar container patch")
+	}
+	if !hasSSLCertFile {
+		t.Error("expected SSL_CERT_FILE env injection into app container")
 	}
 }
 
@@ -35,13 +57,31 @@ func TestBuildPatches_HasExistingInitContainers_Appends(t *testing.T) {
 		ControllerURL: "http://controller.dipole:80",
 	}}
 
-	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, true)
+	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, true, false)
 
-	if len(patches) != 2 {
-		t.Fatalf("expected 2 patches (init + sidecar), got %d", len(patches))
-	}
 	if patches[0].Path != "/spec/initContainers/-" {
 		t.Errorf("patch[0] path = %q, want /spec/initContainers/- (append)", patches[0].Path)
+	}
+}
+
+func TestBuildPatches_HasExistingVolumes_AppendsVolume(t *testing.T) {
+	inj := &AgentInjector{config: &InjectorConfig{
+		TenantID:      "test-tenant",
+		ProxyImage:    "dipole/proxy:latest",
+		InitImage:     "dipole/init:latest",
+		ControllerURL: "http://controller.dipole:80",
+	}}
+
+	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, false, true)
+
+	hasVolumeAppend := false
+	for _, p := range patches {
+		if p.Path == "/spec/volumes/-" {
+			hasVolumeAppend = true
+		}
+	}
+	if !hasVolumeAppend {
+		t.Error("expected /spec/volumes/- patch (append to existing volumes)")
 	}
 }
 
@@ -56,7 +96,7 @@ func TestBuildPatches_ExplicitMode_NoInit_HasHTTPProxy(t *testing.T) {
 	patches := inj.buildPatches(map[string]string{
 		"dipolehq.com/agent-inject":  "enabled",
 		"dipolehq.com/steering-mode": "explicit",
-	}, 2, false)
+	}, 2, false, false)
 
 	for _, p := range patches {
 		if strings.Contains(p.Path, "initContainers") {
@@ -88,14 +128,17 @@ func TestBuildPatches_WithResourceSetID(t *testing.T) {
 	patches := inj.buildPatches(map[string]string{
 		"dipolehq.com/agent-inject":    "enabled",
 		"dipolehq.com/resource-set-id": "rs-uuid-123",
-	}, 1, false)
+	}, 1, false, false)
 
-	sidecarJSON, _ := json.Marshal(patches[1].Value)
-	if !strings.Contains(string(sidecarJSON), "DIPOLE_RESOURCE_SET_ID") {
-		t.Error("expected DIPOLE_RESOURCE_SET_ID in sidecar env")
+	found := false
+	for _, p := range patches {
+		b, _ := json.Marshal(p.Value)
+		if strings.Contains(string(b), "DIPOLE_RESOURCE_SET_ID") && strings.Contains(string(b), "rs-uuid-123") {
+			found = true
+		}
 	}
-	if !strings.Contains(string(sidecarJSON), "rs-uuid-123") {
-		t.Error("expected rs-uuid-123 value")
+	if !found {
+		t.Error("expected DIPOLE_RESOURCE_SET_ID=rs-uuid-123 in sidecar env")
 	}
 }
 
@@ -110,13 +153,41 @@ func TestBuildPatches_CustomEnvAnnotation(t *testing.T) {
 	patches := inj.buildPatches(map[string]string{
 		"dipolehq.com/agent-inject":           "enabled",
 		"dipolehq.com/agent-proxy-env-MY_VAR": "my-value",
-	}, 1, false)
+	}, 1, false, false)
 
-	sidecarJSON, _ := json.Marshal(patches[1].Value)
-	if !strings.Contains(string(sidecarJSON), "MY_VAR") {
-		t.Error("expected MY_VAR in sidecar env")
+	found := false
+	for _, p := range patches {
+		b, _ := json.Marshal(p.Value)
+		if strings.Contains(string(b), "MY_VAR") && strings.Contains(string(b), "my-value") {
+			found = true
+		}
 	}
-	if !strings.Contains(string(sidecarJSON), "my-value") {
-		t.Error("expected my-value")
+	if !found {
+		t.Error("expected MY_VAR=my-value in sidecar env")
 	}
+}
+
+func TestBuildPatches_SidecarHasCAVolumeMount(t *testing.T) {
+	inj := &AgentInjector{config: &InjectorConfig{
+		TenantID:      "test",
+		ProxyImage:    "dipole/proxy:latest",
+		InitImage:     "dipole/init:latest",
+		ControllerURL: "http://controller:80",
+	}}
+
+	patches := inj.buildPatches(map[string]string{"dipolehq.com/agent-inject": "enabled"}, 1, false, false)
+
+	for _, p := range patches {
+		if p.Path == "/spec/containers/-" {
+			b, _ := json.Marshal(p.Value)
+			if !strings.Contains(string(b), "dipole-ca") {
+				t.Error("sidecar container should have dipole-ca volume mount")
+			}
+			if !strings.Contains(string(b), "/dipole/ca") {
+				t.Error("sidecar container should mount at /dipole/ca")
+			}
+			return
+		}
+	}
+	t.Error("sidecar container patch not found")
 }

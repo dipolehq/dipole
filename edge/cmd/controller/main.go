@@ -61,6 +61,9 @@ func main() {
 			if err := server.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath); err != nil && err != http.ErrServerClosed {
 				logger.Error("https server error", "error", err)
 			}
+		} else if cfg.HTTPPortDisabled {
+			logger.Error("DIPOLE_HTTP_PORT_DISABLED=true but no TLS_PEM_PATH/TLS_KEY_PATH configured, cannot start")
+			os.Exit(1)
 		} else {
 			logger.Info("controller http server starting", "port", cfg.HTTPPort)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -91,15 +94,16 @@ type AgentController struct {
 }
 
 type ControllerConfig struct {
-	TenantID       string
-	DeviceCode     string
-	ControllerID   string
-	CloudEndpoint  string
-	HTTPPort       int
-	LogLevel       string
-	AgentTrustPath string
-	TLSCertPath    string
-	TLSKeyPath     string
+	TenantID         string
+	DeviceCode       string
+	ControllerID     string
+	CloudEndpoint    string
+	HTTPPort         int
+	HTTPPortDisabled bool
+	LogLevel         string
+	AgentTrustPath   string
+	TLSCertPath      string
+	TLSKeyPath       string
 }
 
 func loadControllerConfig() *ControllerConfig {
@@ -120,15 +124,16 @@ func loadControllerConfig() *ControllerConfig {
 	}
 
 	return &ControllerConfig{
-		TenantID:       tenantID,
-		DeviceCode:     os.Getenv("DIPOLE_DEVICE_CODE"),
-		ControllerID:   os.Getenv("DIPOLE_AGENT_CONTROLLER_ID"),
-		CloudEndpoint:  cloudEndpoint,
-		HTTPPort:       port,
-		LogLevel:       envOr("DIPOLE_LOG_LEVEL", "information"),
-		AgentTrustPath: os.Getenv("AGENT_TRUST_PATH"),
-		TLSCertPath:    os.Getenv("TLS_PEM_PATH"),
-		TLSKeyPath:     os.Getenv("TLS_KEY_PATH"),
+		TenantID:         tenantID,
+		DeviceCode:       os.Getenv("DIPOLE_DEVICE_CODE"),
+		ControllerID:     os.Getenv("DIPOLE_AGENT_CONTROLLER_ID"),
+		CloudEndpoint:    cloudEndpoint,
+		HTTPPort:         port,
+		HTTPPortDisabled: os.Getenv("DIPOLE_HTTP_PORT_DISABLED") == "true",
+		LogLevel:         envOr("DIPOLE_LOG_LEVEL", "information"),
+		AgentTrustPath:   os.Getenv("AGENT_TRUST_PATH"),
+		TLSCertPath:      os.Getenv("TLS_PEM_PATH"),
+		TLSKeyPath:       os.Getenv("TLS_KEY_PATH"),
 	}
 }
 
@@ -247,14 +252,62 @@ func (c *AgentController) register() error {
 		return c.registerWithDeviceCode()
 	}
 	if c.config.ControllerID != "" {
-		id, err := uuid.Parse(c.config.ControllerID)
-		if err != nil {
-			return fmt.Errorf("invalid controller ID: %w", err)
-		}
-		c.controllerID = id
-		return nil
+		return c.registerWithTrustProvider()
 	}
 	return fmt.Errorf("no DIPOLE_DEVICE_CODE or DIPOLE_AGENT_CONTROLLER_ID configured")
+}
+
+func (c *AgentController) registerWithTrustProvider() error {
+	id, err := uuid.Parse(c.config.ControllerID)
+	if err != nil {
+		return fmt.Errorf("invalid controller ID: %w", err)
+	}
+
+	evidence := map[string]interface{}{
+		"tenant_id":     c.config.TenantID,
+		"controller_id": id.String(),
+	}
+
+	hostname, _ := os.Hostname()
+	evidence["hostname"] = hostname
+
+	if k8sToken, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+		evidence["k8s_service_account_token"] = string(k8sToken)
+		evidence["k8s_namespace"] = os.Getenv("K8S_NAMESPACE")
+	}
+
+	body, _ := json.Marshal(evidence)
+	url := c.config.CloudEndpoint + "/internal/controllers/register-attestation"
+
+	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("cloud unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("attestation registration rejected: status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		ControllerID string `json:"controller_id"`
+		SharedSecret string `json:"shared_secret"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("parse attestation response: %w", err)
+	}
+
+	c.controllerID = id
+
+	if result.SharedSecret != "" {
+		secretBytes, err := hex.DecodeString(result.SharedSecret)
+		if err != nil {
+			return fmt.Errorf("invalid shared_secret in response: %w", err)
+		}
+		c.sharedSecret = secretBytes
+	}
+
+	return nil
 }
 
 func (c *AgentController) registerWithDeviceCode() error {
