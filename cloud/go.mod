@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/russellhaering/goxmldsig v1.4.0
+	go.mozilla.org/pkcs7 v0.10.0
 	google.golang.org/grpc v1.81.1
 )
 
