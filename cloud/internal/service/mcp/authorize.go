@@ -77,7 +77,7 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 		return nil, ErrClientNotFound
 	}
 
-	client, err := s.dcr.GetClient(ctx, clientUUID)
+	client, err := s.dcr.GetClient(ctx, tenantID, clientUUID)
 	if err != nil {
 		return nil, ErrClientNotFound
 	}

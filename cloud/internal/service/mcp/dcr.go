@@ -31,7 +31,7 @@ type RegisteredClient struct {
 
 type MCPClientRepository interface {
 	Create(ctx context.Context, client *RegisteredClient) error
-	GetByID(ctx context.Context, id uuid.UUID) (*RegisteredClient, error)
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*RegisteredClient, error)
 }
 
 type DCRRequest struct {
@@ -89,8 +89,8 @@ func (s *DCRService) Register(ctx context.Context, tenantID uuid.UUID, req *DCRR
 	}, nil
 }
 
-func (s *DCRService) GetClient(ctx context.Context, clientID uuid.UUID) (*RegisteredClient, error) {
-	return s.repo.GetByID(ctx, clientID)
+func (s *DCRService) GetClient(ctx context.Context, tenantID uuid.UUID, clientID uuid.UUID) (*RegisteredClient, error) {
+	return s.repo.GetByID(ctx, tenantID, clientID)
 }
 
 func validateDCRRequest(req *DCRRequest) error {

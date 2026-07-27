@@ -34,14 +34,14 @@ func (r *MCPClientRepo) Create(ctx context.Context, client *mcp.RegisteredClient
 	return err
 }
 
-func (r *MCPClientRepo) GetByID(ctx context.Context, id uuid.UUID) (*mcp.RegisteredClient, error) {
+func (r *MCPClientRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*mcp.RegisteredClient, error) {
 	var client mcp.RegisteredClient
 	var redirectURIsRaw, grantTypesRaw json.RawMessage
 
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, redirect_uris, grant_types, created_at
-		 FROM mcp_oauth_clients WHERE id = $1`,
-		id,
+		 FROM mcp_oauth_clients WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id,
 	).Scan(&client.ID, &client.TenantID, &redirectURIsRaw, &grantTypesRaw, &client.CreatedAt)
 	if err != nil {
 		return nil, err

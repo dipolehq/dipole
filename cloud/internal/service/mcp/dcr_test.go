@@ -20,9 +20,12 @@ func (r *mockMCPClientRepo) Create(_ context.Context, client *RegisteredClient) 
 	return nil
 }
 
-func (r *mockMCPClientRepo) GetByID(_ context.Context, id uuid.UUID) (*RegisteredClient, error) {
+func (r *mockMCPClientRepo) GetByID(_ context.Context, tenantID uuid.UUID, id uuid.UUID) (*RegisteredClient, error) {
 	c, ok := r.clients[id]
 	if !ok {
+		return nil, ErrClientNotFound
+	}
+	if c.TenantID != tenantID {
 		return nil, ErrClientNotFound
 	}
 	return c, nil

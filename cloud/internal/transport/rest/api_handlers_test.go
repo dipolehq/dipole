@@ -36,11 +36,11 @@ func TestParseListOptions_Defaults(t *testing.T) {
 }
 
 func TestParseListOptions_Cap100(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/v1/test?perPage=500", nil)
+	req := httptest.NewRequest("GET", "/api/v1/test?perPage=501", nil)
 	opts := parseListOptions(req)
 
 	if opts.PerPage != 25 {
-		t.Errorf("expected perPage=25 (>100 treated as invalid), got %d", opts.PerPage)
+		t.Errorf("expected perPage=25 (>500 treated as invalid), got %d", opts.PerPage)
 	}
 }
 

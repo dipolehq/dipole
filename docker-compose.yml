@@ -32,8 +32,8 @@ services:
 
   cloud:
     build:
-      context: ./cloud
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: cloud/Dockerfile
     ports:
       - "8080:8080"
       - "50051:50051"
