@@ -20,12 +20,12 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -36,7 +36,6 @@ func main() {
 		config:       cfg,
 		logger:       logger,
 		controllerID: uuid.Nil,
-		usedTokens:   make(map[string]bool),
 		cloudClient:  buildCloudHTTPClient(cfg.AgentTrustPath),
 	}
 
@@ -72,6 +71,15 @@ func main() {
 		}
 	}()
 
+	go func() {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", promhttp.Handler())
+		logger.Info("controller metrics server starting", "port", 9090)
+		if err := http.ListenAndServe(":9090", metricsMux); err != nil {
+			logger.Warn("metrics server error", "error", err)
+		}
+	}()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	<-sigCh
@@ -88,8 +96,6 @@ type AgentController struct {
 	registered       atomic.Bool
 	registeredAt     time.Time
 	lastCloudContact time.Time
-	usedTokens       map[string]bool
-	tokenMu          sync.Mutex
 	cloudClient      *http.Client
 }
 

@@ -30,11 +30,12 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := &InjectorConfig{
-		TenantID:          os.Getenv("DIPOLE_TENANT_ID"),
-		ProxyImage:        envOr("DIPOLE_PROXY_IMAGE", "dipole/proxy:latest"),
-		InitImage:         envOr("DIPOLE_INIT_IMAGE", "dipole/init:latest"),
-		ControllerURL:     envOr("DIPOLE_CONTROLLER_URL", "http://dipole-agent-controller.dipole-system.svc.cluster.local:80"),
-		CloudGRPCEndpoint: os.Getenv("DIPOLE_CLOUD_GRPC_ENDPOINT"),
+		TenantID:             os.Getenv("DIPOLE_TENANT_ID"),
+		ProxyImage:           envOr("DIPOLE_PROXY_IMAGE", "dipole/proxy:latest"),
+		InitImage:            envOr("DIPOLE_INIT_IMAGE", "dipole/init:latest"),
+		ControllerURL:        envOr("DIPOLE_CONTROLLER_URL", "http://dipole-agent-controller.dipole-system.svc.cluster.local:80"),
+		CloudGRPCEndpoint:    os.Getenv("DIPOLE_CLOUD_GRPC_ENDPOINT"),
+		KubernetesProviderID: os.Getenv("KUBERNETES_PROVIDER_ID"),
 	}
 
 	tlsCert, caCertDER, err := generateSelfSignedCert()
@@ -79,11 +80,12 @@ func main() {
 }
 
 type InjectorConfig struct {
-	TenantID          string
-	ProxyImage        string
-	InitImage         string
-	ControllerURL     string
-	CloudGRPCEndpoint string
+	TenantID             string
+	ProxyImage           string
+	InitImage            string
+	ControllerURL        string
+	CloudGRPCEndpoint    string
+	KubernetesProviderID string
 }
 
 type AgentInjector struct {
@@ -223,6 +225,10 @@ func (inj *AgentInjector) buildPatches(annotations map[string]string, containerC
 	// Cloud gRPC endpoint for policy evaluation
 	if inj.config.CloudGRPCEndpoint != "" {
 		sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": "DIPOLE_CLOUD_GRPC_ENDPOINT", "value": inj.config.CloudGRPCEndpoint})
+	}
+
+	if inj.config.KubernetesProviderID != "" {
+		sidecarEnv = append(sidecarEnv, map[string]interface{}{"name": "KUBERNETES_PROVIDER_ID", "value": inj.config.KubernetesProviderID})
 	}
 
 	if rsID := annotations["dipolehq.com/resource-set-id"]; rsID != "" {

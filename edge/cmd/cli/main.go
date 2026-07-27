@@ -47,8 +47,12 @@ func main() {
 	_ = resourceSetID
 
 	if *deploymentModel != "" && *idToken == "" {
-		fmt.Fprintf(os.Stderr, "Error: --deployment-model=%s requires platform-specific attestation (not yet supported — use --id-token for OIDC attestation)\n", *deploymentModel)
-		os.Exit(1)
+		discovered := discoverPlatformToken(*deploymentModel)
+		if discovered == "" {
+			fmt.Fprintf(os.Stderr, "Error: --deployment-model=%s but could not discover platform identity token automatically — provide --id-token explicitly\n", *deploymentModel)
+			os.Exit(1)
+		}
+		idToken = &discovered
 	}
 	if *clientTLSKey != "" {
 		fmt.Fprintf(os.Stderr, "Error: --client-tls-private-key is not yet supported\n")
@@ -240,4 +244,37 @@ func extractValues(data map[string]any, names []string) []string {
 func shellEscape(s string) string {
 	// Escape single quotes for POSIX shell (replace ' with '\'' )
 	return strings.ReplaceAll(s, "'", "'\\''")
+}
+
+func discoverPlatformToken(model string) string {
+	switch model {
+	case "kubernetes":
+		token, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(token))
+	case "vm", "ecs_fargate", "lambda_container":
+		client := &http.Client{Timeout: 2 * time.Second}
+		req, _ := http.NewRequest("PUT", "http://169.254.169.254/latest/api/token", nil)
+		req.Header.Set("X-aws-ec2-metadata-token-ttl-seconds", "21600")
+		resp, err := client.Do(req)
+		if err != nil {
+			return ""
+		}
+		defer resp.Body.Close()
+		imdsToken, _ := io.ReadAll(resp.Body)
+
+		idReq, _ := http.NewRequest("GET", "http://169.254.169.254/latest/dynamic/instance-identity/document", nil)
+		idReq.Header.Set("X-aws-ec2-metadata-token", string(imdsToken))
+		idResp, err := client.Do(idReq)
+		if err != nil {
+			return ""
+		}
+		defer idResp.Body.Close()
+		doc, _ := io.ReadAll(idResp.Body)
+		return strings.TrimSpace(string(doc))
+	default:
+		return ""
+	}
 }
