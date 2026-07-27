@@ -7,8 +7,6 @@ Authorization, X-Amz-Date, X-Amz-Security-Token, and X-Amz-Content-Sha256.
 package injection
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -17,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dipolehq/dipole/edge/internal/awsutil"
 )
 
 type AWSCredentials struct {
@@ -30,20 +30,18 @@ func SignAWSRequest(req *http.Request, creds *AWSCredentials, region, service st
 	dateStamp := now.Format("20060102")
 	amzDate := now.Format("20060102T150405Z")
 
-	// Body hash
 	bodyHash := "UNSIGNED-PAYLOAD"
 	if req.Body != nil {
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err != nil {
 			return err
 		}
-		bodyHash = sha256Hex(bodyBytes)
+		bodyHash = awsutil.SHA256Hex(bodyBytes)
 		req.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	} else {
-		bodyHash = sha256Hex([]byte(""))
+		bodyHash = awsutil.SHA256Hex([]byte(""))
 	}
 
-	// Set required headers before signing
 	req.Header.Set("X-Amz-Date", amzDate)
 	req.Header.Set("X-Amz-Content-Sha256", bodyHash)
 	if creds.SessionToken != "" {
@@ -53,19 +51,14 @@ func SignAWSRequest(req *http.Request, creds *AWSCredentials, region, service st
 		req.Header.Set("Host", req.Host)
 	}
 
-	// Canonical URI
 	canonicalURI := req.URL.Path
 	if canonicalURI == "" {
 		canonicalURI = "/"
 	}
 
-	// Canonical query string (sorted)
 	canonicalQueryString := canonicalQuery(req.URL.Query())
-
-	// Canonical headers + signed headers (sorted by lowercase name)
 	canonicalHeaders, signedHeaders := buildCanonicalHeaders(req.Header)
 
-	// Canonical request
 	canonicalRequest := strings.Join([]string{
 		req.Method,
 		canonicalURI,
@@ -75,15 +68,12 @@ func SignAWSRequest(req *http.Request, creds *AWSCredentials, region, service st
 		bodyHash,
 	}, "\n")
 
-	// String to sign
 	credentialScope := dateStamp + "/" + region + "/" + service + "/aws4_request"
-	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + sha256Hex([]byte(canonicalRequest))
+	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + awsutil.SHA256Hex([]byte(canonicalRequest))
 
-	// Signing key
-	signingKey := deriveSigningKey(creds.SecretAccessKey, dateStamp, region, service)
-	signature := hex.EncodeToString(hmacSHA256(signingKey, []byte(stringToSign)))
+	signingKey := awsutil.DeriveSigningKey(creds.SecretAccessKey, dateStamp, region, service)
+	signature := hex.EncodeToString(awsutil.HmacSHA256(signingKey, []byte(stringToSign)))
 
-	// Authorization header
 	authorization := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
 		creds.AccessKeyID, credentialScope, signedHeaders, signature)
 	req.Header.Set("Authorization", authorization)
@@ -92,11 +82,6 @@ func SignAWSRequest(req *http.Request, creds *AWSCredentials, region, service st
 }
 
 func ExtractServiceRegion(host string) (service, region string, err error) {
-	// Patterns:
-	// s3.us-east-2.amazonaws.com → s3, us-east-2
-	// dynamodb.ap-south-1.amazonaws.com → dynamodb, ap-south-1
-	// sts.ap-south-1.amazonaws.com → sts, ap-south-1
-	// s3.amazonaws.com → s3, us-east-1 (global)
 	host = strings.TrimSuffix(host, ".amazonaws.com")
 	parts := strings.Split(host, ".")
 
@@ -170,22 +155,4 @@ func shouldSignHeader(name string) bool {
 	default:
 		return false
 	}
-}
-
-func sha256Hex(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
-}
-
-func hmacSHA256(key, data []byte) []byte {
-	h := hmac.New(sha256.New, key)
-	h.Write(data)
-	return h.Sum(nil)
-}
-
-func deriveSigningKey(secret, dateStamp, region, service string) []byte {
-	kDate := hmacSHA256([]byte("AWS4"+secret), []byte(dateStamp))
-	kRegion := hmacSHA256(kDate, []byte(region))
-	kService := hmacSHA256(kRegion, []byte(service))
-	return hmacSHA256(kService, []byte("aws4_request"))
 }

@@ -34,6 +34,7 @@ type ProxyConfig struct {
 	AgentTrustPath                string
 	GRPCInsecure                  bool
 	DevMode                       bool
+	MetricsEnabled                bool
 	Registered                    *atomic.Bool
 }
 
@@ -57,6 +58,7 @@ func LoadFromEnv() (*ProxyConfig, error) {
 		AgentTrustPath:                os.Getenv("AGENT_TRUST_PATH"),
 		GRPCInsecure:                  envBool("DIPOLE_GRPC_INSECURE", false),
 		DevMode:                       envBool("DIPOLE_DEV_MODE", false),
+		MetricsEnabled:                envBool("DIPOLE_METRICS_ENABLED", true),
 		Registered:                    &atomic.Bool{},
 	}
 

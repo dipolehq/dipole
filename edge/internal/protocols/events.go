@@ -30,6 +30,7 @@ type EventData struct {
 	TargetPort       int
 	SourceIP         string
 	SourcePort       int
+	ProxyPort        int
 	HTTPMethod       string
 	HTTPUri          string
 	HTTPStatus       int
@@ -93,7 +94,7 @@ func buildPayload(data *EventData) []byte {
 			TransportProtocol:  "TCP",
 			ServerWorkloadHost: data.TargetHost,
 			ServerWorkloadPort: data.TargetPort,
-			ProxyPort:          15001,
+			ProxyPort:          data.ProxyPort,
 		},
 	}
 

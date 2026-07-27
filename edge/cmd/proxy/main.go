@@ -94,11 +94,13 @@ func main() {
 	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)
 	handler := newConnectionHandler(engine, httpHandler, cloud, gatherer, credentialCache, cfg, &activeConnCount, logger)
 
-	go func() {
-		if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
-			logger.Warn("metrics server failed", "error", err)
-		}
-	}()
+	if cfg.MetricsEnabled {
+		go func() {
+			if err := metrics.StartMetricsServer(cfg.MetricsPort); err != nil {
+				logger.Warn("metrics server failed", "error", err)
+			}
+		}()
+	}
 
 	explicitListener := proxy.NewExplicitListener(cfg, logger, handler)
 	go func() {
@@ -155,6 +157,8 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 
 		sourceIP, sourcePortStr, _ := net.SplitHostPort(clientConn.RemoteAddr().String())
 		sourcePort, _ := strconv.Atoi(sourcePortStr)
+		_, proxyPortStr, _ := net.SplitHostPort(clientConn.LocalAddr().String())
+		proxyPort, _ := strconv.Atoi(proxyPortStr)
 
 		logger.Info("protocol detected", "protocol", proto.String(), "host", targetHost, "port", targetPort, "connection_id", connID)
 		metrics.ConnectionsActive.WithLabelValues(proto.String()).Inc()
@@ -208,7 +212,7 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 				clientWorkloadID = pr.ClientWorkloadID
 				serverWorkloadID = pr.ServerWorkloadID
 			}
-			go emitWorkloadEvent(cloud, proto, targetHost, targetPort, sourceIP, sourcePort, connID, credInjected, httpInfo, cfg.ResourceSetID, policyID, clientWorkloadID, serverWorkloadID, logger)
+			go emitWorkloadEvent(cloud, proto, targetHost, targetPort, sourceIP, sourcePort, proxyPort, connID, credInjected, httpInfo, cfg.ResourceSetID, policyID, clientWorkloadID, serverWorkloadID, logger)
 		}
 	}
 }
@@ -532,7 +536,7 @@ func evaluatePolicy(cloud *cloudclient.CloudClient, gatherer *identity.EvidenceG
 	return pr
 }
 
-func emitWorkloadEvent(cloud *cloudclient.CloudClient, proto protocols.Protocol, targetHost string, targetPort int, sourceIP string, sourcePort int, connID uuid.UUID, credInjected bool, httpInfo *protocols.HTTPRequestInfo, resourceSetID string, policyID string, clientWorkloadID string, serverWorkloadID string, logger *slog.Logger) {
+func emitWorkloadEvent(cloud *cloudclient.CloudClient, proto protocols.Protocol, targetHost string, targetPort int, sourceIP string, sourcePort int, proxyPort int, connID uuid.UUID, credInjected bool, httpInfo *protocols.HTTPRequestInfo, resourceSetID string, policyID string, clientWorkloadID string, serverWorkloadID string, logger *slog.Logger) {
 	eventType := protocolToEventType(proto)
 
 	outcome := "Passthrough"
@@ -555,6 +559,7 @@ func emitWorkloadEvent(cloud *cloudclient.CloudClient, proto protocols.Protocol,
 		TargetPort:       targetPort,
 		SourceIP:         sourceIP,
 		SourcePort:       sourcePort,
+		ProxyPort:        proxyPort,
 	}
 
 	if httpInfo != nil {
