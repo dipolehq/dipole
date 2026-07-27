@@ -85,7 +85,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	}
 
 	broker := credentials.NewCredentialBroker(encKey, issuer)
-	trustValidator := trust.NewConfiguredService(logger)
+	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
 	conditionEval := conditions.NewConditionEvaluator("")
 	authEmitter := events.NewAuthEventEmitter(repos.Events)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, authEmitter, logger)

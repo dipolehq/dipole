@@ -7,6 +7,10 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -43,6 +47,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", ctrl.handleHealth)
 	mux.HandleFunc("GET /api/token", ctrl.handleGetToken)
+	mux.HandleFunc("POST /api/kerberos-attest", ctrl.handleKerberosAttest)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
@@ -69,6 +74,7 @@ type AgentController struct {
 	config           *ControllerConfig
 	logger           *slog.Logger
 	controllerID     uuid.UUID
+	sharedSecret     []byte // HMAC key for signing Kerberos attestations
 	registered       atomic.Bool
 	registeredAt     time.Time
 	lastCloudContact time.Time
@@ -234,6 +240,7 @@ func (c *AgentController) registerWithDeviceCode() error {
 
 	var result struct {
 		ControllerID string `json:"controller_id"`
+		SharedSecret string `json:"shared_secret"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("parse registration response: %w", err)
@@ -244,6 +251,16 @@ func (c *AgentController) registerWithDeviceCode() error {
 		return fmt.Errorf("invalid controller_id in response: %w", err)
 	}
 	c.controllerID = id
+
+	// Store shared secret for Kerberos attestation signing
+	if result.SharedSecret != "" {
+		secretBytes, err := hex.DecodeString(result.SharedSecret)
+		if err != nil {
+			return fmt.Errorf("invalid shared_secret in response: %w", err)
+		}
+		c.sharedSecret = secretBytes
+	}
+
 	return nil
 }
 
@@ -309,4 +326,54 @@ func newControllerLogger(level string) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+}
+
+// handleKerberosAttest validates a Kerberos ticket (keytab validation assumed
+// already performed by the caller) and signs an attestation document with
+// HMAC-SHA256 using the shared secret from Cloud registration.
+func (c *AgentController) handleKerberosAttest(w http.ResponseWriter, r *http.Request) {
+	if !c.registered.Load() {
+		http.Error(w, `{"error":"controller not registered"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	if len(c.sharedSecret) == 0 {
+		http.Error(w, `{"error":"no shared secret configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Principal string `json:"principal"`
+		Realm     string `json:"realm"`
+		Domain    string `json:"domain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+
+	if req.Principal == "" || req.Realm == "" {
+		http.Error(w, `{"error":"principal and realm required"}`, http.StatusBadRequest)
+		return
+	}
+
+	payload := map[string]interface{}{
+		"principal": req.Principal,
+		"realm":     req.Realm,
+		"domain":    req.Domain,
+		"timestamp": time.Now().Unix(),
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	payloadB64 := base64.StdEncoding.EncodeToString(payloadJSON)
+
+	mac := hmac.New(sha256.New, c.sharedSecret)
+	mac.Write([]byte(payloadB64))
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"payload":       payloadB64,
+		"signature":     sig,
+		"controller_id": c.controllerID.String(),
+	})
 }

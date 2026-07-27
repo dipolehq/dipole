@@ -50,6 +50,14 @@ func (s *RegistrationService) RegisterController(ctx context.Context, tenantID u
 
 	controller.Status = domain.AgentStatusRegistered
 	controller.DeviceCode = ""
+
+	// Generate shared secret for Kerberos attestation signing (HMAC-SHA256)
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generate shared secret: %w", err)
+	}
+	controller.SharedSecret = hex.EncodeToString(secret)
+
 	if err := s.controllerRepo.Update(ctx, tenantID, controller); err != nil {
 		return nil, fmt.Errorf("update controller: %w", err)
 	}

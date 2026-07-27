@@ -4,9 +4,13 @@ type-specific validators registered. Called during Cloud service initialization.
 */
 package trust
 
-import "log/slog"
+import (
+	"log/slog"
 
-func NewConfiguredService(logger *slog.Logger) *TrustValidationService {
+	"github.com/dipolehq/dipole/cloud/internal/repository"
+)
+
+func NewConfiguredService(logger *slog.Logger, controllerRepo repository.AgentControllerRepository) *TrustValidationService {
 	cache := NewJWKSCache(logger)
 	svc := NewTrustValidationService(cache, logger)
 
@@ -19,7 +23,7 @@ func NewConfiguredService(logger *slog.Logger) *TrustValidationService {
 	svc.RegisterValidator("aws_role", NewAWSRoleValidator())
 	svc.RegisterValidator("azure_metadata", &AzureValidator{})
 	svc.RegisterValidator("gcp_identity_token", &GCPValidator{})
-	svc.RegisterValidator("kerberos", &KerberosValidator{})
+	svc.RegisterValidator("kerberos", NewKerberosValidator(controllerRepo))
 	svc.RegisterValidator("certificate_signed_attestation", &CertificateValidator{})
 	svc.RegisterValidator("samlv2_response", NewSAMLValidator())
 

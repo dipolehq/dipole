@@ -183,6 +183,7 @@ type AgentController struct {
 	DeviceCodeExpiresAt *time.Time
 	TrustProviderID     *uuid.UUID
 	TLSHostname         string
+	SharedSecret        string // HMAC key for Kerberos attestation signing (hex-encoded, 32 bytes)
 	Tags                []Tag
 	LastHealthAt        *time.Time
 	ResourceSetID       *uuid.UUID

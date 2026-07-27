@@ -53,6 +53,7 @@ func (h *InternalHandlers) handleControllerRegister(w http.ResponseWriter, r *ht
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"controller_id": controller.ID.String(),
+		"shared_secret": controller.SharedSecret,
 	})
 }
 
