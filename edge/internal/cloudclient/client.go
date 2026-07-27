@@ -10,12 +10,18 @@ control plane.
 package cloudclient
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -34,8 +40,8 @@ type CloudClient struct {
 	conn          *grpc.ClientConn
 	client        pb.PolicyEvaluationServiceClient
 	tenantID      string
-	proxyID       string // set after successful registration
-	resourceSetID string // from config, set via setter
+	proxyID       string
+	resourceSetID string
 	logger        *slog.Logger
 	connected     atomic.Bool
 }
@@ -52,10 +58,16 @@ func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInse
 		return nil, fmt.Errorf("build transport credentials: %w", err)
 	}
 
-	conn, err := grpc.NewClient(endpoint,
+	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(kaParams),
-	)
+	}
+
+	if dialer := buildProxyDialer(); dialer != nil {
+		dialOpts = append(dialOpts, grpc.WithContextDialer(dialer))
+	}
+
+	conn, err := grpc.NewClient(endpoint, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("dial cloud %s: %w", endpoint, err)
 	}
@@ -89,7 +101,100 @@ func buildTransportCredentials(trustPath string, grpcInsecure bool) (credentials
 	return credentials.NewTLS(&tls.Config{RootCAs: certPool}), nil
 }
 
-// SetResourceSetID sets the resource set ID (called from main.go with config value).
+func buildProxyDialer() func(ctx context.Context, addr string) (net.Conn, error) {
+	proxyURL := os.Getenv("HTTPS_PROXY")
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTP_PROXY")
+	}
+	if proxyURL == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil
+	}
+
+	return func(ctx context.Context, addr string) (net.Conn, error) {
+		if isNoProxy(addr) {
+			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", addr)
+		}
+		return dialViaHTTPConnect(ctx, parsed, addr)
+	}
+}
+
+func dialViaHTTPConnect(ctx context.Context, proxyURL *url.URL, target string) (net.Conn, error) {
+	proxyAddr := proxyURL.Host
+	if !strings.Contains(proxyAddr, ":") {
+		if proxyURL.Scheme == "https" {
+			proxyAddr += ":443"
+		} else {
+			proxyAddr += ":8080"
+		}
+	}
+
+	conn, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", proxyAddr)
+	if err != nil {
+		return nil, fmt.Errorf("dial proxy %s: %w", proxyAddr, err)
+	}
+
+	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
+	if proxyURL.User != nil {
+		auth := proxyURL.User.String()
+		connectReq += "Proxy-Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(auth)) + "\r\n"
+	}
+	connectReq += "\r\n"
+
+	if _, err := conn.Write([]byte(connectReq)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("send CONNECT to proxy: %w", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("read proxy CONNECT response: %w", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		conn.Close()
+		return nil, fmt.Errorf("proxy CONNECT returned %d", resp.StatusCode)
+	}
+
+	return conn, nil
+}
+
+func isNoProxy(addr string) bool {
+	noProxy := os.Getenv("NO_PROXY")
+	if noProxy == "" {
+		return false
+	}
+
+	host, _, _ := net.SplitHostPort(addr)
+	if host == "" {
+		host = addr
+	}
+
+	for _, pattern := range strings.Split(noProxy, ",") {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if pattern == "*" {
+			return true
+		}
+		if strings.HasPrefix(pattern, ".") {
+			if strings.HasSuffix(host, pattern) || host == pattern[1:] {
+				return true
+			}
+		} else if host == pattern {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *CloudClient) SetResourceSetID(id string) {
 	c.resourceSetID = id
 }
@@ -98,7 +203,6 @@ func (c *CloudClient) ResourceSetID() string {
 	return c.resourceSetID
 }
 
-// ProxyID returns the proxy ID obtained from registration. Empty if not yet registered.
 func (c *CloudClient) ProxyID() string {
 	return c.proxyID
 }
@@ -109,9 +213,6 @@ type RegisterResult struct {
 	CAKeyPEM  string
 }
 
-// Register calls the Cloud Register RPC with the given token and version.
-// On success, it stores the returned proxyID internally and returns a RegisterResult
-// containing the proxy ID and optional tenant CA material.
 func (c *CloudClient) Register(ctx context.Context, token, version string) (*RegisterResult, error) {
 	req := &pb.RegisterRequest{
 		TenantId:          c.tenantID,
@@ -141,7 +242,6 @@ func (c *CloudClient) Register(ctx context.Context, token, version string) (*Reg
 	}, nil
 }
 
-// ReportHealth sends a health report to Cloud indicating this proxy is healthy.
 func (c *CloudClient) ReportHealth(ctx context.Context, activeConns int32) error {
 	req := &pb.HealthReport{
 		ComponentId:       c.proxyID,
@@ -168,7 +268,6 @@ func (c *CloudClient) ReportHealth(ctx context.Context, activeConns int32) error
 	return nil
 }
 
-// IngestEvents opens a client-streaming RPC and sends a batch of workload events to Cloud.
 func (c *CloudClient) IngestEvents(ctx context.Context, events []*pb.WorkloadEvent) error {
 	stream, err := c.client.IngestEvents(ctx)
 	if err != nil {

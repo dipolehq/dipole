@@ -190,13 +190,21 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 			if !pr.Allowed {
 				clientConn.Close()
 			} else {
-				oracleHandler := &protocols.OracleHandler{Logger: logger}
 				serverConn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(targetHost, strconv.Itoa(targetPort)), 10*time.Second)
 				if dialErr != nil {
 					logger.Error("oracle dial failed", "host", targetHost, "port", targetPort, "error", dialErr, "connection_id", connID)
 					clientConn.Close()
 				} else {
-					oracleHandler.Handle(clientConn, serverConn, connID)
+					oracleHandler := &protocols.OracleHandler{Logger: logger}
+					if pr.Credential != nil && pr.Credential.Username != "" {
+						oracleHandler.HandleWithCredentials(clientConn, serverConn, &protocols.OracleCredential{
+							Username: pr.Credential.Username,
+							Password: pr.Credential.Password,
+						}, connID)
+						credInjected = true
+					} else {
+						oracleHandler.Handle(clientConn, serverConn, connID)
+					}
 				}
 			}
 		default:
