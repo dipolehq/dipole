@@ -10,6 +10,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -45,6 +46,7 @@ type APIHandlers struct {
 	logStreams             repository.LogStreamRepository
 	globalPolicyCompliance globalPolicyComplianceStore
 	tenantProfiles         tenantProfileStore
+	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
 }
 
@@ -59,6 +61,7 @@ func NewAPIHandlers(
 	gpc globalPolicyComplianceStore,
 	tp tenantProfileStore,
 	regSvc ControllerCreator,
+	tenants repository.TenantRepository,
 ) *APIHandlers {
 	return &APIHandlers{
 		agentControllers:       agc,
@@ -70,6 +73,7 @@ func NewAPIHandlers(
 		logStreams:             ls,
 		globalPolicyCompliance: gpc,
 		tenantProfiles:         tp,
+		tenants:                tenants,
 		registrationSvc:        regSvc,
 	}
 }
@@ -116,6 +120,7 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
 	mux.HandleFunc("PUT /api/v1/profile", h.UpdateProfile)
+	mux.HandleFunc("POST /api/v1/profile/token", h.GenerateAccessToken)
 
 	mux.HandleFunc("GET /api/v1/log-streams", h.ListLogStreams)
 	mux.HandleFunc("POST /api/v1/log-streams", h.CreateLogStream)
@@ -1378,9 +1383,14 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 func (h *APIHandlers) GetProfile(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	p, err := h.tenantProfiles.Get(r.Context(), tenantID)
-	if err != nil {
-		slog.Error("get profile failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+	if err != nil || p == nil {
+		// No profile yet — return empty defaults
+		respondJSON(w, http.StatusOK, map[string]any{
+			"firstName": "",
+			"lastName":  "",
+			"email":     "",
+			"phone":     "",
+		})
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
@@ -1420,5 +1430,32 @@ func (h *APIHandlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		"lastName":  req.LastName,
 		"email":     req.Email,
 		"phone":     req.Phone,
+	})
+}
+
+func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+
+	token, err := service.GenerateAPIToken()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to generate token")
+		return
+	}
+
+	hash := service.HashAPIToken(token)
+	tenant, err := h.tenants.GetByID(r.Context(), tenantID)
+	if err != nil || tenant == nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "tenant not found")
+		return
+	}
+
+	tenant.APITokenHash = hash
+	if err := h.tenants.Update(r.Context(), tenant); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to store token")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"token": token,
 	})
 }

@@ -100,8 +100,15 @@ function ProfileContent({
     setIsEditing(false)
   }
 
+  const tokenMutation = useMutation({
+    mutationFn: () => apiClient.post<{ token: string }>('/profile/token'),
+    onSuccess: (res) => {
+      setAccessToken(res.token)
+    },
+  })
+
   function handleGenerateToken() {
-    setAccessToken('dpl_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15))
+    tokenMutation.mutate()
   }
 
   function copyToClipboard(text: string) {
@@ -146,27 +153,29 @@ function ProfileContent({
         <div className="flex h-full">
           <div className="w-[60%] px-6 py-6 overflow-y-auto">
             {activeTab === 'details' && (
-              <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">User Details</h4>
-                  <div className="space-y-4">
-                    <FloatingInput label="First Name" value={firstName} onChange={setFirstName} disabled={disabled} required />
-                    <FloatingInput label="Last Name" value={lastName} onChange={setLastName} disabled={disabled} required />
-                    <FloatingInput label="Email" value={email} onChange={setEmail} disabled={disabled} required />
-                    <div className="flex gap-3">
-                      <div className="w-36">
-                        <FloatingDropdown label="Code" options={COUNTRY_CODE_OPTIONS} value={countryCode} onChange={setCountryCode} disabled={disabled} />
-                      </div>
-                      <div className="flex-1">
-                        <FloatingInput label="Phone Number" value={phone} onChange={setPhone} disabled={disabled} />
+              <div className="space-y-5">
+                <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+                  <div className="border border-border rounded-lg p-5">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-4">User Details</h4>
+                    <div className="space-y-4">
+                      <FloatingInput label="First Name" value={firstName} onChange={setFirstName} disabled={disabled} required />
+                      <FloatingInput label="Last Name" value={lastName} onChange={setLastName} disabled={disabled} required />
+                      <FloatingInput label="Email" value={email} onChange={setEmail} disabled={disabled} required />
+                      <div className="flex gap-3">
+                        <div className="w-36">
+                          <FloatingDropdown label="Code" options={COUNTRY_CODE_OPTIONS} value={countryCode} onChange={setCountryCode} disabled={disabled} />
+                        </div>
+                        <div className="flex-1">
+                          <FloatingInput label="Phone Number" value={phone} onChange={setPhone} disabled={disabled} />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
-                  <FloatingInput label="Role" value="SuperAdmin" disabled />
+                  <div className="border border-border rounded-lg p-5">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
+                    <FloatingInput label="Role" value="SuperAdmin" disabled />
+                  </div>
                 </div>
 
                 <div className="border border-border rounded-lg p-5">
@@ -184,8 +193,8 @@ function ProfileContent({
                       <div className="w-28">
                         <FloatingInput label="Lifetime (s)" value={tokenLifetime} onChange={setTokenLifetime} type="number" />
                       </div>
-                      <button type="button" onClick={handleGenerateToken} className="px-4 h-[44px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors">
-                        Generate
+                      <button type="button" onClick={handleGenerateToken} disabled={tokenMutation.isPending} className="px-4 h-[44px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60">
+                        {tokenMutation.isPending ? 'Generating…' : 'Generate'}
                       </button>
                     </div>
                     <p className="text-[10px] text-gray-400">Max lifetime: 604,800 seconds (7 days)</p>
