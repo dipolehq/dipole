@@ -185,7 +185,7 @@ func (h *CredentialProviderHandler) Get(w http.ResponseWriter, r *http.Request) 
 		respondDomainError(w, err)
 		return
 	}
-	respondJSON(w, http.StatusOK, toCredentialProviderDetailResponse(cp, config))
+	respondJSON(w, http.StatusOK, toCredentialProviderDetailResponse(cp, redactCredentialConfig(config)))
 }
 
 func (h *CredentialProviderHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -225,4 +225,40 @@ func (h *CredentialProviderHandler) Delete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// redactCredentialConfig removes sensitive values from credential provider
+// config before returning in API responses. Non-sensitive fields (URLs,
+// scopes, audience, subject) are preserved for the UI to display.
+func redactCredentialConfig(config json.RawMessage) json.RawMessage {
+	if config == nil || len(config) == 0 {
+		return json.RawMessage("{}")
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(config, &parsed); err != nil {
+		return json.RawMessage("{}")
+	}
+
+	sensitiveKeys := map[string]bool{
+		"api_key":              true,
+		"password":             true,
+		"client_secret":        true,
+		"private_key":          true,
+		"secret_key":           true,
+		"signing_key":          true,
+		"service_account_json": true,
+		"hec_token":            true,
+		"access_key":           true,
+		"refresh_token":        true,
+	}
+
+	for key := range parsed {
+		if sensitiveKeys[key] {
+			parsed[key] = "**REDACTED**"
+		}
+	}
+
+	redacted, _ := json.Marshal(parsed)
+	return redacted
 }

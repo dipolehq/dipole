@@ -6,6 +6,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ type mockEdgeTenant struct {
 	err    error
 }
 
-func (m *mockEdgeTenant) GetBySubdomain(_ string) (*domain.Tenant, error) {
+func (m *mockEdgeTenant) GetBySubdomain(_ context.Context, _ string) (*domain.Tenant, error) {
 	return m.tenant, m.err
 }
 

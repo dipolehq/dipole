@@ -8,6 +8,7 @@ POST /edge/v1/credentials — retrieves credentials with Bearer token from /auth
 package rest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -29,7 +30,7 @@ type EdgeTrustValidator interface {
 }
 
 type EdgeTenantResolver interface {
-	GetBySubdomain(subdomain string) (*domain.Tenant, error)
+	GetBySubdomain(ctx context.Context, subdomain string) (*domain.Tenant, error)
 }
 
 type EdgeAPIHandler struct {
@@ -76,7 +77,7 @@ func (h *EdgeAPIHandler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := h.tenantResolver.GetBySubdomain(parsed.TenantSubdomain)
+	tenant, err := h.tenantResolver.GetBySubdomain(r.Context(), parsed.TenantSubdomain)
 	if err != nil || tenant == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "message": "Authentication failed"})
 		return
@@ -144,7 +145,7 @@ func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Reques
 	clientID, _ := claims["sub"].(string)
 	parsed, _ := parseEdgeSDKClientID(clientID)
 
-	tenant, err := h.tenantResolver.GetBySubdomain(parsed.TenantSubdomain)
+	tenant, err := h.tenantResolver.GetBySubdomain(r.Context(), parsed.TenantSubdomain)
 	if err != nil || tenant == nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid tenant"})
 		return
