@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Search, FileText, Filter } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
@@ -9,6 +10,7 @@ import { GlobalPolicyComplianceTable } from '@/features/reporting/components/Glo
 import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
 import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
 import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
+import { fetchAuthEvents, fetchWorkloadEvents, fetchAuditLogs } from '@/features/reporting/api/eventsApi'
 import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, REPORTING_PAGE_SIZE_OPTIONS, AUDIT_LOG_CATEGORY_OPTIONS, AUDIT_LOG_SEVERITY_OPTIONS, COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS } from '@/shared/constants/reporting'
 import type { LogType } from '@/shared/constants/reporting'
 
@@ -30,6 +32,25 @@ export function ReportingPage() {
   const [mcpUser, setMcpUser] = useState('')
 
   void currentPage
+
+  // Fetch event data based on selected log type
+  const authEventsQuery = useQuery({
+    queryKey: ['events', 'auth', currentPage, pageSize, severity, eventType],
+    queryFn: () => fetchAuthEvents({ page: currentPage, perPage: pageSize, severity, eventType }),
+    enabled: selectedLogType === 'access_authorization',
+  })
+
+  const workloadEventsQuery = useQuery({
+    queryKey: ['events', 'workload', currentPage, pageSize, severity, appProtocol],
+    queryFn: () => fetchWorkloadEvents({ page: currentPage, perPage: pageSize, severity, eventType: appProtocol }),
+    enabled: selectedLogType === 'workload_events',
+  })
+
+  const auditLogsQuery = useQuery({
+    queryKey: ['events', 'audit', currentPage, pageSize, severity, category],
+    queryFn: () => fetchAuditLogs({ page: currentPage, perPage: pageSize, severity, eventType: category }),
+    enabled: selectedLogType === 'audit_logs',
+  })
 
   function handleResetFilters() {
     setTimeRange('1d')
@@ -141,15 +162,15 @@ export function ReportingPage() {
       {/* Table — full bleed */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {selectedLogType === 'access_authorization' ? (
-          <AccessAuthorizationTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} eventType={eventType} />
+          <AccessAuthorizationTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} eventType={eventType} data={authEventsQuery.data?.items} />
         ) : selectedLogType === 'audit_logs' ? (
-          <AuditLogsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} category={category} />
+          <AuditLogsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} category={category} data={auditLogsQuery.data?.items} />
         ) : selectedLogType === 'global_policy_compliance' ? (
           <GlobalPolicyComplianceTable searchQuery={searchQuery} complianceStatus={complianceStatus} resourceSet={resourceSet} />
         ) : selectedLogType === 'mcp_authorization_tracing' ? (
           <McpAuthorizationTracingTable searchQuery={searchQuery} severity={severity} />
         ) : selectedLogType === 'workload_events' ? (
-          <WorkloadEventsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} appProtocol={appProtocol} mcpUser={mcpUser} />
+          <WorkloadEventsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} appProtocol={appProtocol} mcpUser={mcpUser} data={workloadEventsQuery.data?.items} />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-gray-400">Content coming soon</p>

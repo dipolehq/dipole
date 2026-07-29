@@ -16,7 +16,7 @@ interface AuditLog {
 }
 
 // Will be wired to real API later
-const auditLogsData: AuditLog[] = []
+// const auditLogsData: AuditLog[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)
@@ -52,12 +52,27 @@ interface AuditLogsTableProps {
   timeRange: string
   severity: string
   category: string
+  data?: { id: string; actorEmail: string; category: string; activity: string; targetType: string; targetName: string; severity: string; clientIp: string; timestamp: string }[]
 }
 
-export function AuditLogsTable({ searchQuery, severity, category }: AuditLogsTableProps) {
+export function AuditLogsTable({ searchQuery, severity, category, data = [] }: AuditLogsTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const filtered = auditLogsData.filter((log) => {
+  // Map API data to component's internal shape
+  const logs: AuditLog[] = data.map((item) => ({
+    externalId: item.id,
+    resourceSetId: '',
+    category: item.category,
+    actor: { type: 'User', displayName: item.actorEmail, userName: item.actorEmail, email: item.actorEmail, credentialProviderId: '', accessPolicyId: '' },
+    activity: item.activity,
+    target: item.targetName || item.targetType,
+    client: { ipAddress: item.clientIp, userAgent: { browser: '', operatingSystem: '', raw: '' } },
+    outcome: { reason: '', result: 'Success' },
+    severity: item.severity as AuditLog['severity'],
+    createdAt: item.timestamp,
+  }))
+
+  const filtered = logs.filter((log) => {
     if (severity && log.severity.toLowerCase() !== severity.toLowerCase()) return false
     if (category && log.category !== category) return false
     if (searchQuery) {

@@ -8,48 +8,48 @@ import (
 )
 
 type AuthEvent struct {
-	ID            uuid.UUID
-	TenantID      uuid.UUID
-	EventType     string
-	ContextID     uuid.UUID
-	Severity      string
-	ClientIP      string
-	Timestamp     time.Time
-	Payload       json.RawMessage
-	ResourceSetID *uuid.UUID
+	ID            uuid.UUID       `json:"id"`
+	TenantID      uuid.UUID       `json:"tenantId"`
+	EventType     string          `json:"eventType"`
+	ContextID     uuid.UUID       `json:"contextId"`
+	Severity      string          `json:"severity"`
+	ClientIP      string          `json:"clientIp"`
+	Timestamp     time.Time       `json:"timestamp"`
+	Payload       json.RawMessage `json:"payload"`
+	ResourceSetID *uuid.UUID      `json:"resourceSetId"`
 }
 
 type WorkloadEvent struct {
-	ID               uuid.UUID
-	TenantID         uuid.UUID
-	ConnectionID     uuid.UUID
-	EventType        string
-	PolicyID         *uuid.UUID
-	ClientWorkloadID *uuid.UUID
-	ServerWorkloadID *uuid.UUID
-	Outcome          string
-	Severity         string
-	Timestamp        time.Time
-	Payload          json.RawMessage
-	ResourceSetID    *uuid.UUID
+	ID               uuid.UUID       `json:"id"`
+	TenantID         uuid.UUID       `json:"tenantId"`
+	ConnectionID     uuid.UUID       `json:"connectionId"`
+	EventType        string          `json:"eventType"`
+	PolicyID         *uuid.UUID      `json:"policyId"`
+	ClientWorkloadID *uuid.UUID      `json:"clientWorkloadId"`
+	ServerWorkloadID *uuid.UUID      `json:"serverWorkloadId"`
+	Outcome          string          `json:"outcome"`
+	Severity         string          `json:"severity"`
+	Timestamp        time.Time       `json:"timestamp"`
+	Payload          json.RawMessage `json:"payload"`
+	ResourceSetID    *uuid.UUID      `json:"resourceSetId"`
 }
 
 type AuditLog struct {
-	ID         uuid.UUID
-	TenantID   uuid.UUID
-	ActorID    *uuid.UUID
-	ActorEmail string
-	Category   string
-	Activity   string
-	TargetType string
-	TargetID   *uuid.UUID
-	TargetName string
-	Result     string
-	Severity   string
-	ClientIP   string
-	Browser    string
-	OS         string
-	Timestamp  time.Time
+	ID         uuid.UUID  `json:"id"`
+	TenantID   uuid.UUID  `json:"tenantId"`
+	ActorID    *uuid.UUID `json:"actorId"`
+	ActorEmail string     `json:"actorEmail"`
+	Category   string     `json:"category"`
+	Activity   string     `json:"activity"`
+	TargetType string     `json:"targetType"`
+	TargetID   *uuid.UUID `json:"targetId"`
+	TargetName string     `json:"targetName"`
+	Result     string     `json:"result"`
+	Severity   string     `json:"severity"`
+	ClientIP   string     `json:"clientIp"`
+	Browser    string     `json:"browser"`
+	OS         string     `json:"os"`
+	Timestamp  time.Time  `json:"timestamp"`
 }
 
 type EventQueryOptions struct {

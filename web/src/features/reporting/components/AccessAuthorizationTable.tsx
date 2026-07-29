@@ -34,7 +34,7 @@ interface AccessAuthorizationEvent {
 }
 
 // Will be wired to real API later
-const accessAuthorizationEventsData: AccessAuthorizationEvent[] = []
+// const accessAuthorizationEventsData: AccessAuthorizationEvent[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)
@@ -62,13 +62,30 @@ interface AccessAuthorizationTableProps {
   timeRange: string
   severity: string
   eventType: string
+  data?: { id: string; eventType: string; contextId: string; severity: string; clientIp: string; timestamp: string; payload: Record<string, unknown>; clientWorkloadName?: string; serverWorkloadName?: string }[]
 }
 
-export function AccessAuthorizationTable({ searchQuery, severity, eventType }: AccessAuthorizationTableProps) {
+export function AccessAuthorizationTable({ searchQuery, severity, eventType, data = [] }: AccessAuthorizationTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  // Map API data to component's internal shape
+  const events: AccessAuthorizationEvent[] = data.map((item) => ({
+    meta: {
+      clientIP: item.clientIp,
+      timestamp: item.timestamp,
+      eventType: item.eventType as AccessAuthorizationEventMeta['eventType'],
+      eventId: item.id,
+      resourceSetId: '',
+      contextId: item.contextId,
+      severity: item.severity as AccessAuthorizationEventMeta['severity'],
+    },
+    clientWorkload: item.clientWorkloadName ? { id: '', name: item.clientWorkloadName, result: '' } : undefined,
+    serverWorkload: item.serverWorkloadName ? { id: '', name: item.serverWorkloadName, result: '' } : undefined,
+    ...(item.payload as Record<string, unknown>),
+  }))
+
   // Filter events
-  const filtered = accessAuthorizationEventsData.filter((e) => {
+  const filtered = events.filter((e) => {
     if (severity && e.meta.severity.toLowerCase() !== severity) return false
     if (eventType && e.meta.eventType !== eventType) return false
     if (searchQuery) {

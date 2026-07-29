@@ -31,7 +31,7 @@ interface WorkloadEvent {
 }
 
 // Will be wired to real API later
-const workloadEventsData: WorkloadEvent[] = []
+// const workloadEventsData: WorkloadEvent[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)
@@ -60,12 +60,43 @@ interface WorkloadEventsTableProps {
   severity: string
   appProtocol: string
   mcpUser: string
+  data?: { id: string; connectionId: string; eventType: string; policyId: string | null; clientWorkloadName: string; serverWorkloadName: string; outcome: string; severity: string; timestamp: string; payload: Record<string, unknown> }[]
 }
 
-export function WorkloadEventsTable({ searchQuery, severity, appProtocol, mcpUser }: WorkloadEventsTableProps) {
+export function WorkloadEventsTable({ searchQuery, severity, appProtocol, mcpUser, data = [] }: WorkloadEventsTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const filtered = workloadEventsData.filter((event) => {
+  // Map API data to component's internal shape
+  const events: WorkloadEvent[] = data.map((item) => ({
+    version: '1.0.0',
+    meta: {
+      timestamp: item.timestamp,
+      eventType: item.eventType,
+      connectionId: item.connectionId,
+      eventId: item.id,
+      policyId: item.policyId ?? '',
+      action: 'forward',
+      severity: item.severity as WorkloadEvent['meta']['severity'],
+      resourceSetId: '',
+    },
+    workload: {
+      client: { id: '', name: item.clientWorkloadName },
+      server: { id: '', name: item.serverWorkloadName },
+    },
+    network: {
+      clientWorkloadIP: '',
+      clientWorkloadPort: 0,
+      transportProtocol: 'TCP',
+      serverWorkloadHost: '',
+      serverWorkloadIP: '',
+      serverWorkloadPort: 0,
+      proxyPort: 0,
+    },
+    outcome: { result: item.outcome as WorkloadEvent['outcome']['result'] },
+    application: item.payload ?? {},
+  }))
+
+  const filtered = events.filter((event) => {
     if (severity && event.meta.severity.toLowerCase() !== severity) return false
     if (appProtocol && !event.meta.eventType.startsWith(appProtocol)) return false
     if (mcpUser) {

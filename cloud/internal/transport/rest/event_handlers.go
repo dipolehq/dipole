@@ -57,6 +57,8 @@ func (h *EventHandlers) QueryWorkloadEvents(w http.ResponseWriter, r *http.Reque
 
 	if proto := r.URL.Query().Get("appProtocol"); proto != "" {
 		opts.EventType = proto
+	} else if et := r.URL.Query().Get("eventType"); et != "" {
+		opts.EventType = et
 	}
 
 	// Dedicated workload filters
@@ -99,6 +101,8 @@ func (h *EventHandlers) QueryAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	if cat := r.URL.Query().Get("category"); cat != "" {
 		opts.EventType = cat
+	} else if et := r.URL.Query().Get("eventType"); et != "" {
+		opts.EventType = et
 	}
 
 	items, total, err := h.repo.QueryAuditLogs(r.Context(), tenantID, opts)
