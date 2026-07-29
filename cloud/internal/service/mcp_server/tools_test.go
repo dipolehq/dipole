@@ -194,6 +194,6 @@ func (r *mockEventRepo) QueryAuditLogs(_ context.Context, _ uuid.UUID, _ domain.
 	}
 	return results, len(results), nil
 }
-func (r *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID) (*domain.DashboardEventData, error) {
+func (r *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID, _ string) (*domain.DashboardEventData, error) {
 	return &domain.DashboardEventData{}, nil
 }

@@ -12,9 +12,10 @@ const TIME_OPTIONS = [
 
 interface TimeRangeDropdownProps {
   defaultValue?: string
+  onChange?: (value: string) => void
 }
 
-export function TimeRangeDropdown({ defaultValue = '6h' }: TimeRangeDropdownProps) {
+export function TimeRangeDropdown({ defaultValue = '6h', onChange }: TimeRangeDropdownProps) {
   const [selected, setSelected] = useState(defaultValue)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -40,6 +41,7 @@ export function TimeRangeDropdown({ defaultValue = '6h' }: TimeRangeDropdownProp
               key={option.value}
               onClick={() => {
                 setSelected(option.value)
+                onChange?.(option.value)
                 setOpen(false)
               }}
               className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${

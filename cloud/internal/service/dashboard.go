@@ -43,8 +43,9 @@ type EntityCounts struct {
 }
 
 type RecentEventStats struct {
-	Last6h     EventSummary     `json:"last6h"`
-	TimeSeries []EventTimePoint `json:"timeSeries"`
+	Last6h               EventSummary          `json:"last6h"`
+	TimeSeries           []EventTimePoint      `json:"timeSeries"`
+	AccessDecisionSeries []AccessDecisionPoint `json:"accessDecisionSeries"`
 }
 
 type EventSummary struct {
@@ -58,6 +59,12 @@ type EventTimePoint struct {
 	Info      int    `json:"info"`
 	Warning   int    `json:"warning"`
 	Error     int    `json:"error"`
+}
+
+type AccessDecisionPoint struct {
+	Timestamp  string `json:"timestamp"`
+	Authorized int    `json:"authorized"`
+	Denied     int    `json:"denied"`
 }
 
 type TopWorkload struct {
@@ -106,7 +113,7 @@ func NewDashboardService(
 	}
 }
 
-func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID) (*DashboardStats, error) {
+func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*DashboardStats, error) {
 	opts := domain.ListOptions{Page: 1, PerPage: 1}
 
 	_, cwCount, _ := s.cwRepo.List(ctx, tenantID, opts)
@@ -141,7 +148,7 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID) (*D
 		return stats, nil
 	}
 
-	eventData, err := s.eventRepo.DashboardEventStats(ctx, tenantID)
+	eventData, err := s.eventRepo.DashboardEventStats(ctx, tenantID, timeRange)
 	if err != nil || eventData == nil {
 		return stats, nil
 	}
@@ -157,6 +164,13 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID) (*D
 			Info:      pt.Info,
 			Warning:   pt.Warning,
 			Error:     pt.Error,
+		})
+	}
+	for _, pt := range eventData.AccessDecisionSeries {
+		stats.RecentEvents.AccessDecisionSeries = append(stats.RecentEvents.AccessDecisionSeries, AccessDecisionPoint{
+			Timestamp:  pt.Timestamp.Format("2006-01-02T15:04:05Z"),
+			Authorized: pt.Authorized,
+			Denied:     pt.Denied,
 		})
 	}
 	for _, wc := range eventData.TopClients {

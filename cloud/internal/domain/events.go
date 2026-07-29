@@ -67,15 +67,16 @@ type EventQueryOptions struct {
 }
 
 type DashboardEventData struct {
-	TotalLast6h      int
-	AuthorizedLast6h int
-	DeniedLast6h     int
-	TimeSeries       []DashboardTimePoint
-	TopClients       []DashboardWorkloadCount
-	TopServers       []DashboardWorkloadCount
-	CredentialUsage  []DashboardTypeCount
-	ProtocolUsage    []DashboardTypeCount
-	PolicyFailures   []DashboardPolicyFailure
+	TotalLast6h          int
+	AuthorizedLast6h     int
+	DeniedLast6h         int
+	TimeSeries           []DashboardTimePoint
+	AccessDecisionSeries []DashboardDecisionPoint
+	TopClients           []DashboardWorkloadCount
+	TopServers           []DashboardWorkloadCount
+	CredentialUsage      []DashboardTypeCount
+	ProtocolUsage        []DashboardTypeCount
+	PolicyFailures       []DashboardPolicyFailure
 }
 
 type DashboardTimePoint struct {
@@ -83,6 +84,12 @@ type DashboardTimePoint struct {
 	Info      int
 	Warning   int
 	Error     int
+}
+
+type DashboardDecisionPoint struct {
+	Timestamp  time.Time
+	Authorized int
+	Denied     int
 }
 
 type DashboardWorkloadCount struct {

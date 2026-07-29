@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { StatCard } from '@/features/dashboard/components/StatCard'
 import { WorkloadEventsChart } from '@/features/dashboard/components/WorkloadEventsChart'
 import { AccessDecisionsChart } from '@/features/dashboard/components/AccessDecisionsChart'
@@ -12,9 +14,21 @@ import {
   DENIAL_REASONS_CONFIG,
   ATTESTATION_RESULTS_CONFIG,
 } from '@/features/dashboard/config'
-import { dashboardData } from '@/features/dashboard/data'
+import { fetchDashboardStats } from '@/features/dashboard/api/dashboardApi'
+import { dashboardData as fallbackData } from '@/features/dashboard/data'
 
 export function DashboardPage() {
+  const [workloadTimeRange, setWorkloadTimeRange] = useState('6h')
+  const [decisionsTimeRange, setDecisionsTimeRange] = useState('24h')
+
+  const { data, refetch } = useQuery({
+    queryKey: ['dashboard', 'stats', workloadTimeRange],
+    queryFn: () => fetchDashboardStats(workloadTimeRange),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  })
+
+  const dashboardData = data ?? fallbackData
   const { stats } = dashboardData
 
   return (
@@ -33,22 +47,22 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-5 gap-4">
         {STAT_CARDS.map((card) => {
-          const data = stats[card.key as keyof typeof stats]
+          const cardData = stats[card.key as keyof typeof stats]
           return (
             <StatCard
               key={card.key}
               title={card.title}
-              count={data.count}
+              count={cardData.count}
               icon={card.icon}
               color={card.color}
-              lines={[`Active: ${data.active}`, `Inactive: ${data.inactive}`]}
+              lines={[`Active: ${cardData.active}`, `Inactive: ${cardData.inactive}`]}
             />
           )
         })}
       </div>
 
-      <WorkloadEventsChart />
-      <AccessDecisionsChart />
+      <WorkloadEventsChart data={dashboardData.workloadEvents} onTimeRangeChange={setWorkloadTimeRange} timeRange={workloadTimeRange} onRefresh={() => refetch()} />
+      <AccessDecisionsChart data={dashboardData.accessDecisions} onTimeRangeChange={setDecisionsTimeRange} timeRange={decisionsTimeRange} onRefresh={() => refetch()} />
 
       <div className="grid grid-cols-2 gap-4">
         <ConnectionsChart title="Client Workloads" subtitle="Most Connections" data={dashboardData.clientConnections} />

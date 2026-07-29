@@ -255,34 +255,36 @@ func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (st
 	return strings.Join(clauses, " AND "), args
 }
 
-func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID) (*domain.DashboardEventData, error) {
+func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*domain.DashboardEventData, error) {
 	data := &domain.DashboardEventData{}
 
-	// Aggregate counts for the last 6 hours from access_authorization_events.
+	interval, truncInterval := resolveTimeGranularity(timeRange)
+
+	// Aggregate counts for the time range from access_authorization_events.
 	err := r.pool.QueryRow(ctx,
 		`SELECT
 			COUNT(*) AS total,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - INTERVAL '6 hours'`,
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval,
 		tenantID,
 	).Scan(&data.TotalLast6h, &data.AuthorizedLast6h, &data.DeniedLast6h)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard event counts: %w", err)
 	}
 
-	// Hourly time series for the last 6 hours.
+	// Workload events time series with dynamic granularity.
 	rows, err := r.pool.Query(ctx,
 		`SELECT
-			date_trunc('hour', timestamp) AS hour,
+			date_trunc('`+truncInterval+`', timestamp) AS bucket,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS info,
 			COUNT(*) FILTER (WHERE severity = 'Warning') AS warning,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS error
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
-		 GROUP BY hour
-		 ORDER BY hour`,
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - `+interval+`
+		 GROUP BY bucket
+		 ORDER BY bucket`,
 		tenantID,
 	)
 	if err != nil {
@@ -296,6 +298,32 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID)
 			return nil, fmt.Errorf("scan time series: %w", err)
 		}
 		data.TimeSeries = append(data.TimeSeries, pt)
+	}
+	rows.Close()
+
+	// Access decision time series (authorized vs denied per bucket).
+	rows, err = r.pool.Query(ctx,
+		`SELECT
+			date_trunc('`+truncInterval+`', timestamp) AS bucket,
+			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
+			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
+		 FROM access_authorization_events
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+`
+		 GROUP BY bucket
+		 ORDER BY bucket`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard decision series: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pt domain.DashboardDecisionPoint
+		if err := rows.Scan(&pt.Timestamp, &pt.Authorized, &pt.Denied); err != nil {
+			return nil, fmt.Errorf("scan decision series: %w", err)
+		}
+		data.AccessDecisionSeries = append(data.AccessDecisionSeries, pt)
 	}
 	rows.Close()
 
@@ -423,4 +451,23 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID)
 	}
 
 	return data, nil
+}
+
+// resolveTimeGranularity maps a timeRange string to a PostgreSQL INTERVAL
+// and a date_trunc granularity that produces ~30-70 data points for charts.
+func resolveTimeGranularity(timeRange string) (interval string, truncGranularity string) {
+	switch timeRange {
+	case "1h":
+		return "INTERVAL '1 hour'", "minute"
+	case "6h":
+		return "INTERVAL '6 hours'", "minute"
+	case "24h":
+		return "INTERVAL '24 hours'", "hour"
+	case "7d":
+		return "INTERVAL '7 days'", "hour"
+	case "30d":
+		return "INTERVAL '30 days'", "day"
+	default:
+		return "INTERVAL '6 hours'", "hour"
+	}
 }

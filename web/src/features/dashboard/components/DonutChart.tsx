@@ -12,6 +12,8 @@ interface DonutChartProps {
 }
 
 export function DonutChart({ title, subtitle, total, labels, series, colors }: DonutChartProps) {
+  const hasData = total > 0
+
   const options: ApexOptions = {
     chart: {
       type: 'donut',
@@ -19,7 +21,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
       selection: { enabled: false },
     },
     labels,
-    colors,
+    colors: hasData ? colors : colors.map(() => '#e9ecef'),
     legend: {
       position: 'right',
       fontSize: '12px',
@@ -40,11 +42,11 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
             name: { show: false },
             value: {
               show: true,
-              fontSize: '24px',
-              fontWeight: '400',
-              color: '#495057',
+              fontSize: hasData ? '24px' : '13px',
+              fontWeight: hasData ? '400' : '600',
+              color: hasData ? '#495057' : '#6b7280',
               offsetY: 8,
-              formatter: () => total.toLocaleString(),
+              formatter: () => hasData ? total.toLocaleString() : 'No Data Available',
             },
             total: {
               show: true,
@@ -53,7 +55,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
               fontSize: '11px',
               fontWeight: '400',
               color: '#868e96',
-              formatter: () => total.toLocaleString(),
+              formatter: () => hasData ? total.toLocaleString() : 'No Data Available',
             },
           },
         },
@@ -65,20 +67,24 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
     },
     stroke: { width: 2, colors: ['#fff'] },
     tooltip: {
-      enabled: true,
+      enabled: hasData,
       y: { formatter: (val: number) => String(val) },
     },
   }
 
+  const chartSeries = hasData ? series : labels.map(() => 1)
+
   return (
-    <div className="bg-white rounded-lg border border-border p-5 h-[340px]">
+    <div className="bg-white rounded-lg border border-border p-5 h-[340px] relative">
       <div className="mb-2">
         <h3 className="text-sm text-gray-600">
           {title} / <span className="font-bold text-gray-900">{subtitle}</span>
         </h3>
         <TimeRangeDropdown defaultValue="24h" />
       </div>
-      <Chart options={options} series={series} type="donut" height={270} />
+      <div className={hasData ? '' : 'opacity-30'}>
+        <Chart options={options} series={chartSeries} type="donut" height={270} />
+      </div>
     </div>
   )
 }

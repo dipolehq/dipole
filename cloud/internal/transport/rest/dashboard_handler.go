@@ -13,7 +13,7 @@ import (
 )
 
 type dashboardService interface {
-	GetStats(ctx context.Context, tenantID uuid.UUID) (*service.DashboardStats, error)
+	GetStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*service.DashboardStats, error)
 }
 
 type DashboardHandler struct {
@@ -30,7 +30,11 @@ func (h *DashboardHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *DashboardHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	stats, err := h.svc.GetStats(r.Context(), tenantID)
+	timeRange := r.URL.Query().Get("timeRange")
+	if timeRange == "" {
+		timeRange = "6h"
+	}
+	stats, err := h.svc.GetStats(r.Context(), tenantID, timeRange)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load dashboard stats"})
 		return

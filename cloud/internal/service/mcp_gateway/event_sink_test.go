@@ -52,7 +52,7 @@ func (m *mockEventRepo) QueryAuditLogs(_ context.Context, _ uuid.UUID, _ domain.
 	panic("not used")
 }
 
-func (m *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID) (*domain.DashboardEventData, error) {
+func (m *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID, _ string) (*domain.DashboardEventData, error) {
 	panic("not used")
 }
 
