@@ -248,6 +248,10 @@ func buildHTTPServer(
 	rest.NewCredentialProviderHandler(credentialProviderSvc).RegisterRoutes(mux)
 	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
+	rest.NewDashboardHandler(service.NewDashboardService(
+		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
+		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
+	)).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	// Edge API routes (always available — handles its own authentication)

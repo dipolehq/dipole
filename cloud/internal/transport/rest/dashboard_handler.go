@@ -1,0 +1,39 @@
+/*
+dashboard_handler.go serves the admin dashboard summary statistics endpoint.
+*/
+package rest
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/google/uuid"
+
+	"github.com/dipolehq/dipole/cloud/internal/service"
+)
+
+type dashboardService interface {
+	GetStats(ctx context.Context, tenantID uuid.UUID) (*service.DashboardStats, error)
+}
+
+type DashboardHandler struct {
+	svc dashboardService
+}
+
+func NewDashboardHandler(svc dashboardService) *DashboardHandler {
+	return &DashboardHandler{svc: svc}
+}
+
+func (h *DashboardHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/dashboard", h.GetStats)
+}
+
+func (h *DashboardHandler) GetStats(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	stats, err := h.svc.GetStats(r.Context(), tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load dashboard stats"})
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}

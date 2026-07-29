@@ -65,3 +65,39 @@ type EventQueryOptions struct {
 	ServerWorkloadIDs []string
 	UserID            string
 }
+
+type DashboardEventData struct {
+	TotalLast6h      int
+	AuthorizedLast6h int
+	DeniedLast6h     int
+	TimeSeries       []DashboardTimePoint
+	TopClients       []DashboardWorkloadCount
+	TopServers       []DashboardWorkloadCount
+	CredentialUsage  []DashboardTypeCount
+	ProtocolUsage    []DashboardTypeCount
+	PolicyFailures   []DashboardPolicyFailure
+}
+
+type DashboardTimePoint struct {
+	Timestamp time.Time
+	Info      int
+	Warning   int
+	Error     int
+}
+
+type DashboardWorkloadCount struct {
+	ID    string
+	Name  string
+	Count int
+}
+
+type DashboardTypeCount struct {
+	Type  string
+	Count int
+}
+
+type DashboardPolicyFailure struct {
+	PolicyID   string
+	PolicyName string
+	Count      int
+}

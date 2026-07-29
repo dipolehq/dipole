@@ -52,6 +52,10 @@ func (m *mockEventRepo) QueryAuditLogs(_ context.Context, _ uuid.UUID, _ domain.
 	panic("not used")
 }
 
+func (m *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID) (*domain.DashboardEventData, error) {
+	panic("not used")
+}
+
 func TestDBEventSink_Emit_PersistsEvent(t *testing.T) {
 	tenantID := uuid.New()
 	serverID := uuid.New()

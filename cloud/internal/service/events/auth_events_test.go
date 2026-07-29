@@ -37,6 +37,9 @@ func (r *mockEventRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ do
 func (r *mockEventRepo) QueryAuditLogs(_ context.Context, _ uuid.UUID, _ domain.EventQueryOptions) ([]domain.AuditLog, int, error) {
 	return nil, 0, nil
 }
+func (r *mockEventRepo) DashboardEventStats(_ context.Context, _ uuid.UUID) (*domain.DashboardEventData, error) {
+	return &domain.DashboardEventData{}, nil
+}
 
 func TestAuthEventEmitter_EmitsAllFourTypes(t *testing.T) {
 	repo := &mockEventRepo{}

@@ -138,3 +138,173 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 	}
 	return results, total, nil
 }
+
+func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID) (*domain.DashboardEventData, error) {
+	data := &domain.DashboardEventData{}
+
+	// Aggregate counts for the last 6 hours from access_authorization_events.
+	err := r.pool.QueryRow(ctx,
+		`SELECT
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
+			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
+		 FROM access_authorization_events
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - INTERVAL '6 hours'`,
+		tenantID,
+	).Scan(&data.TotalLast6h, &data.AuthorizedLast6h, &data.DeniedLast6h)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard event counts: %w", err)
+	}
+
+	// Hourly time series for the last 6 hours.
+	rows, err := r.pool.Query(ctx,
+		`SELECT
+			date_trunc('hour', timestamp) AS hour,
+			COUNT(*) FILTER (WHERE severity = 'Info') AS info,
+			COUNT(*) FILTER (WHERE severity = 'Warning') AS warning,
+			COUNT(*) FILTER (WHERE severity = 'Error') AS error
+		 FROM access_authorization_events
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '6 hours'
+		 GROUP BY hour
+		 ORDER BY hour`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard time series: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pt domain.DashboardTimePoint
+		if err := rows.Scan(&pt.Timestamp, &pt.Info, &pt.Warning, &pt.Error); err != nil {
+			return nil, fmt.Errorf("scan time series: %w", err)
+		}
+		data.TimeSeries = append(data.TimeSeries, pt)
+	}
+	rows.Close()
+
+	// Top client workloads by connection count (last 24h).
+	rows, err = r.pool.Query(ctx,
+		`SELECT we.client_workload_id::text, COALESCE(cw.name, 'Unknown'), COUNT(*)
+		 FROM workload_events we
+		 LEFT JOIN client_workloads cw ON cw.id = we.client_workload_id AND cw.tenant_id = we.tenant_id
+		 WHERE we.tenant_id = $1 AND we.client_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 GROUP BY we.client_workload_id, cw.name
+		 ORDER BY COUNT(*) DESC
+		 LIMIT 5`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard top clients: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var wc domain.DashboardWorkloadCount
+		if err := rows.Scan(&wc.ID, &wc.Name, &wc.Count); err != nil {
+			return nil, fmt.Errorf("scan top client: %w", err)
+		}
+		data.TopClients = append(data.TopClients, wc)
+	}
+	rows.Close()
+
+	// Top server workloads by connection count (last 24h).
+	rows, err = r.pool.Query(ctx,
+		`SELECT we.server_workload_id::text, COALESCE(sw.name, 'Unknown'), COUNT(*)
+		 FROM workload_events we
+		 LEFT JOIN server_workloads sw ON sw.id = we.server_workload_id AND sw.tenant_id = we.tenant_id
+		 WHERE we.tenant_id = $1 AND we.server_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 GROUP BY we.server_workload_id, sw.name
+		 ORDER BY COUNT(*) DESC
+		 LIMIT 5`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard top servers: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var wc domain.DashboardWorkloadCount
+		if err := rows.Scan(&wc.ID, &wc.Name, &wc.Count); err != nil {
+			return nil, fmt.Errorf("scan top server: %w", err)
+		}
+		data.TopServers = append(data.TopServers, wc)
+	}
+	rows.Close()
+
+	// Credential usage by type (last 24h from access.credential events).
+	rows, err = r.pool.Query(ctx,
+		`SELECT payload->'credentialProvider'->>'type' AS cp_type, COUNT(*)
+		 FROM access_authorization_events
+		 WHERE tenant_id = $1 AND event_type = 'access.credential' AND severity = 'Info'
+		   AND timestamp >= NOW() - INTERVAL '24 hours'
+		   AND payload->'credentialProvider'->>'type' IS NOT NULL
+		 GROUP BY cp_type
+		 ORDER BY COUNT(*) DESC`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard credential usage: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tc domain.DashboardTypeCount
+		if err := rows.Scan(&tc.Type, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan credential usage: %w", err)
+		}
+		data.CredentialUsage = append(data.CredentialUsage, tc)
+	}
+	rows.Close()
+
+	// Connections by protocol (last 24h from workload events event_type prefix).
+	rows, err = r.pool.Query(ctx,
+		`SELECT split_part(event_type, '.', 1) AS protocol, COUNT(*)
+		 FROM workload_events
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '24 hours'
+		 GROUP BY protocol
+		 ORDER BY COUNT(*) DESC`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard protocol usage: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tc domain.DashboardTypeCount
+		if err := rows.Scan(&tc.Type, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan protocol usage: %w", err)
+		}
+		data.ProtocolUsage = append(data.ProtocolUsage, tc)
+	}
+	rows.Close()
+
+	// Policies with most condition/attestation failures (last 24h).
+	rows, err = r.pool.Query(ctx,
+		`SELECT ae.payload->'accessPolicy'->>'id' AS policy_id, COALESCE(ae.payload->'accessPolicy'->>'name', 'Unknown'), COUNT(*)
+		 FROM access_authorization_events ae
+		 WHERE ae.tenant_id = $1 AND ae.event_type = 'access.authorization' AND ae.severity = 'Error'
+		   AND ae.timestamp >= NOW() - INTERVAL '24 hours'
+		   AND ae.payload->'accessPolicy'->>'id' IS NOT NULL
+		 GROUP BY policy_id, ae.payload->'accessPolicy'->>'name'
+		 ORDER BY COUNT(*) DESC
+		 LIMIT 5`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard policy failures: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pf domain.DashboardPolicyFailure
+		if err := rows.Scan(&pf.PolicyID, &pf.PolicyName, &pf.Count); err != nil {
+			return nil, fmt.Errorf("scan policy failure: %w", err)
+		}
+		data.PolicyFailures = append(data.PolicyFailures, pf)
+	}
+
+	return data, nil
+}

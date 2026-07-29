@@ -83,12 +83,13 @@ type PolicyFailures struct {
 }
 
 type DashboardService struct {
-	cwRepo repository.ClientWorkloadRepository
-	swRepo repository.ServerWorkloadRepository
-	tpRepo repository.TrustProviderRepository
-	cpRepo repository.CredentialProviderRepository
-	apRepo repository.AccessPolicyRepository
-	acRepo repository.AccessConditionRepository
+	cwRepo    repository.ClientWorkloadRepository
+	swRepo    repository.ServerWorkloadRepository
+	tpRepo    repository.TrustProviderRepository
+	cpRepo    repository.CredentialProviderRepository
+	apRepo    repository.AccessPolicyRepository
+	acRepo    repository.AccessConditionRepository
+	eventRepo repository.EventRepository
 }
 
 func NewDashboardService(
@@ -98,9 +99,10 @@ func NewDashboardService(
 	cp repository.CredentialProviderRepository,
 	ap repository.AccessPolicyRepository,
 	ac repository.AccessConditionRepository,
+	ev repository.EventRepository,
 ) *DashboardService {
 	return &DashboardService{
-		cwRepo: cw, swRepo: sw, tpRepo: tp, cpRepo: cp, apRepo: ap, acRepo: ac,
+		cwRepo: cw, swRepo: sw, tpRepo: tp, cpRepo: cp, apRepo: ap, acRepo: ac, eventRepo: ev,
 	}
 }
 
@@ -114,7 +116,7 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID) (*D
 	_, apCount, _ := s.apRepo.List(ctx, tenantID, opts)
 	_, acCount, _ := s.acRepo.List(ctx, tenantID, opts)
 
-	return &DashboardStats{
+	stats := &DashboardStats{
 		Counts: EntityCounts{
 			ClientWorkloads:     cwCount,
 			ServerWorkloads:     swCount,
@@ -133,5 +135,55 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID) (*D
 		CredentialUsageByType:    []CredentialUsage{},
 		ConnectionsByProtocol:    []ProtocolCount{},
 		MostConditionFailures:    []PolicyFailures{},
-	}, nil
+	}
+
+	if s.eventRepo == nil {
+		return stats, nil
+	}
+
+	eventData, err := s.eventRepo.DashboardEventStats(ctx, tenantID)
+	if err != nil || eventData == nil {
+		return stats, nil
+	}
+
+	stats.RecentEvents.Last6h = EventSummary{
+		Total:      eventData.TotalLast6h,
+		Authorized: eventData.AuthorizedLast6h,
+		Denied:     eventData.DeniedLast6h,
+	}
+	for _, pt := range eventData.TimeSeries {
+		stats.RecentEvents.TimeSeries = append(stats.RecentEvents.TimeSeries, EventTimePoint{
+			Timestamp: pt.Timestamp.Format("2006-01-02T15:04:05Z"),
+			Info:      pt.Info,
+			Warning:   pt.Warning,
+			Error:     pt.Error,
+		})
+	}
+	for _, wc := range eventData.TopClients {
+		stats.TopClientWorkloads = append(stats.TopClientWorkloads, TopWorkload{
+			ID: wc.ID, Name: wc.Name, Connections: wc.Count,
+		})
+	}
+	for _, wc := range eventData.TopServers {
+		stats.TopServerWorkloads = append(stats.TopServerWorkloads, TopWorkload{
+			ID: wc.ID, Name: wc.Name, Connections: wc.Count,
+		})
+	}
+	for _, cu := range eventData.CredentialUsage {
+		stats.CredentialUsageByType = append(stats.CredentialUsageByType, CredentialUsage{
+			Type: cu.Type, Count: cu.Count,
+		})
+	}
+	for _, pc := range eventData.ProtocolUsage {
+		stats.ConnectionsByProtocol = append(stats.ConnectionsByProtocol, ProtocolCount{
+			Protocol: pc.Type, Count: pc.Count,
+		})
+	}
+	for _, pf := range eventData.PolicyFailures {
+		stats.MostConditionFailures = append(stats.MostConditionFailures, PolicyFailures{
+			PolicyID: pf.PolicyID, PolicyName: pf.PolicyName, Failures: pf.Count,
+		})
+	}
+
+	return stats, nil
 }

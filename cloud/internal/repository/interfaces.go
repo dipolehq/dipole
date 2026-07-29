@@ -85,6 +85,7 @@ type EventRepository interface {
 	QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error)
 	QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error)
 	QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error)
+	DashboardEventStats(ctx context.Context, tenantID uuid.UUID) (*domain.DashboardEventData, error)
 }
 
 type ResourceSetRepository interface {
