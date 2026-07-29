@@ -10,6 +10,8 @@ package policy
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"strings"
 
@@ -273,24 +275,50 @@ func matchIdentifier(id domain.Identifier, ev *domain.ClientEvidence) bool {
 		return ev.Process != nil && strings.Contains(ev.Process.CommandLine, id.Value)
 	case "process_user_name":
 		return ev.Process != nil && id.Value == ev.Process.UserName
-	case "aws_account_id", "aws_ec2_instance_id", "aws_ecs_task_family",
-		"aws_ecs_service_name", "aws_lambda_arn", "aws_region":
-		return ev.AWS != nil
-	case "azure_subscription_id", "azure_vm_id":
-		return ev.Azure != nil
+	case "aws_account_id":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "accountId") == id.Value
+	case "aws_ec2_instance_id":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "instanceId") == id.Value
+	case "aws_ecs_task_family":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "ecsTaskFamily") == id.Value
+	case "aws_ecs_service_name":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "ecsServiceName") == id.Value
+	case "aws_lambda_arn":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "lambdaArn") == id.Value
+	case "aws_region":
+		return ev.AWS != nil && extractAWSField(ev.AWS.InstanceIdentityDocument, "region") == id.Value
+	case "azure_subscription_id":
+		return ev.Azure != nil && extractAWSField(ev.Azure.Encoding, "subscriptionId") == id.Value
+	case "azure_vm_id":
+		return ev.Azure != nil && extractAWSField(ev.Azure.Encoding, "vmId") == id.Value
 	case "gcp_identity_token":
-		return ev.GCP != nil
-	case "github_id_token_repository", "github_id_token_subject":
-		return ev.GitHub != nil
-	case "gitlab_id_token_namespace_path", "gitlab_id_token_project_path",
-		"gitlab_id_token_ref_path", "gitlab_id_token_subject":
-		return ev.GitLab != nil
-	case "terraform_cloud_organization_id", "terraform_cloud_project_id",
-		"terraform_cloud_workspace_id":
-		return ev.Terraform != nil
-	case "oidc_id_token", "oidc_id_token_audience", "oidc_id_token_issuer",
-		"oidc_id_token_subject":
+		return ev.GCP != nil && extractJWTClaim(ev.GCP.IdentityToken, "email") == id.Value
+	case "github_id_token_repository":
+		return ev.GitHub != nil && extractJWTClaim(ev.GitHub.IdentityToken, "repository") == id.Value
+	case "github_id_token_subject":
+		return ev.GitHub != nil && extractJWTClaim(ev.GitHub.IdentityToken, "sub") == id.Value
+	case "gitlab_id_token_namespace_path":
+		return ev.GitLab != nil && extractJWTClaim(ev.GitLab.IdentityToken, "namespace_path") == id.Value
+	case "gitlab_id_token_project_path":
+		return ev.GitLab != nil && extractJWTClaim(ev.GitLab.IdentityToken, "project_path") == id.Value
+	case "gitlab_id_token_ref_path":
+		return ev.GitLab != nil && extractJWTClaim(ev.GitLab.IdentityToken, "ref_path") == id.Value
+	case "gitlab_id_token_subject":
+		return ev.GitLab != nil && extractJWTClaim(ev.GitLab.IdentityToken, "sub") == id.Value
+	case "terraform_cloud_organization_id":
+		return ev.Terraform != nil && extractJWTClaim(ev.Terraform.IdentityToken, "terraform_organization_id") == id.Value
+	case "terraform_cloud_project_id":
+		return ev.Terraform != nil && extractJWTClaim(ev.Terraform.IdentityToken, "terraform_project_id") == id.Value
+	case "terraform_cloud_workspace_id":
+		return ev.Terraform != nil && extractJWTClaim(ev.Terraform.IdentityToken, "terraform_workspace_id") == id.Value
+	case "oidc_id_token":
 		return ev.Environment != nil && ev.Environment["OIDC_ID_TOKEN"] != ""
+	case "oidc_id_token_audience":
+		return ev.Environment != nil && extractJWTClaim(ev.Environment["OIDC_ID_TOKEN"], "aud") == id.Value
+	case "oidc_id_token_issuer":
+		return ev.Environment != nil && extractJWTClaim(ev.Environment["OIDC_ID_TOKEN"], "iss") == id.Value
+	case "oidc_id_token_subject":
+		return ev.Environment != nil && extractJWTClaim(ev.Environment["OIDC_ID_TOKEN"], "sub") == id.Value
 	case "redirect_uri":
 		return id.Value == ev.RedirectURI
 	default:
@@ -355,4 +383,63 @@ func buildInjectionConfig(sw *domain.ServerWorkload) *domain.InjectionConfig {
 	default:
 		return &domain.InjectionConfig{Method: "http_bearer", HeaderName: "Authorization", Prefix: "Bearer "}
 	}
+}
+
+// extractAWSField decodes a base64-encoded JSON identity document and returns
+// the string value of the specified field. Returns empty string on any failure.
+func extractAWSField(encodedDoc string, field string) string {
+	if encodedDoc == "" {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(encodedDoc)
+	if err != nil {
+		raw = []byte(encodedDoc)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return ""
+	}
+	v, ok := doc[field]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// extractJWTClaim decodes a JWT (without signature verification — that happens
+// in the trust validation step) and returns the string value of the specified
+// claim from the payload. Returns empty string on any failure.
+func extractJWTClaim(token string, claim string) string {
+	if token == "" {
+		return ""
+	}
+	parts := strings.SplitN(token, ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	payload := parts[1]
+	if pad := len(payload) % 4; pad != 0 {
+		payload += strings.Repeat("=", 4-pad)
+	}
+	raw, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return ""
+	}
+	v, ok := claims[claim]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }

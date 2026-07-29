@@ -92,7 +92,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
-	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders)
+	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders, cfg.Region, cfg.TenantSubdomain)
 	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)

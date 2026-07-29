@@ -13,11 +13,13 @@ import (
 )
 
 type TrustProviderService struct {
-	repo repository.TrustProviderRepository
+	repo            repository.TrustProviderRepository
+	region          string
+	tenantSubdomain string
 }
 
-func NewTrustProviderService(repo repository.TrustProviderRepository) *TrustProviderService {
-	return &TrustProviderService{repo: repo}
+func NewTrustProviderService(repo repository.TrustProviderRepository, region string, tenantSubdomain string) *TrustProviderService {
+	return &TrustProviderService{repo: repo, region: region, tenantSubdomain: tenantSubdomain}
 }
 
 func (s *TrustProviderService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error) {
@@ -41,8 +43,8 @@ func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, t
 		return err
 	}
 	tp.ID = uuid.New()
-	tp.EdgeSDKClientID = generateEdgeSDKClientID(tenantID, tp)
-	tp.EdgeSDKAudience = generateEdgeSDKAudience()
+	tp.EdgeSDKClientID = generateEdgeSDKClientID(s.region, s.tenantSubdomain, tp)
+	tp.EdgeSDKAudience = generateEdgeSDKAudience(s.region, s.tenantSubdomain)
 	return s.repo.Create(ctx, tenantID, tp)
 }
 
@@ -89,12 +91,12 @@ func validateTrustProvider(tp *domain.TrustProvider) error {
 	return nil
 }
 
-func generateEdgeSDKClientID(tenantID uuid.UUID, tp *domain.TrustProvider) string {
-	return "dipole:ap-south-1:dev:identity:" + typeShortName(tp.Type) + ":" + tp.ID.String()
+func generateEdgeSDKClientID(region string, tenantSubdomain string, tp *domain.TrustProvider) string {
+	return "dipole:" + region + ":" + tenantSubdomain + ":identity:" + typeShortName(tp.Type) + ":" + tp.ID.String()
 }
 
-func generateEdgeSDKAudience() string {
-	return "https://dev.id.ap-south-1.dipolehq.com"
+func generateEdgeSDKAudience(region string, tenantSubdomain string) string {
+	return "https://" + tenantSubdomain + ".id." + region + ".dipolehq.com"
 }
 
 func typeShortName(t string) string {
