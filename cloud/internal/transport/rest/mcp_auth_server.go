@@ -72,16 +72,17 @@ func (s *MCPAuthServer) HandleMetadata(w http.ResponseWriter, r *http.Request) {
 	serverURL := s.serverURL()
 
 	metadata := map[string]any{
-		"issuer":                           serverURL,
-		"authorization_endpoint":           serverURL + "/connect/authorize",
-		"token_endpoint":                   serverURL + "/connect/token",
-		"jwks_uri":                         serverURL + "/.well-known/openid-configuration/jwks",
-		"registration_endpoint":            serverURL + "/register",
-		"scopes_supported":                 []string{"openid", "profile", "email"},
-		"response_types_supported":         []string{"code", "token", "id_token", "id_token token", "code id_token", "code token", "code id_token token"},
-		"response_modes_supported":         []string{"form_post", "query", "fragment"},
-		"grant_types_supported":            []string{"authorization_code"},
-		"code_challenge_methods_supported": []string{"plain", "S256"},
+		"issuer":                                serverURL,
+		"authorization_endpoint":                serverURL + "/connect/authorize",
+		"token_endpoint":                        serverURL + "/connect/token",
+		"jwks_uri":                              serverURL + "/.well-known/openid-configuration/jwks",
+		"registration_endpoint":                 serverURL + "/register",
+		"scopes_supported":                      []string{"openid", "profile", "email"},
+		"response_types_supported":              []string{"code"},
+		"response_modes_supported":              []string{"query"},
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"token_endpoint_auth_methods_supported": []string{"none"},
 	}
 
 	writeJSON(w, http.StatusOK, metadata)
@@ -205,6 +206,7 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, resp)
 }
 
