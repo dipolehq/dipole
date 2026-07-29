@@ -44,6 +44,9 @@ services:
       DIPOLE_HTTP_PORT: "8080"
       DIPOLE_LOG_LEVEL: debug
       DIPOLE_REGION: ap-south-1
+      DIPOLE_GEOIP_DB_PATH: /data/GeoLite2-City.mmdb
+    volumes:
+      - ./data:/data:ro
     depends_on:
       postgres:
         condition: service_healthy

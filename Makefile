@@ -8,6 +8,10 @@
 DIPOLE_DATABASE_URL ?= postgres://dipole:dipole@localhost:5432/dipole?sslmode=disable
 export DIPOLE_DATABASE_URL
 
+# Default GeoIP path for local dev (download with `make geoip` first).
+DIPOLE_GEOIP_DB_PATH ?= $(shell pwd)/data/GeoLite2-City.mmdb
+export DIPOLE_GEOIP_DB_PATH
+
 # Local-dev encryption key (32 bytes hex). Production must supply this via a secret.
 DIPOLE_ENCRYPTION_KEY ?= 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 export DIPOLE_ENCRYPTION_KEY
@@ -80,3 +84,11 @@ build: ## Build all cloud binaries
 .PHONY: test
 test: ## Run cloud unit tests
 	cd $(CLOUD_DIR) && go test ./...
+
+# ---------------------------------------------------------------------------
+# GeoIP Database
+# ---------------------------------------------------------------------------
+
+.PHONY: geoip
+geoip: ## Download MaxMind GeoLite2-City database (requires MAXMIND_ACCOUNT_ID + MAXMIND_LICENSE_KEY env vars)
+	./scripts/download-geoip-db.sh

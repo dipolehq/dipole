@@ -56,3 +56,6 @@ docker-compose.override.yml
 
 # Husky git hooks (local-only for now)
 .husky/
+
+# GeoIP database (downloaded separately, ~70MB)
+data/*.mmdb
