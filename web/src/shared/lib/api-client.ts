@@ -5,6 +5,18 @@
 
 const BASE_URL = '/api/v1'
 
+const DEFAULT_RESOURCE_SET_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+
+let activeResourceSetId: string = DEFAULT_RESOURCE_SET_ID
+
+export function setActiveResourceSet(id: string) {
+  activeResourceSetId = id
+}
+
+export function getActiveResourceSet(): string {
+  return activeResourceSetId
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   body?: unknown
@@ -26,12 +38,15 @@ class ApiError extends Error {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  // Auth token injection point — will be wired to auth state later
+  const headers: Record<string, string> = {}
   const token = sessionStorage.getItem('dipole_token')
   if (token) {
-    return { Authorization: `Bearer ${token}` }
+    headers['Authorization'] = `Bearer ${token}`
   }
-  return {}
+  if (activeResourceSetId && activeResourceSetId !== DEFAULT_RESOURCE_SET_ID) {
+    headers['X-Dipole-ResourceSet'] = activeResourceSetId
+  }
+  return headers
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {

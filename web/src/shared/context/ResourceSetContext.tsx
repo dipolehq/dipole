@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '@/shared/lib/api-client'
+import { apiClient, setActiveResourceSet } from '@/shared/lib/api-client'
 
 export interface ResourceSet {
   id: string
@@ -30,6 +30,11 @@ const ResourceSetContext = createContext<ResourceSetContextValue>({
 
 export function ResourceSetProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<ResourceSet>(DEFAULT_RESOURCE_SET)
+
+  // Sync the active Resource Set to the API client module whenever selection changes.
+  useEffect(() => {
+    setActiveResourceSet(current.id)
+  }, [current.id])
 
   const { data, isLoading } = useQuery({
     queryKey: ['resource-sets', 'global'],
