@@ -52,14 +52,16 @@ import {
 } from '@/features/administration'
 
 import { LoginPage } from '@/features/auth/components/LoginPage'
+import { AuthGuard } from '@/features/auth/components/AuthGuard'
 
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/*" element={
-        <Layout>
-          <Routes>
+        <AuthGuard>
+          <Layout>
+            <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<PoliciesPage />} />
         <Route path="/access-policies/new" element={<CreatePolicyPage />} />
@@ -111,6 +113,7 @@ export function AppRoutes() {
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </Layout>
+    </AuthGuard>
     } />
     </Routes>
   )

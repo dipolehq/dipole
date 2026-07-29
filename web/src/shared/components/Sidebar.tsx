@@ -123,7 +123,7 @@ export function Sidebar() {
             <button onClick={() => navigate('/profile')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
               Profile
             </button>
-            <button className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+            <button onClick={() => { sessionStorage.removeItem('dipole_token'); sessionStorage.removeItem('dipole_user'); window.location.href = '/login' }} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
               Sign out
             </button>
           </div>

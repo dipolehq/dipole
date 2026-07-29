@@ -48,6 +48,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      sessionStorage.removeItem('dipole_token')
+      sessionStorage.removeItem('dipole_user')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
     const data = await response.json().catch(() => undefined)
     throw new ApiError(response.status, response.statusText, data)
   }

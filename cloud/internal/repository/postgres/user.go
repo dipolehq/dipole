@@ -19,10 +19,10 @@ func (r *UserRepo) Create(ctx context.Context, tenantID uuid.UUID, u *domain.Use
 	u.TenantID = tenantID
 
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO users (id, tenant_id, email, name, first_name, last_name, phone, is_active, role_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO users (id, tenant_id, email, name, first_name, last_name, phone, is_active, role_id, password_hash)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING created_at, updated_at`,
-		u.ID, tenantID, u.Email, u.Name, u.FirstName, u.LastName, u.Phone, u.IsActive, u.RoleID).
+		u.ID, tenantID, u.Email, u.Name, u.FirstName, u.LastName, u.Phone, u.IsActive, u.RoleID, u.PasswordHash).
 		Scan(&u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -96,9 +96,9 @@ func (r *UserRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.Lis
 
 func (r *UserRepo) Update(ctx context.Context, tenantID uuid.UUID, u *domain.User) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET email=$1, name=$2, first_name=$3, last_name=$4, phone=$5, is_active=$6, role_id=$7, updated_at=NOW()
+		`UPDATE users SET email=$1, name=$2, first_name=$3, last_name=$4, phone=$5, is_active=$6, role_id=$7, password_hash=CASE WHEN $10 = '' THEN password_hash ELSE $10 END, updated_at=NOW()
 		 WHERE tenant_id = $8 AND id = $9`,
-		u.Email, u.Name, u.FirstName, u.LastName, u.Phone, u.IsActive, u.RoleID, tenantID, u.ID)
+		u.Email, u.Name, u.FirstName, u.LastName, u.Phone, u.IsActive, u.RoleID, tenantID, u.ID, u.PasswordHash)
 	if err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}

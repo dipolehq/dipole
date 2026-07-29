@@ -101,6 +101,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
+	authenticator.SetIssuer(issuer)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
@@ -259,6 +260,13 @@ func buildHTTPServer(
 	)).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
+	// Auth login route (public — no auth required)
+	if cfg.TenantID != "" {
+		tenantUUID, _ := uuid.Parse(cfg.TenantID)
+		loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), tenantUUID)
+		rest.NewAuthHandler(loginSvc).RegisterRoutes(mux)
+	}
+
 	// Edge API routes (always available — handles its own authentication)
 	edgeAPI.RegisterEdgeRoutes(mux)
 
@@ -304,7 +312,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || strings.HasPrefix(path, "/internal/") {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || strings.HasPrefix(path, "/internal/") {
 		return true
 	}
 	// Edge API handles its own authentication

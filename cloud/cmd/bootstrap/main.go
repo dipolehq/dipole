@@ -11,11 +11,14 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/google/uuid"
 )
 
 func main() {
 	name := flag.String("name", "Dev Tenant", "tenant display name")
 	subdomain := flag.String("subdomain", "dev", "tenant subdomain (unique)")
+	adminEmail := flag.String("email", "admin@dipole.dev", "admin user email")
+	adminPassword := flag.String("password", "admin123", "admin user password")
 	flag.Parse()
 
 	databaseURL := os.Getenv("DIPOLE_DATABASE_URL")
@@ -65,9 +68,42 @@ func main() {
 		tenantID = existing.ID.String()
 	}
 
+	// Create or update admin user with password
+	tID, _ := uuid.Parse(tenantID)
+	passwordHash, err := service.HashPassword(*adminPassword)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hash password: %v\n", err)
+		os.Exit(1)
+	}
+
+	existingUser, _ := repos.Users.GetByEmail(ctx, tID, *adminEmail)
+	if existingUser == nil {
+		user := &domain.User{
+			Email:        *adminEmail,
+			Name:         "Admin",
+			FirstName:    "Admin",
+			IsActive:     true,
+			PasswordHash: passwordHash,
+		}
+		if err := repos.Users.Create(ctx, tID, user); err != nil {
+			fmt.Fprintf(os.Stderr, "create admin user: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		existingUser.PasswordHash = passwordHash
+		if err := repos.Users.Update(ctx, tID, existingUser); err != nil {
+			fmt.Fprintf(os.Stderr, "update admin password: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	fmt.Println("Tenant provisioned.")
 	fmt.Printf("  subdomain: %s\n", *subdomain)
 	fmt.Printf("  tenantId:  %s\n", tenantID)
+	fmt.Println()
+	fmt.Println("Admin user:")
+	fmt.Printf("  email:    %s\n", *adminEmail)
+	fmt.Printf("  password: %s\n", *adminPassword)
 	fmt.Println()
 	fmt.Println("API token (shown once — store it now):")
 	fmt.Printf("  %s\n", token)

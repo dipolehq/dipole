@@ -222,17 +222,18 @@ type Role struct {
 }
 
 type User struct {
-	ID        uuid.UUID
-	TenantID  uuid.UUID
-	Email     string
-	Name      string
-	FirstName string
-	LastName  string
-	Phone     string
-	IsActive  bool
-	RoleID    *uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	Email        string
+	Name         string
+	FirstName    string
+	LastName     string
+	Phone        string
+	IsActive     bool
+	RoleID       *uuid.UUID
+	PasswordHash string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type IdentityProvider struct {
