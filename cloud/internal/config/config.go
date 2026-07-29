@@ -17,6 +17,7 @@ type Config struct {
 	TenantSubdomain string
 	GRPCTLSCert     string
 	GRPCTLSKey      string
+	GeoIPDBPath     string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -31,6 +32,7 @@ func LoadFromEnv() (*Config, error) {
 		TenantSubdomain: envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
 		GRPCTLSCert:     os.Getenv("DIPOLE_GRPC_TLS_CERT"),
 		GRPCTLSKey:      os.Getenv("DIPOLE_GRPC_TLS_KEY"),
+		GeoIPDBPath:     os.Getenv("DIPOLE_GEOIP_DB_PATH"),
 	}
 
 	if err := cfg.validate(); err != nil {

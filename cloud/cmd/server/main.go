@@ -79,14 +79,18 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
 
-	issuer, err := identity.NewIdentityIssuer("dipole", cfg.Region)
+	issuerSubdomain := cfg.TenantSubdomain
+	if issuerSubdomain == "" {
+		issuerSubdomain = "dipole"
+	}
+	issuer, err := identity.NewIdentityIssuer(issuerSubdomain, cfg.Region)
 	if err != nil {
 		return fmt.Errorf("init identity issuer: %w", err)
 	}
 
 	broker := credentials.NewCredentialBroker(encKey, issuer)
 	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
-	conditionEval := conditions.NewConditionEvaluator("")
+	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
 	authEmitter := events.NewAuthEventEmitter(repos.Events)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, authEmitter, logger)
 
@@ -167,7 +171,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		)
 	}
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -224,6 +228,7 @@ func buildHTTPServer(
 	mcpAuth *rest.MCPAuthServer,
 	mcpGateway *rest.MCPGatewayServer,
 	mcpDipole *rest.DipoleMCPServer,
+	issuer rest.OIDCIssuer,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -260,6 +265,10 @@ func buildHTTPServer(
 	// MCP routes (registered only when MCP is configured)
 	if mcpAuth != nil {
 		mcpAuth.RegisterRoutes(mux)
+	} else {
+		// When MCP is not configured, serve OIDC Discovery + JWKS unconditionally
+		// so external systems (AWS STS, Azure, GCP) can verify our issued tokens.
+		rest.NewOIDCHandler(issuer).RegisterRoutes(mux)
 	}
 	if mcpGateway != nil {
 		mcpGateway.RegisterGatewayRoutes(mux)
