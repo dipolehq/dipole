@@ -149,7 +149,7 @@ func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid
 		 JOIN client_workloads cw ON ap.client_workload_id = cw.id
 		 JOIN server_workloads sw ON ap.server_workload_id = sw.id
 		 WHERE ap.tenant_id = $1 AND ap.is_active = true
-		   AND (sw.host = $2 OR (sw.host LIKE '*%' AND $2 LIKE '%' || substring(sw.host from 2)))
+		   AND (sw.host = $2 OR (sw.host LIKE '*%' AND $2 LIKE '%' || replace(replace(substring(sw.host from 2), '%', '\%'), '_', '\_')))
 		   AND sw.port = $3
 		 ORDER BY ap.created_at ASC`,
 		tenantID, host, port)
