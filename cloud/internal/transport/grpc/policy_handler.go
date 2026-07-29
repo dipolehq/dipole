@@ -80,6 +80,12 @@ func (s *PolicyEvaluationServer) Evaluate(ctx context.Context, req *pb.PolicyEva
 	evidence := mapEvidence(req.Client)
 	target := &domain.ServerTarget{Host: req.Server.GetHost(), Port: int(req.Server.GetPort())}
 
+	if req.ResourceSetId != "" {
+		if id, err := uuid.Parse(req.ResourceSetId); err == nil {
+			target.ResourceSetID = &id
+		}
+	}
+
 	result, err := s.evaluator.Evaluate(ctx, tenantID, evidence, target)
 	if err != nil {
 		s.logger.Error("evaluation error", "tenant_id", tenantID, "error", err)

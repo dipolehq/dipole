@@ -32,7 +32,7 @@ func (m *mockPolicyRepo) Update(_ context.Context, _ uuid.UUID, _ *domain.Access
 	return nil
 }
 func (m *mockPolicyRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error { return nil }
-func (m *mockPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.AccessPolicyWithRelations, error) {
+func (m *mockPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int, _ *uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
 	return m.policies, m.err
 }
 func (m *mockPolicyRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {

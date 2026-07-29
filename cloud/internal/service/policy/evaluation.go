@@ -59,7 +59,7 @@ func NewPolicyEvaluationService(repo repository.AccessPolicyRepository, trust Tr
 }
 
 func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error) {
-	policies, err := s.repo.FindByServerTarget(ctx, tenantID, target.Host, target.Port)
+	policies, err := s.repo.FindByServerTarget(ctx, tenantID, target.Host, target.Port, target.ResourceSetID)
 	if err != nil {
 		return nil, err
 	}

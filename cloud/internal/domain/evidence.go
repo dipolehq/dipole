@@ -1,5 +1,7 @@
 package domain
 
+import "github.com/google/uuid"
+
 type ClientEvidence struct {
 	SourceIP            string
 	Hostname            string
@@ -67,6 +69,7 @@ type ProcessEvidence struct {
 }
 
 type ServerTarget struct {
-	Host string
-	Port int
+	Host          string
+	Port          int
+	ResourceSetID *uuid.UUID
 }

@@ -25,7 +25,7 @@ func NewMCPPolicyFinder(repo repository.AccessPolicyRepository) *MCPPolicyFinder
 }
 
 func (f *MCPPolicyFinder) FindMCPPolicy(ctx context.Context, tenantID uuid.UUID, redirectURI string, host string, port int) (*domain.AccessPolicyWithRelations, error) {
-	policies, err := f.repo.FindByServerTarget(ctx, tenantID, host, port)
+	policies, err := f.repo.FindByServerTarget(ctx, tenantID, host, port, nil)
 	if err != nil {
 		return nil, err
 	}

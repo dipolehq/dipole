@@ -65,7 +65,7 @@ type AccessPolicyRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessPolicy, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, policy *domain.AccessPolicy) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
-	FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int) ([]domain.AccessPolicyWithRelations, error)
+	FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int, resourceSetID *uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
 	FindByAppProtocol(ctx context.Context, tenantID uuid.UUID, protocol string) ([]domain.AccessPolicyWithRelations, error)
 }
 

@@ -37,7 +37,7 @@ func (m *mockAccessPolicyRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUI
 	panic("not used")
 }
 
-func (m *mockAccessPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.AccessPolicyWithRelations, error) {
+func (m *mockAccessPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int, _ *uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
 	return m.byTarget, m.byTargetErr
 }
 

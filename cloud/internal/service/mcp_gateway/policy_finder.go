@@ -39,7 +39,7 @@ func (f *DBRightSidePolicyFinder) FindGatewayPolicies(ctx context.Context, tenan
 }
 
 func (f *DBRightSidePolicyFinder) FindPolicyForServer(ctx context.Context, tenantID uuid.UUID, gatewayURL string, serverHost string, serverPort int) (*RightSidePolicy, error) {
-	policies, err := f.policyRepo.FindByServerTarget(ctx, tenantID, serverHost, serverPort)
+	policies, err := f.policyRepo.FindByServerTarget(ctx, tenantID, serverHost, serverPort, nil)
 	if err != nil {
 		return nil, err
 	}

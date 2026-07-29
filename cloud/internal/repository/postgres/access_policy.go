@@ -140,7 +140,13 @@ func (r *AccessPolicyRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uu
 	return nil
 }
 
-func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int) ([]domain.AccessPolicyWithRelations, error) {
+func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int, resourceSetID *uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	defaultRS := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+	rsFilter := defaultRS
+	if resourceSetID != nil {
+		rsFilter = *resourceSetID
+	}
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.is_active, ap.client_workload_id, ap.server_workload_id, ap.tags, ap.resource_set_id, ap.created_at, ap.updated_at,
 		        cw.id, cw.name, cw.identifiers, cw.tags,
@@ -151,8 +157,9 @@ func (r *AccessPolicyRepo) FindByServerTarget(ctx context.Context, tenantID uuid
 		 WHERE ap.tenant_id = $1 AND ap.is_active = true
 		   AND (sw.host = $2 OR (sw.host LIKE '*%' AND $2 LIKE '%' || replace(replace(substring(sw.host from 2), '%', '\%'), '_', '\_')))
 		   AND sw.port = $3
+		   AND (ap.resource_set_id IS NULL OR ap.resource_set_id = $4 OR ap.resource_set_id = $5)
 		 ORDER BY ap.created_at ASC`,
-		tenantID, host, port)
+		tenantID, host, port, rsFilter, defaultRS)
 	if err != nil {
 		return nil, fmt.Errorf("find policies by server target: %w", err)
 	}
