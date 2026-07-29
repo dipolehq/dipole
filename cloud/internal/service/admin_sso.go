@@ -12,8 +12,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -54,32 +52,43 @@ type SSOResult struct {
 	Created bool
 }
 
+// OIDCClient abstracts external HTTP calls for OIDC flows (discovery + token exchange).
+type OIDCClient interface {
+	FetchDiscovery(ctx context.Context, discoveryURL string) (*OIDCDiscoveryDoc, error)
+	ExchangeCode(ctx context.Context, tokenEndpoint string, clientID, clientSecret, code, redirectURI string) (*OIDCTokenResponse, error)
+}
+
+type OIDCDiscoveryDoc struct {
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+	JWKSURI               string `json:"jwks_uri"`
+	Issuer                string `json:"issuer"`
+}
+
+type OIDCTokenResponse struct {
+	IDToken     string `json:"id_token"`
+	AccessToken string `json:"access_token"`
+}
+
 type AdminSSOService struct {
-	userRepo       repository.UserRepository
-	httpClient     *http.Client
-	discoveryCache map[string]*cachedDiscovery
+	userRepo   repository.UserRepository
+	oidcClient OIDCClient
 }
 
-type cachedDiscovery struct {
-	doc       *oidcDiscovery
-	fetchedAt time.Time
-}
-
-func NewAdminSSOService(userRepo repository.UserRepository) *AdminSSOService {
+func NewAdminSSOService(userRepo repository.UserRepository, oidcClient OIDCClient) *AdminSSOService {
 	return &AdminSSOService{
-		userRepo:       userRepo,
-		httpClient:     &http.Client{Timeout: 10 * time.Second},
-		discoveryCache: make(map[string]*cachedDiscovery),
+		userRepo:   userRepo,
+		oidcClient: oidcClient,
 	}
 }
 
-func (s *AdminSSOService) BuildOIDCLoginURL(idp *IdentityProviderConfig, callbackURL, state string) (string, error) {
+func (s *AdminSSOService) BuildOIDCLoginURL(ctx context.Context, idp *IdentityProviderConfig, callbackURL, state string) (string, error) {
 	var cfg OIDCConfig
 	if err := json.Unmarshal(idp.Config, &cfg); err != nil {
 		return "", err
 	}
 
-	discovery, err := s.fetchOIDCDiscovery(cfg.DiscoveryURL)
+	discovery, err := s.oidcClient.FetchDiscovery(ctx, cfg.DiscoveryURL)
 	if err != nil {
 		return "", fmt.Errorf("OIDC discovery failed: %w", err)
 	}
@@ -103,12 +112,12 @@ func (s *AdminSSOService) HandleOIDCCallback(ctx context.Context, idp *IdentityP
 		return nil, err
 	}
 
-	discovery, err := s.fetchOIDCDiscovery(cfg.DiscoveryURL)
+	discovery, err := s.oidcClient.FetchDiscovery(ctx, cfg.DiscoveryURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery failed: %w", err)
 	}
 
-	tokenResp, err := s.exchangeOIDCCode(ctx, cfg, discovery.TokenEndpoint, code, callbackURL)
+	tokenResp, err := s.oidcClient.ExchangeCode(ctx, discovery.TokenEndpoint, cfg.ClientID, cfg.ClientSecret, code, callbackURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC code exchange failed: %w", err)
 	}
@@ -145,80 +154,13 @@ func (s *AdminSSOService) HandleOIDCCallback(ctx context.Context, idp *IdentityP
 	return &SSOResult{UserID: user.ID, Email: user.Email, Name: user.Name, Created: false}, nil
 }
 
-type oidcTokenResponse struct {
-	IDToken     string `json:"id_token"`
-	AccessToken string `json:"access_token"`
-}
-
-func (s *AdminSSOService) exchangeOIDCCode(ctx context.Context, cfg OIDCConfig, tokenEndpoint, code, redirectURI string) (*oidcTokenResponse, error) {
-	data := fmt.Sprintf("grant_type=authorization_code&code=%s&redirect_uri=%s&client_id=%s&client_secret=%s",
-		code, redirectURI, cfg.ClientID, cfg.ClientSecret)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tokenResp oidcTokenResponse
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return nil, err
-	}
-	return &tokenResp, nil
-}
-
-type oidcDiscovery struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	JWKSURI               string `json:"jwks_uri"`
-	Issuer                string `json:"issuer"`
-}
-
-func (s *AdminSSOService) fetchOIDCDiscovery(discoveryURL string) (*oidcDiscovery, error) {
-	if cached, ok := s.discoveryCache[discoveryURL]; ok {
-		if time.Since(cached.fetchedAt) < 1*time.Hour {
-			return cached.doc, nil
-		}
-	}
-
-	url := strings.TrimSuffix(discoveryURL, "/") + "/.well-known/openid-configuration"
-	resp, err := s.httpClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("discovery endpoint returned %d", resp.StatusCode)
-	}
-
-	var doc oidcDiscovery
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, err
-	}
-
-	s.discoveryCache[discoveryURL] = &cachedDiscovery{doc: &doc, fetchedAt: time.Now()}
-	return &doc, nil
-}
-
 func decodeIDToken(token string) (map[string]any, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format")
 	}
 
-	decoded, err := base64RawURLDecodeSSO(parts[1])
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, err
 	}
@@ -228,9 +170,4 @@ func decodeIDToken(token string) (map[string]any, error) {
 		return nil, err
 	}
 	return claims, nil
-}
-
-func base64RawURLDecodeSSO(s string) ([]byte, error) {
-	// base64url without padding
-	return base64.RawURLEncoding.DecodeString(s)
 }

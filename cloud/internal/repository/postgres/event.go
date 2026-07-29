@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -56,17 +57,23 @@ func (r *EventRepo) InsertAuditLog(ctx context.Context, tenantID uuid.UUID, l *d
 }
 
 func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error) {
+	where, args := buildAuthEventFilters(tenantID, opts)
+
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_authorization_events WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_authorization_events WHERE `+where, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count auth events: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	args = append(args, opts.PerPage, offset)
+	limitParam := fmt.Sprintf("$%d", len(args)-1)
+	offsetParam := fmt.Sprintf("$%d", len(args))
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id
-		 FROM access_authorization_events WHERE tenant_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query auth events: %w", err)
 	}
@@ -84,17 +91,23 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 }
 
 func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error) {
+	where, args := buildWorkloadEventFilters(tenantID, opts)
+
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workload_events WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workload_events WHERE `+where, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count workload events: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	args = append(args, opts.PerPage, offset)
+	limitParam := fmt.Sprintf("$%d", len(args)-1)
+	offsetParam := fmt.Sprintf("$%d", len(args))
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, connection_id, event_type, policy_id, client_workload_id, server_workload_id, outcome, severity, timestamp, payload, resource_set_id
-		 FROM workload_events WHERE tenant_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query workload events: %w", err)
 	}
@@ -112,17 +125,23 @@ func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID,
 }
 
 func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error) {
+	where, args := buildAuditLogFilters(tenantID, opts)
+
 	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE tenant_id = $1`, tenantID).Scan(&total)
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE `+where, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count audit logs: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	args = append(args, opts.PerPage, offset)
+	limitParam := fmt.Sprintf("$%d", len(args)-1)
+	offsetParam := fmt.Sprintf("$%d", len(args))
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, actor_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp
-		 FROM audit_logs WHERE tenant_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query audit logs: %w", err)
 	}
@@ -137,6 +156,103 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 		results = append(results, l)
 	}
 	return results, total, nil
+}
+
+func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+	args := []interface{}{tenantID}
+	clauses := []string{"tenant_id = $1"}
+	n := 1
+
+	if opts.Severity != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
+		args = append(args, opts.Severity)
+	}
+	if opts.EventType != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
+		args = append(args, opts.EventType)
+	}
+	if opts.StartDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
+		args = append(args, *opts.StartDate)
+	}
+	if opts.EndDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
+		args = append(args, *opts.EndDate)
+	}
+
+	return strings.Join(clauses, " AND "), args
+}
+
+func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+	args := []interface{}{tenantID}
+	clauses := []string{"tenant_id = $1"}
+	n := 1
+
+	if opts.Severity != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
+		args = append(args, opts.Severity)
+	}
+	if opts.EventType != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
+		args = append(args, opts.EventType)
+	}
+	if opts.StartDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
+		args = append(args, *opts.StartDate)
+	}
+	if opts.EndDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
+		args = append(args, *opts.EndDate)
+	}
+	if len(opts.ClientWorkloadIDs) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("client_workload_id::text = ANY($%d)", n))
+		args = append(args, opts.ClientWorkloadIDs)
+	}
+	if len(opts.ServerWorkloadIDs) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("server_workload_id::text = ANY($%d)", n))
+		args = append(args, opts.ServerWorkloadIDs)
+	}
+
+	return strings.Join(clauses, " AND "), args
+}
+
+func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+	args := []interface{}{tenantID}
+	clauses := []string{"tenant_id = $1"}
+	n := 1
+
+	if opts.Severity != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
+		args = append(args, opts.Severity)
+	}
+	if opts.EventType != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("category = $%d", n))
+		args = append(args, opts.EventType)
+	}
+	if opts.StartDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
+		args = append(args, *opts.StartDate)
+	}
+	if opts.EndDate != nil {
+		n++
+		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
+		args = append(args, *opts.EndDate)
+	}
+
+	return strings.Join(clauses, " AND "), args
 }
 
 func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID) (*domain.DashboardEventData, error) {
