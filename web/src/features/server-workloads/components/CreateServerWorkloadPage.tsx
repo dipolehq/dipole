@@ -7,6 +7,7 @@ import { EMPTY_SERVER_WORKLOAD } from '@/shared/components/forms/types'
 import type { ServerWorkloadFormValues } from '@/shared/components/forms/types'
 import { useCreateServerWorkload } from '@/features/server-workloads/hooks/useServerWorkloads'
 import { apiErrorMessage } from '@/features/server-workloads/api/serverWorkloadsApi'
+import { serverWorkloadSchema } from '@/shared/lib/validation'
 
 export function CreateServerWorkloadPage() {
   const navigate = useNavigate()
@@ -17,6 +18,11 @@ export function CreateServerWorkloadPage() {
 
   async function handleSave() {
     setError(null)
+    const result = serverWorkloadSchema.safeParse(values)
+    if (!result.success) {
+      setError(result.error.errors[0]?.message ?? 'Please fill in all required fields')
+      return
+    }
     try {
       await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
       navigate('/server-workloads')

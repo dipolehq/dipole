@@ -7,6 +7,7 @@ import { EMPTY_CLIENT_WORKLOAD } from '@/shared/components/forms/types'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 import { useCreateClientWorkload } from '@/features/client-workloads/hooks/useClientWorkloads'
 import { apiErrorMessage } from '@/features/client-workloads/api/clientWorkloadsApi'
+import { clientWorkloadSchema } from '@/shared/lib/validation'
 
 export function CreateClientWorkloadPage() {
   const navigate = useNavigate()
@@ -17,6 +18,11 @@ export function CreateClientWorkloadPage() {
 
   async function handleSave() {
     setError(null)
+    const result = clientWorkloadSchema.safeParse(values)
+    if (!result.success) {
+      setError(result.error.errors[0]?.message ?? 'Please fill in all required fields')
+      return
+    }
     try {
       await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
       navigate('/client-workloads')

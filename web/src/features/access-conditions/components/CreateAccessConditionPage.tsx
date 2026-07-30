@@ -7,6 +7,7 @@ import { EMPTY_ACCESS_CONDITION } from '@/shared/components/forms/types'
 import type { AccessConditionFormValues } from '@/shared/components/forms/types'
 import { useCreateAccessCondition } from '@/features/access-conditions/hooks/useAccessConditions'
 import { apiErrorMessage } from '@/features/access-conditions/api/accessConditionsApi'
+import { accessConditionSchema } from '@/shared/lib/validation'
 
 export function CreateAccessConditionPage() {
   const navigate = useNavigate()
@@ -17,6 +18,11 @@ export function CreateAccessConditionPage() {
 
   async function handleSave() {
     setError(null)
+    const result = accessConditionSchema.safeParse(values)
+    if (!result.success) {
+      setError(result.error.errors[0]?.message ?? 'Please fill in all required fields')
+      return
+    }
     try {
       await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
       navigate('/access-conditions')

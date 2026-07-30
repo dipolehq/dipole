@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Controller, FormProvider, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { PolicyDetailDetailsTab } from '@/features/policies/components/tabs/details/PolicyDetailDetailsTab'
 import { DetailsTab } from '@/features/policies/components/tabs/details/DetailsTab'
@@ -10,6 +11,7 @@ import { TrustProviderTab } from '@/features/policies/components/tabs/trust-prov
 import { AccessConditionTab } from '@/features/policies/components/tabs/access-conditions/AccessConditionTab'
 import { CredentialProviderTab } from '@/features/policies/components/tabs/credential-provider/CredentialProviderTab'
 import { EMPTY_POLICY_FORM_VALUES } from '@/features/policies/utils/defaults'
+import { policyFormSchema } from '@/shared/lib/validation'
 import type {
   PolicyFormMode,
   PolicyFormValues,
@@ -55,6 +57,7 @@ export function PolicyForm({
 
   const form = useForm<PolicyFormValues>({
     defaultValues: initialValues ?? EMPTY_POLICY_FORM_VALUES,
+    resolver: zodResolver(policyFormSchema),
   })
 
   const { control, handleSubmit, reset } = form

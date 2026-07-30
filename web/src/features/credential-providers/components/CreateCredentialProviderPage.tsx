@@ -7,6 +7,7 @@ import { EMPTY_CREDENTIAL_PROVIDER } from '@/shared/components/forms/types'
 import type { CredentialProviderFormValues } from '@/shared/components/forms/types'
 import { useCreateCredentialProvider } from '@/features/credential-providers/hooks/useCredentialProviders'
 import { apiErrorMessage } from '@/features/credential-providers/api/credentialProvidersApi'
+import { credentialProviderSchema } from '@/shared/lib/validation'
 
 export function CreateCredentialProviderPage() {
   const navigate = useNavigate()
@@ -19,6 +20,11 @@ export function CreateCredentialProviderPage() {
 
   async function handleSave() {
     setError(null)
+    const result = credentialProviderSchema.safeParse(values)
+    if (!result.success) {
+      setError(result.error.errors[0]?.message ?? 'Please fill in all required fields')
+      return
+    }
     try {
       await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
       navigate('/credential-providers')

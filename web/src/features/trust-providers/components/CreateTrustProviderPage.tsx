@@ -7,6 +7,7 @@ import { EMPTY_TRUST_PROVIDER } from '@/shared/components/forms/types'
 import type { TrustProviderFormValues } from '@/shared/components/forms/types'
 import { useCreateTrustProvider } from '@/features/trust-providers/hooks/useTrustProviders'
 import { apiErrorMessage } from '@/features/trust-providers/api/trustProvidersApi'
+import { trustProviderSchema } from '@/shared/lib/validation'
 
 export function CreateTrustProviderPage() {
   const navigate = useNavigate()
@@ -17,6 +18,11 @@ export function CreateTrustProviderPage() {
 
   async function handleSave() {
     setError(null)
+    const result = trustProviderSchema.safeParse(values)
+    if (!result.success) {
+      setError(result.error.errors[0]?.message ?? 'Please fill in all required fields')
+      return
+    }
     try {
       await createMutation.mutateAsync({ values, isActive: status !== 'inactive' })
       navigate('/trust-providers')
