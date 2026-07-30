@@ -54,14 +54,16 @@ type MCPGatewayServer struct {
 	auth           GatewayAuthenticator
 	methodHandler  GatewayMethodHandler
 	consentHandler ConsentCallbackHandler
+	tracingBus     *gw.TracingBus
 	logger         *slog.Logger
 }
 
-func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, consentHandler ConsentCallbackHandler, logger *slog.Logger) *MCPGatewayServer {
+func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, consentHandler ConsentCallbackHandler, logger *slog.Logger, tracingBus *gw.TracingBus) *MCPGatewayServer {
 	return &MCPGatewayServer{
 		auth:           auth,
 		methodHandler:  handler,
 		consentHandler: consentHandler,
+		tracingBus:     tracingBus,
 		logger:         logger,
 	}
 }
@@ -78,6 +80,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	token := extractBearerToken(r)
 	if token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer`)
+		s.emitTracing(r, "", "", "Error", "Missing token")
 		writeGatewayError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
 		return
 	}
@@ -85,9 +88,12 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	authResult, err := s.auth.Authenticate(token)
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		s.emitTracing(r, "", "", "Error", "Invalid token: "+err.Error())
 		writeGatewayError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
+
+	s.emitTracing(r, authResult.UserID, "", "Info", "Authenticated")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -192,3 +198,30 @@ const consentSuccessHTML = `<!DOCTYPE html>
 <html><head><title>Authorization Successful</title></head>
 <body><h1>Authorization successful</h1><p>You can close this window.</p></body>
 </html>`
+
+func (s *MCPGatewayServer) emitTracing(r *http.Request, userID string, resource string, severity string, detail string) {
+	if s.tracingBus == nil {
+		return
+	}
+
+	clientIP := r.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+
+	entry := gw.TracingEntry{
+		ClientIP:       clientIP,
+		Severity:       severity,
+		RedirectURI:    r.Header.Get("Origin"),
+		ResourceServer: resource,
+		AccessPolicy:   gw.TracingPolicy{Name: detail, Status: severity},
+		ClientWorkload: gw.TracingWL{Name: userID, Status: "Identified"},
+		ServerWorkload: gw.TracingWL{Name: resource, Status: "Unknown"},
+	}
+
+	if userID == "" {
+		entry.ClientWorkload = gw.TracingWL{Name: "Unknown", Status: "Unknown"}
+	}
+
+	s.tracingBus.Emit(entry)
+}

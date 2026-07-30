@@ -79,6 +79,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
 
+	tracingBus := mcpgw.NewTracingBus()
+
 	issuerSubdomain := cfg.TenantSubdomain
 	if issuerSubdomain == "" {
 		issuerSubdomain = "dipole"
@@ -163,7 +165,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 			Domain:          "dipolehq.com",
 		}
 		mcpAuthServer = rest.NewMCPAuthServer(issuer, mcpDCR, mcpAuthorizeService, mcpTokenService, mcpIdPCallback, mcpAuthConfig, logger)
-		mcpGatewayServer = rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger)
+		mcpGatewayServer = rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus)
 		mcpDipoleServer = rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
 		logger.Info("MCP services initialized",
@@ -172,7 +174,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		)
 	}
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer)
+	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer, tracingBus)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -230,6 +232,7 @@ func buildHTTPServer(
 	mcpGateway *rest.MCPGatewayServer,
 	mcpDipole *rest.DipoleMCPServer,
 	issuer rest.OIDCIssuer,
+	tracingBus *mcpgw.TracingBus,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -255,6 +258,7 @@ func buildHTTPServer(
 	rest.NewCredentialProviderHandler(credentialProviderSvc).RegisterRoutes(mux)
 	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
+	rest.NewMCPTracingHandler(tracingBus).RegisterRoutes(mux)
 	rest.NewDashboardHandler(service.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,

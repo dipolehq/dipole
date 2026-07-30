@@ -1,4 +1,6 @@
 import { Cpu, RefreshCw } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiClient } from '@/shared/lib/api-client'
 
 type McpPolicyStatus = 'Active' | 'Inactive' | 'Unknown'
 
@@ -13,9 +15,6 @@ interface McpAuthorizationTracingEntry {
   serverWorkload: { name: string; status: 'Identified' | 'Unknown' }
   severity: 'Info' | 'Warning' | 'Error'
 }
-
-// Will be wired to real API later
-const mcpAuthorizationTracingData: McpAuthorizationTracingEntry[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)
@@ -43,8 +42,25 @@ interface McpAuthorizationTracingTableProps {
   severity: string
 }
 
+async function fetchTracingEntries(): Promise<McpAuthorizationTracingEntry[]> {
+  const res = await apiClient.get<{ entries: McpAuthorizationTracingEntry[] }>('/events/mcp-tracing')
+  return res.entries ?? []
+}
+
 export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAuthorizationTracingTableProps) {
-  const filtered = mcpAuthorizationTracingData.filter((entry) => {
+  const qc = useQueryClient()
+
+  const { data: entries = [] } = useQuery({
+    queryKey: ['mcp-tracing'],
+    queryFn: fetchTracingEntries,
+    refetchInterval: 3000,
+  })
+
+  function handleRefresh() {
+    qc.invalidateQueries({ queryKey: ['mcp-tracing'] })
+  }
+
+  const filtered = entries.filter((entry) => {
     if (severity && entry.severity.toLowerCase() !== severity) return false
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
@@ -75,9 +91,12 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none h-[39.16px]">
-            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
-              <RefreshCw size={15} strokeWidth={2.5} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+                <RefreshCw size={15} strokeWidth={2.5} />
+              </button>
+              <span className="w-2 h-2 rounded-full bg-green-500" title="Live (polling every 3s)" />
+            </div>
           </th>
           <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Timestamp</th>
           <th className="px-4 py-2.5 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client IP</th>
@@ -91,7 +110,7 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
         {filtered.length === 0 && (
           <tr>
             <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">
-              No MCP authorization tracing entries found.
+              Listening for MCP authorization requests…
             </td>
           </tr>
         )}
