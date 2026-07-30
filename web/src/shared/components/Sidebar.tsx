@@ -66,6 +66,17 @@ const NAV_SECTIONS: NavSection[] = [
 export function Sidebar() {
   const navigate = useNavigate()
 
+  function getUserDisplayName(): string {
+    try {
+      const raw = sessionStorage.getItem('dipole_user')
+      if (raw) {
+        const user = JSON.parse(raw) as { name?: string; email?: string }
+        return user.name || user.email || 'User'
+      }
+    } catch { /* ignore */ }
+    return 'User'
+  }
+
   return (
     <aside className="fixed left-0 top-0 h-screen w-51 bg-[#28282B] flex flex-col">
       <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-white/10 select-none pointer-events-none">
@@ -115,7 +126,7 @@ export function Sidebar() {
       <div className="px-3 border-t border-white/10 h-[45px] flex items-center relative group">
         <button className="flex items-center gap-2.5 w-full px-3 rounded text-sm text-gray-300">
           <User size={16} className="shrink-0" />
-          <span>John Doe</span>
+          <span>{getUserDisplayName()}</span>
         </button>
 
         <div className="absolute bottom-full left-0 right-0 px-3 pb-2 hidden group-hover:block z-50">

@@ -48,9 +48,9 @@ func (r *UserRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID
 func (r *UserRepo) GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.User, error) {
 	u := &domain.User{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, email, name, first_name, last_name, phone, is_active, role_id, created_at, updated_at
+		`SELECT id, tenant_id, email, name, first_name, last_name, phone, is_active, role_id, password_hash, created_at, updated_at
 		 FROM users WHERE tenant_id = $1 AND email = $2`, tenantID, email).
-		Scan(&u.ID, &u.TenantID, &u.Email, &u.Name, &u.FirstName, &u.LastName, &u.Phone, &u.IsActive, &u.RoleID, &u.CreatedAt, &u.UpdatedAt)
+		Scan(&u.ID, &u.TenantID, &u.Email, &u.Name, &u.FirstName, &u.LastName, &u.Phone, &u.IsActive, &u.RoleID, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}

@@ -262,10 +262,21 @@ func buildHTTPServer(
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	// Auth login route (public — no auth required)
-	if cfg.TenantID != "" {
-		tenantUUID, _ := uuid.Parse(cfg.TenantID)
-		loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), tenantUUID)
-		rest.NewAuthHandler(loginSvc).RegisterRoutes(mux)
+	{
+		var loginTenantID uuid.UUID
+		if cfg.TenantID != "" {
+			loginTenantID, _ = uuid.Parse(cfg.TenantID)
+		} else {
+			// Single-tenant mode: resolve the first tenant from the database
+			tenants, _, _ := repos.Tenants.List(context.Background(), domain.ListOptions{Page: 1, PerPage: 1})
+			if len(tenants) > 0 {
+				loginTenantID = tenants[0].ID
+			}
+		}
+		if loginTenantID != uuid.Nil {
+			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
+			rest.NewAuthHandler(loginSvc).RegisterRoutes(mux)
+		}
 	}
 
 	// Edge API routes (always available — handles its own authentication)
