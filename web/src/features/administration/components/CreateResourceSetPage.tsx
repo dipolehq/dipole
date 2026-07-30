@@ -17,14 +17,14 @@ export function CreateResourceSetPage() {
     setError(null)
     try {
       await createMutation.mutateAsync({ name: displayName, description })
-      navigate('/administration')
+      navigate('/administration?tab=resource_sets')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create resource set'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration')
+    navigate('/administration?tab=resource_sets')
   }
 
   return (

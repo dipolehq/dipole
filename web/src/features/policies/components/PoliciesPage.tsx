@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
@@ -11,9 +11,21 @@ const PAGE_SIZE_OPTIONS = [15, 25, 50] as const
 
 export function PoliciesPage() {
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [params, setParams] = useSearchParams()
+
+  const [searchQuery, setSearchQuery] = useState(params.get('search') || '')
+  const [pageSize, setPageSizeState] = useState<number>(Number(params.get('perPage')) || PAGE_SIZE_OPTIONS[0])
+  const [currentPage, setCurrentPageState] = useState(Number(params.get('page')) || 1)
+
+  function setCurrentPage(p: number) {
+    setCurrentPageState(p)
+    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
+  }
+  function setPageSize(pp: number) {
+    setPageSizeState(pp)
+    setCurrentPageState(1)
+    setParams((prev) => { const next = new URLSearchParams(prev); next.set('perPage', String(pp)); next.set('page', '1'); return next }, { replace: true })
+  }
 
   const { data, isLoading } = usePolicies(currentPage, pageSize, searchQuery)
   const items = data?.items ?? []
@@ -79,7 +91,8 @@ export function PoliciesPage() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
-                setCurrentPage(1)
+                setCurrentPageState(1)
+                setParams((prev) => { const next = new URLSearchParams(prev); if (e.target.value) next.set('search', e.target.value); else next.delete('search'); next.set('page', '1'); return next }, { replace: true })
               }}
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
@@ -171,7 +184,7 @@ export function PoliciesPage() {
 
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
+              <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v) }} />
               <span>
                 Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
                 {Math.min(currentPage * pageSize, total)} of {total} Results
@@ -179,7 +192,7 @@ export function PoliciesPage() {
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
               >
@@ -195,7 +208,7 @@ export function PoliciesPage() {
                 </button>
               ))}
               <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
               >

@@ -72,14 +72,14 @@ export function CreateLogStreamPage() {
         destinationType,
         config,
       })
-      navigate('/administration')
+      navigate('/administration?tab=log_streams')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create log stream'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration')
+    navigate('/administration?tab=log_streams')
   }
 
   return (

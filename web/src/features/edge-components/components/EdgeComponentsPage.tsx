@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search, FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { AgentControllersTable } from '@/features/edge-components/components/AgentControllersTable'
@@ -19,11 +19,17 @@ type EdgeSection = (typeof EDGE_SECTIONS)[number]['value']
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 
 export function EdgeComponentsPage() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSection, setSelectedSection] = useState<EdgeSection>('agent_controllers')
+  const [params, setParams] = useSearchParams()
+
+  const [searchQuery, setSearchQuery] = useState(params.get('search') || '')
+  const [selectedSection, setSelectedSectionState] = useState<EdgeSection>((params.get('tab') as EdgeSection) || 'agent_controllers')
   const [sectionOpen, setSectionOpen] = useState(false)
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSizeState] = useState<number>(Number(params.get('perPage')) || PAGE_SIZE_OPTIONS[0])
+  const [currentPage, setCurrentPageState] = useState(Number(params.get('page')) || 1)
+
+  function setSelectedSection(v: EdgeSection) { setSelectedSectionState(v); setCurrentPageState(1); setParams((prev) => { const next = new URLSearchParams(prev); next.set('tab', v); next.set('page', '1'); return next }, { replace: true }) }
+  function setCurrentPage(p: number) { setCurrentPageState(p); setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true }) }
+  function setPageSize(pp: number) { setPageSizeState(pp); setCurrentPageState(1); setParams((prev) => { const next = new URLSearchParams(prev); next.set('perPage', String(pp)); next.set('page', '1'); return next }, { replace: true }) }
 
   const { data, isLoading } = useAgentControllers(currentPage, pageSize, searchQuery)
   const items = data?.items ?? []
@@ -45,7 +51,7 @@ export function EdgeComponentsPage() {
               type="text"
               placeholder="Search"
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPageState(1); setParams((prev) => { const next = new URLSearchParams(prev); if (e.target.value) next.set('search', e.target.value); else next.delete('search'); next.set('page', '1'); return next }, { replace: true }) }}
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
@@ -84,15 +90,15 @@ export function EdgeComponentsPage() {
       {showPagination && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
           <div className="flex items-center gap-2 text-xs text-gray-600">
-            <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
+            <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v) }} />
             <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">←</button>
+            <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">←</button>
             {Array.from({ length: totalPages }, (_, i) => (
               <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium transition-colors ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
             ))}
-            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">→</button>
+            <button onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">→</button>
           </div>
         </div>
       )}

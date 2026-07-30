@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { Search, FileText, Filter } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Dropdown } from '@/shared/components/Dropdown'
@@ -15,21 +16,67 @@ import { LOG_TYPES, SEVERITY_OPTIONS, EVENT_TYPE_OPTIONS, REPORTING_PAGE_SIZE_OP
 import type { LogType } from '@/shared/constants/reporting'
 
 export function ReportingPage() {
-  const [selectedLogType, setSelectedLogType] = useState<LogType>('audit_logs')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [pageSize, setPageSize] = useState<number>(REPORTING_PAGE_SIZE_OPTIONS[0])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [params, setParams] = useSearchParams()
 
-  // Filter state
+  const selectedLogType = (params.get('logType') || 'audit_logs') as LogType
+  const searchQuery = params.get('search') || ''
+  const pageSize = Number(params.get('perPage')) || REPORTING_PAGE_SIZE_OPTIONS[0]
+  const currentPage = Number(params.get('page')) || 1
+  const timeRange = params.get('timeRange') || '1d'
+  const severity = params.get('severity') || ''
+  const eventType = params.get('eventType') || ''
+  const category = params.get('category') || ''
+  const complianceStatus = params.get('complianceStatus') || ''
+  const resourceSet = params.get('resourceSet') || ''
+  const appProtocol = params.get('appProtocol') || ''
+  const mcpUser = params.get('mcpUser') || ''
+
+  function setParam(key: string, value: string) {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value) next.set(key, value)
+      else next.delete(key)
+      return next
+    }, { replace: true })
+  }
+
+  function setSelectedLogType(v: LogType) {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('logType', v)
+      next.set('page', '1')
+      return next
+    }, { replace: true })
+  }
+  function setSearchQuery(v: string) {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (v) next.set('search', v)
+      else next.delete('search')
+      next.set('page', '1')
+      return next
+    }, { replace: true })
+  }
+  function setPageSize(v: number) {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('perPage', String(v))
+      next.set('page', '1')
+      return next
+    }, { replace: true })
+  }
+  function setCurrentPage(v: number) { setParam('page', String(v)) }
+  function setTimeRange(v: string) { setParam('timeRange', v) }
+  function setSeverity(v: string) { setParam('severity', v) }
+  function setEventType(v: string) { setParam('eventType', v) }
+  function setCategory(v: string) { setParam('category', v) }
+  function setComplianceStatus(v: string) { setParam('complianceStatus', v) }
+  function setResourceSet(v: string) { setParam('resourceSet', v) }
+  function setAppProtocol(v: string) { setParam('appProtocol', v) }
+  function setMcpUser(v: string) { setParam('mcpUser', v) }
+
+  // Filter state (UI only — whether the dropdown is open)
   const [showFilter, setShowFilter] = useState(false)
-  const [timeRange, setTimeRange] = useState('1d')
-  const [severity, setSeverity] = useState('')
-  const [eventType, setEventType] = useState('')
-  const [category, setCategory] = useState('')
-  const [complianceStatus, setComplianceStatus] = useState('')
-  const [resourceSet, setResourceSet] = useState('')
-  const [appProtocol, setAppProtocol] = useState('')
-  const [mcpUser, setMcpUser] = useState('')
 
   void currentPage
 
@@ -75,7 +122,7 @@ export function ReportingPage() {
               type="text"
               placeholder="Search"
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+              onChange={(e) => { setSearchQuery(e.target.value) }}
               className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
             />
           </div>
@@ -154,7 +201,7 @@ export function ReportingPage() {
           </div>
           <LogTypeSelector
             value={selectedLogType}
-            onChange={(v) => { setSelectedLogType(v); setCurrentPage(1) }}
+            onChange={(v) => { setSelectedLogType(v) }}
           />
         </div>
       </div>
@@ -181,7 +228,7 @@ export function ReportingPage() {
       {/* Pagination footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={REPORTING_PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v); setCurrentPage(1) }} />
+          <PageSizeSelect value={pageSize} options={REPORTING_PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v) }} />
           <span>Showing 0 - 0 of 0 Results</span>
         </div>
         <div className="flex items-center gap-1">

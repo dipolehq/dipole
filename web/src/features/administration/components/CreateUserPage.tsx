@@ -54,14 +54,14 @@ export function CreateUserPage() {
         isActive: status === 'active',
         roleId: selectedRole || undefined,
       })
-      navigate('/administration')
+      navigate('/administration?tab=users')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create user'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration')
+    navigate('/administration?tab=users')
   }
 
   return (

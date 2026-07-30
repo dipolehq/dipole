@@ -81,14 +81,14 @@ export function CreateRolePage() {
         isActive: status === 'active',
         permissions: permissions as Record<string, string>,
       })
-      navigate('/administration')
+      navigate('/administration?tab=roles')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create role'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration')
+    navigate('/administration?tab=roles')
   }
 
   return (

@@ -29,11 +29,18 @@ const ResourceSetContext = createContext<ResourceSetContextValue>({
 })
 
 export function ResourceSetProvider({ children }: { children: ReactNode }) {
-  const [current, setCurrent] = useState<ResourceSet>(DEFAULT_RESOURCE_SET)
+  const [current, setCurrent] = useState<ResourceSet>(() => {
+    try {
+      const saved = sessionStorage.getItem('dipole_resource_set')
+      if (saved) return JSON.parse(saved) as ResourceSet
+    } catch { /* ignore */ }
+    return DEFAULT_RESOURCE_SET
+  })
 
-  // Sync the active Resource Set to the API client module whenever selection changes.
+  // Sync the active Resource Set to the API client module and sessionStorage.
   useEffect(() => {
     setActiveResourceSet(current.id)
+    sessionStorage.setItem('dipole_resource_set', JSON.stringify(current))
   }, [current.id])
 
   const { data, isLoading } = useQuery({

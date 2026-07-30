@@ -85,7 +85,7 @@ export function UserDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">User not found.</p>
-          <button onClick={() => navigate('/administration')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration?tab=users')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -127,7 +127,7 @@ export function UserDetailPage() {
       }
       setIsEditing(false)
     } else {
-      navigate('/administration')
+      navigate('/administration?tab=users')
     }
   }
 
@@ -135,7 +135,7 @@ export function UserDetailPage() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration')
+      navigate('/administration?tab=users')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete user'))
     }
