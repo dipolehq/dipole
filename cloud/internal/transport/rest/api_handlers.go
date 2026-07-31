@@ -12,6 +12,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type signOnPolicyStore interface {
@@ -121,6 +122,7 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
 	mux.HandleFunc("PUT /api/v1/profile", h.UpdateProfile)
 	mux.HandleFunc("POST /api/v1/profile/token", h.GenerateAccessToken)
+	mux.HandleFunc("POST /api/v1/profile/password", h.UpdatePassword)
 
 	mux.HandleFunc("GET /api/v1/log-streams", h.ListLogStreams)
 	mux.HandleFunc("POST /api/v1/log-streams", h.CreateLogStream)
@@ -1458,4 +1460,54 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, map[string]any{
 		"token": token,
 	})
+}
+
+func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	email := UserEmailFromContext(r.Context())
+
+	var req struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		respondBadRequest(w, "invalid request body")
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		respondBadRequest(w, "currentPassword and newPassword are required")
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		respondBadRequest(w, "new password must be at least 6 characters")
+		return
+	}
+
+	user, err := h.users.GetByEmail(r.Context(), tenantID, email)
+	if err != nil || user == nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "user not found")
+		return
+	}
+
+	// Verify current password.
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		respondBadRequest(w, "current password is incorrect")
+		return
+	}
+
+	// Hash and update.
+	newHash, err := service.HashPassword(req.NewPassword)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to hash password")
+		return
+	}
+
+	user.PasswordHash = newHash
+	if err := h.users.Update(r.Context(), tenantID, user); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to update password")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully."})
 }

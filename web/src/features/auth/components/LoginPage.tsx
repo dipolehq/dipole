@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { CloudCanvas } from '@/features/auth/components/CloudCanvas'
+import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 
 export function LoginPage() {
@@ -34,7 +33,6 @@ export function LoginPage() {
   if (!showForm) {
     return (
       <div className="h-screen w-screen bg-[#050505] overflow-hidden">
-        <CloudCanvas />
         <div className="fixed inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
           <div className="flex items-center gap-6 mb-6 -mt-16 select-none">
             <img src="/dipole_logo.svg" alt="Dipole" className="h-32 w-32" draggable={false} />
@@ -96,6 +94,13 @@ export function LoginPage() {
           >
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
+
+          <Link
+            to="/forgot-password"
+            className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors"
+          >
+            Forgot password?
+          </Link>
         </form>
       </div>
     </div>

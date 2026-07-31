@@ -208,19 +208,7 @@ function ProfileContent({
             )}
 
             {activeTab === 'password' && (
-              <div className="space-y-5">
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Change Password</h4>
-                  <div className="space-y-4">
-                    <FloatingInput label="Current Password" value="" onChange={() => {}} type="password" />
-                    <FloatingInput label="New Password" value="" onChange={() => {}} type="password" />
-                    <FloatingInput label="Confirm New Password" value="" onChange={() => {}} type="password" />
-                    <button type="button" className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors">
-                      Update Password
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <PasswordChangeForm />
             )}
 
             {activeTab === 'mfa' && (
@@ -313,6 +301,62 @@ function CopyField({ label, value, onCopy }: { label: string; value: string; onC
     <div className="relative">
       <FloatingInput label={label} value={value} disabled />
       <button type="button" onClick={() => onCopy(value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><Copy size={14} /></button>
+    </div>
+  )
+}
+
+function PasswordChangeForm() {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit() {
+    setError('')
+    setSuccess('')
+
+    if (!currentPassword) { setError('Current password is required.'); return }
+    if (newPassword.length < 6) { setError('New password must be at least 6 characters.'); return }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
+
+    setLoading(true)
+    try {
+      await apiClient.post('/profile/password', { currentPassword, newPassword })
+      sessionStorage.removeItem('dipole_token')
+      sessionStorage.removeItem('dipole_user')
+      window.location.href = '/login'
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update password.'
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="border border-border rounded-lg p-5">
+        <h4 className="text-sm font-semibold text-gray-800 mb-4">Change Password</h4>
+        <div className="space-y-4">
+          <FloatingInput label="Current Password" value={currentPassword} onChange={setCurrentPassword} type="password" />
+          <FloatingInput label="New Password" value={newPassword} onChange={setNewPassword} type="password" />
+          <FloatingInput label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} type="password" />
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          {success && <p className="text-xs text-green-600">{success}</p>}
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Updating…' : 'Update Password'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

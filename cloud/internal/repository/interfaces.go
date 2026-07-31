@@ -147,3 +147,10 @@ type RegistrationTokenRepository interface {
 	Store(ctx context.Context, tenantID uuid.UUID, tokenHash string, controllerID uuid.UUID, expiresAt time.Time) error
 	Consume(ctx context.Context, tenantID uuid.UUID, tokenHash string) (*domain.RegistrationToken, error)
 }
+
+type PasswordResetTokenRepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, token *domain.PasswordResetToken) error
+	GetByHash(ctx context.Context, tokenHash string) (*domain.PasswordResetToken, error)
+	MarkUsed(ctx context.Context, id uuid.UUID) error
+	DeleteExpiredForUser(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID) error
+}

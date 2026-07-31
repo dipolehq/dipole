@@ -285,7 +285,8 @@ func buildHTTPServer(
 		loginTenantID, _ := uuid.Parse(cfg.TenantID)
 		if loginTenantID != uuid.Nil {
 			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
-			rest.NewAuthHandler(loginSvc).RegisterRoutes(mux)
+			passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens, loginTenantID)
+			rest.NewAuthHandler(loginSvc, passwordResetSvc).RegisterRoutes(mux)
 		}
 	}
 
@@ -334,7 +335,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || path == "/api/v1/auth/login" || strings.HasPrefix(path, "/internal/") {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || strings.HasPrefix(path, "/internal/") {
 		return true
 	}
 	// Edge API handles its own authentication

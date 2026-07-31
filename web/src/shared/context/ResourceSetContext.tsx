@@ -43,6 +43,8 @@ export function ResourceSetProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem('dipole_resource_set', JSON.stringify(current))
   }, [current.id])
 
+  const hasToken = !!sessionStorage.getItem('dipole_token')
+
   const { data, isLoading } = useQuery({
     queryKey: ['resource-sets', 'global'],
     queryFn: async () => {
@@ -50,6 +52,7 @@ export function ResourceSetProvider({ children }: { children: ReactNode }) {
       return res.items
     },
     staleTime: 60_000,
+    enabled: hasToken,
   })
 
   const all = data ?? [DEFAULT_RESOURCE_SET]

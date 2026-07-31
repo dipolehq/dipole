@@ -45,6 +45,7 @@ type Repositories struct {
 	MCPClients             *MCPClientRepo
 	MCPUserCredentials     *MCPUserCredentialRepo
 	RegistrationTokens     *RegistrationTokenRepo
+	PasswordResetTokens    *PasswordResetTokenRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -91,6 +92,7 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		MCPClients:             NewMCPClientRepo(pool),
 		MCPUserCredentials:     NewMCPUserCredentialRepo(pool, nil),
 		RegistrationTokens:     &RegistrationTokenRepo{pool: pool},
+		PasswordResetTokens:    &PasswordResetTokenRepo{pool: pool},
 	}
 }
 
