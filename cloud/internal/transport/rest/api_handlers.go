@@ -40,6 +40,7 @@ type ControllerCreator interface {
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	agentProxies           repository.AgentProxyRepository
+	apiTokens              repository.APITokenRepository
 	users                  repository.UserRepository
 	roles                  repository.RoleRepository
 	resourceSets           repository.ResourceSetRepository
@@ -55,6 +56,7 @@ type APIHandlers struct {
 func NewAPIHandlers(
 	agc repository.AgentControllerRepository,
 	ap repository.AgentProxyRepository,
+	at repository.APITokenRepository,
 	u repository.UserRepository,
 	r repository.RoleRepository,
 	rs repository.ResourceSetRepository,
@@ -69,6 +71,7 @@ func NewAPIHandlers(
 	return &APIHandlers{
 		agentControllers:       agc,
 		agentProxies:           ap,
+		apiTokens:              at,
 		users:                  u,
 		roles:                  r,
 		resourceSets:           rs,
@@ -126,6 +129,8 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
 	mux.HandleFunc("PUT /api/v1/profile", h.UpdateProfile)
 	mux.HandleFunc("POST /api/v1/profile/token", h.GenerateAccessToken)
+	mux.HandleFunc("GET /api/v1/profile/tokens", h.ListAccessTokens)
+	mux.HandleFunc("DELETE /api/v1/profile/tokens/{id}", h.DeleteAccessToken)
 	mux.HandleFunc("POST /api/v1/profile/password", h.UpdatePassword)
 
 	mux.HandleFunc("GET /api/v1/log-streams", h.ListLogStreams)
@@ -1486,6 +1491,13 @@ func (h *APIHandlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 
+	var req struct {
+		Name          string  `json:"name"`
+		ResourceSetID *string `json:"resourceSetId"`
+	}
+	// Body is optional for backward compatibility (existing UI sends empty body).
+	_ = decodeJSON(r, &req)
+
 	token, err := service.GenerateAPIToken()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to generate token")
@@ -1493,21 +1505,94 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 	}
 
 	hash := service.HashAPIToken(token)
-	tenant, err := h.tenants.GetByID(r.Context(), tenantID)
-	if err != nil || tenant == nil {
-		respondError(w, http.StatusInternalServerError, "internal_error", "tenant not found")
-		return
+
+	var rsID *uuid.UUID
+	if req.ResourceSetID != nil && *req.ResourceSetID != "" {
+		parsed, err := uuid.Parse(*req.ResourceSetID)
+		if err != nil {
+			respondBadRequest(w, "invalid resourceSetId")
+			return
+		}
+		rsID = &parsed
 	}
 
-	tenant.APITokenHash = hash
-	if err := h.tenants.Update(r.Context(), tenant); err != nil {
+	name := req.Name
+	if name == "" {
+		name = "API Token"
+	}
+
+	apiToken := &domain.APIToken{
+		Name:          name,
+		TokenHash:     hash,
+		ResourceSetID: rsID,
+	}
+	if err := h.apiTokens.Create(r.Context(), tenantID, apiToken); err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to store token")
 		return
 	}
 
+	// Also update the legacy tenant-level token for backward compatibility.
+	tenant, err := h.tenants.GetByID(r.Context(), tenantID)
+	if err == nil && tenant != nil {
+		tenant.APITokenHash = hash
+		_ = h.tenants.Update(r.Context(), tenant)
+	}
+
 	respondJSON(w, http.StatusOK, map[string]any{
-		"token": token,
+		"token":         token,
+		"id":            apiToken.ID.String(),
+		"name":          name,
+		"resourceSetId": rsID,
 	})
+}
+
+func (h *APIHandlers) ListAccessTokens(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+
+	tokens, err := h.apiTokens.List(r.Context(), tenantID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to list tokens")
+		return
+	}
+
+	type tokenResponse struct {
+		ID            string  `json:"id"`
+		Name          string  `json:"name"`
+		ResourceSetID *string `json:"resourceSetId"`
+		CreatedAt     string  `json:"createdAt"`
+	}
+
+	resp := make([]tokenResponse, 0, len(tokens))
+	for _, t := range tokens {
+		tr := tokenResponse{
+			ID:        t.ID.String(),
+			Name:      t.Name,
+			CreatedAt: t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+		if t.ResourceSetID != nil {
+			s := t.ResourceSetID.String()
+			tr.ResourceSetID = &s
+		}
+		resp = append(resp, tr)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"tokens": resp})
+}
+
+func (h *APIHandlers) DeleteAccessToken(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		respondBadRequest(w, "invalid token id")
+		return
+	}
+
+	if err := h.apiTokens.Delete(r.Context(), tenantID, id); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to delete token")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {

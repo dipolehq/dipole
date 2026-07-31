@@ -163,3 +163,10 @@ type UserMFARepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, mfa *domain.UserMFA) error
 	Delete(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID) error
 }
+
+type APITokenRepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, token *domain.APIToken) error
+	GetByHash(ctx context.Context, tokenHash string) (*domain.APIToken, error)
+	List(ctx context.Context, tenantID uuid.UUID) ([]domain.APIToken, error)
+	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+}

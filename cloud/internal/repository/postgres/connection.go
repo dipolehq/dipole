@@ -47,6 +47,7 @@ type Repositories struct {
 	RegistrationTokens     *RegistrationTokenRepo
 	PasswordResetTokens    *PasswordResetTokenRepo
 	UserMFA                *UserMFARepo
+	APITokens              *APITokenRepo
 }
 
 func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -95,6 +96,7 @@ func NewRepositories(pool *pgxpool.Pool) *Repositories {
 		RegistrationTokens:     &RegistrationTokenRepo{pool: pool},
 		PasswordResetTokens:    &PasswordResetTokenRepo{pool: pool},
 		UserMFA:                &UserMFARepo{pool: pool},
+		APITokens:              &APITokenRepo{pool: pool},
 	}
 }
 

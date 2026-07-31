@@ -5,6 +5,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { apiClient } from '@/shared/lib/api-client'
 import { MFAConfigTab } from '@/features/profile/components/MFAConfigTab'
+import { APITokensSection } from '@/features/profile/components/APITokensSection'
 
 const COUNTRY_CODE_OPTIONS = [
   { value: '+91', label: '+91 (India)' },
@@ -64,9 +65,6 @@ function ProfileContent({
   const [countryCode, setCountryCode] = useState('+91')
   const [phone, setPhone] = useState(data.phone)
 
-  const [tokenLifetime, setTokenLifetime] = useState('3600')
-  const [accessToken, setAccessToken] = useState('')
-
   const saveMutation = useMutation({
     mutationFn: () =>
       apiClient.put<ProfileData>('/profile', { firstName, lastName, email, phone }),
@@ -99,17 +97,6 @@ function ProfileContent({
     setEmail(data.email)
     setPhone(data.phone)
     setIsEditing(false)
-  }
-
-  const tokenMutation = useMutation({
-    mutationFn: () => apiClient.post<{ token: string }>('/profile/token'),
-    onSuccess: (res) => {
-      setAccessToken(res.token)
-    },
-  })
-
-  function handleGenerateToken() {
-    tokenMutation.mutate()
   }
 
   function copyToClipboard(text: string) {
@@ -182,24 +169,7 @@ function ProfileContent({
                 <div className="border border-border rounded-lg p-5">
                   <h4 className="text-sm font-semibold text-gray-800 mb-4">API Access</h4>
                   <div className="space-y-4">
-                    <div className="flex items-end gap-3">
-                      <div className="flex-1">
-                        <div className="relative">
-                          <FloatingInput label="Access Token" value={accessToken} disabled />
-                          {accessToken && (
-                            <button type="button" onClick={() => copyToClipboard(accessToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><Copy size={14} /></button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-28">
-                        <FloatingInput label="Lifetime (s)" value={tokenLifetime} onChange={setTokenLifetime} type="number" />
-                      </div>
-                      <button type="button" onClick={handleGenerateToken} disabled={tokenMutation.isPending} className="px-4 h-[44px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60">
-                        {tokenMutation.isPending ? 'Generating…' : 'Generate'}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-gray-400">Max lifetime: 604,800 seconds (7 days)</p>
-
+                    <APITokensSection />
                     <CopyField label="Cloud API Base URL" value="https://acme42.api.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
                     <CopyField label="Edge API Base URL" value="https://acme42.ec.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
                     <CopyField label="MCP Service URL" value="https://acme42.mcp.ap-south-1.dipolehq.com/mcp" onCopy={copyToClipboard} />

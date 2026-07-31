@@ -122,6 +122,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
 	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
+	authenticator.SetAPITokenRepo(repos.APITokens)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
@@ -255,6 +256,7 @@ func buildHTTPServer(
 	apiHandlers := rest.NewAPIHandlers(
 		repos.AgentControllers,
 		repos.AgentProxies,
+		repos.APITokens,
 		repos.Users,
 		repos.Roles,
 		repos.ResourceSets,
