@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { apiClient } from '@/shared/lib/api-client'
+import { MFAConfigTab } from '@/features/profile/components/MFAConfigTab'
 
 const COUNTRY_CODE_OPTIONS = [
   { value: '+91', label: '+91 (India)' },
@@ -212,24 +213,7 @@ function ProfileContent({
             )}
 
             {activeTab === 'mfa' && (
-              <div className="space-y-5">
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Multi-Factor Authentication</h4>
-                  <p className="text-xs text-gray-600 mb-4">
-                    Configure multi-factor authentication to add an extra layer of security to your account.
-                  </p>
-                  <div className="space-y-0">
-                    <div className="flex items-center justify-between py-3 border-b border-border">
-                      <span className="text-sm text-gray-700">Authenticator App</span>
-                      <button type="button" className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Configure</button>
-                    </div>
-                    <div className="flex items-center justify-between py-3">
-                      <span className="text-sm text-gray-700">Backup Codes</span>
-                      <button type="button" className="text-xs text-orange-500 hover:text-orange-600 font-medium">+ Generate</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <MFAConfigTab />
             )}
 
             {activeTab === 'preferences' && (

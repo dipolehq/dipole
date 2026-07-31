@@ -23,6 +23,7 @@ func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/login", h.HandleLogin)
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", h.HandleForgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/reset-password", h.HandleResetPassword)
+	mux.HandleFunc("POST /api/v1/auth/mfa-verify", h.HandleMFAVerify)
 }
 
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -87,4 +88,23 @@ func (h *AuthHandler) HandleResetPassword(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Password has been reset successfully."})
+}
+
+func (h *AuthHandler) HandleMFAVerify(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MFAToken string `json:"mfaToken"`
+		Code     string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	resp, err := h.loginSvc.VerifyMFA(r.Context(), req.MFAToken, req.Code)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -189,7 +189,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		)
 	}
 
-	httpServer := buildHTTPServer(cfg, repos, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer, tracingBus)
+	httpServer := buildHTTPServer(cfg, repos, encKey, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer, tracingBus)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -234,6 +234,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 func buildHTTPServer(
 	cfg *config.Config,
 	repos *postgres.Repositories,
+	encKey []byte,
 	clientWorkloadSvc *service.ClientWorkloadService,
 	serverWorkloadSvc *service.ServerWorkloadService,
 	trustProviderSvc *service.TrustProviderService,
@@ -280,11 +281,21 @@ func buildHTTPServer(
 	)).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
+	// MFA profile endpoints (require auth — protected by middleware)
+	if cfg.TenantID != "" {
+		mfaTenantID, _ := uuid.Parse(cfg.TenantID)
+		if mfaTenantID != uuid.Nil {
+			mfaSvc := service.NewMFAService(repos.UserMFA, encKey, mfaTenantID)
+			rest.NewMFAHandler(mfaSvc, repos.Users).RegisterRoutes(mux)
+		}
+	}
+
 	// Auth login route (public — no auth required)
 	if cfg.TenantID != "" {
 		loginTenantID, _ := uuid.Parse(cfg.TenantID)
 		if loginTenantID != uuid.Nil {
 			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
+			loginSvc.SetMFA(repos.UserMFA, encKey)
 			passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens, loginTenantID)
 			rest.NewAuthHandler(loginSvc, passwordResetSvc).RegisterRoutes(mux)
 		}
@@ -335,7 +346,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || strings.HasPrefix(path, "/internal/") {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/internal/") {
 		return true
 	}
 	// Edge API handles its own authentication

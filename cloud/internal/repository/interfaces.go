@@ -154,3 +154,10 @@ type PasswordResetTokenRepository interface {
 	MarkUsed(ctx context.Context, id uuid.UUID) error
 	DeleteExpiredForUser(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID) error
 }
+
+type UserMFARepository interface {
+	Create(ctx context.Context, tenantID uuid.UUID, mfa *domain.UserMFA) error
+	GetByUserID(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID) (*domain.UserMFA, error)
+	Update(ctx context.Context, tenantID uuid.UUID, mfa *domain.UserMFA) error
+	Delete(ctx context.Context, tenantID uuid.UUID, userID uuid.UUID) error
+}
