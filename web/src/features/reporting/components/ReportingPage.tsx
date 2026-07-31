@@ -65,7 +65,6 @@ export function ReportingPage() {
       return next
     }, { replace: true })
   }
-  function setCurrentPage(v: number) { setParam('page', String(v)) }
   function setTimeRange(v: string) { setParam('timeRange', v) }
   function setSeverity(v: string) { setParam('severity', v) }
   function setEventType(v: string) { setParam('eventType', v) }

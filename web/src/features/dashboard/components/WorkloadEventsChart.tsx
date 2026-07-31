@@ -57,7 +57,7 @@ const options: ApexOptions = {
     toolbar: { show: false },
     zoom: { enabled: false },
     fontFamily: 'Inter, system-ui, sans-serif',
-    animations: { enabled: true, easing: 'easeinout', speed: 300, dynamicAnimation: { enabled: true, speed: 200 } },
+    animations: { enabled: true, speed: 300, dynamicAnimation: { enabled: true, speed: 200 } },
   },
   stroke: { width: 1.5, curve: 'straight' },
   dataLabels: { enabled: false },

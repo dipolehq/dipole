@@ -24,6 +24,26 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------------------
+# Full stack (docker-compose)
+# ---------------------------------------------------------------------------
+
+.PHONY: up
+up: ## Start the full stack (postgres + cloud + web + proxy)
+	docker compose up --build
+
+.PHONY: up-d
+up-d: ## Start the full stack in background
+	docker compose up --build -d
+
+.PHONY: down
+down: ## Stop the full stack
+	docker compose down
+
+.PHONY: logs
+logs: ## Tail logs from all services
+	docker compose logs -f
+
+# ---------------------------------------------------------------------------
 # Database (docker-compose)
 # ---------------------------------------------------------------------------
 

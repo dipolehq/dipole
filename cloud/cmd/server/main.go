@@ -69,6 +69,18 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Logger) error {
+	// Auto-migrate schema on startup (idempotent — no-ops if already current).
+	if migrator, merr := postgres.NewMigrator(cfg.DatabaseURL); merr != nil {
+		logger.Warn("skip auto-migration", "error", merr)
+	} else {
+		if merr = migrator.Up(); merr != nil {
+			logger.Warn("auto-migration issue", "error", merr)
+		} else {
+			logger.Info("schema up to date")
+		}
+		_ = migrator.Close()
+	}
+
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
@@ -78,6 +90,12 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
+
+	// Auto-bootstrap: ensure at least one tenant + admin user exists.
+	// This makes `docker compose up` fully self-contained with no manual steps.
+	if err := autoBootstrap(ctx, repos, cfg, logger); err != nil {
+		return fmt.Errorf("auto-bootstrap: %w", err)
+	}
 
 	tracingBus := mcpgw.NewTracingBus()
 
@@ -114,16 +132,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	edgeTenantResolver := service.NewTenantResolverAdapter(repos.Tenants)
 	edgeAPI := rest.NewEdgeAPIHandler(issuer, edgeTrustValidator, edgePolicyAdapter, edgeTenantResolver)
 
-	// MCP services (wired only when tenant is configured for MCP)
+	// MCP services (wired only when tenant is resolved)
 	var mcpAuthServer *rest.MCPAuthServer
 	var mcpGatewayServer *rest.MCPGatewayServer
 	var mcpDipoleServer *rest.DipoleMCPServer
 
 	if cfg.TenantID != "" && cfg.TenantSubdomain != "" {
-		tenantUUID, err := uuid.Parse(cfg.TenantID)
-		if err != nil {
-			return fmt.Errorf("invalid DIPOLE_TENANT_ID: %w", err)
-		}
+		tenantUUID, _ := uuid.Parse(cfg.TenantID)
 
 		mcpAuthServerURL := "https://" + cfg.TenantSubdomain + ".mcp." + cfg.Region + ".dipolehq.com"
 		gatewayURL := "https://" + cfg.TenantSubdomain + ".mcpgateway." + cfg.Region + ".dipolehq.com/"
@@ -266,17 +281,8 @@ func buildHTTPServer(
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	// Auth login route (public — no auth required)
-	{
-		var loginTenantID uuid.UUID
-		if cfg.TenantID != "" {
-			loginTenantID, _ = uuid.Parse(cfg.TenantID)
-		} else {
-			// Single-tenant mode: resolve the first tenant from the database
-			tenants, _, _ := repos.Tenants.List(context.Background(), domain.ListOptions{Page: 1, PerPage: 1})
-			if len(tenants) > 0 {
-				loginTenantID = tenants[0].ID
-			}
-		}
+	if cfg.TenantID != "" {
+		loginTenantID, _ := uuid.Parse(cfg.TenantID)
 		if loginTenantID != uuid.Nil {
 			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
 			rest.NewAuthHandler(loginSvc).RegisterRoutes(mux)
@@ -391,4 +397,73 @@ func setupLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	}))
+}
+
+// autoBootstrap ensures at least one tenant and admin user exist in the database.
+// If DIPOLE_TENANT_ID is already set and valid, it does nothing extra.
+// Otherwise, it looks up the first tenant (or creates one) and sets cfg.TenantID
+// so the rest of the startup (MCP, login) can use it.
+func autoBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *config.Config, logger *slog.Logger) error {
+	// If TenantID is explicitly set and valid, nothing to do.
+	if cfg.TenantID != "" {
+		if _, err := uuid.Parse(cfg.TenantID); err != nil {
+			return fmt.Errorf("invalid DIPOLE_TENANT_ID %q: %w", cfg.TenantID, err)
+		}
+		return nil
+	}
+
+	// Try to find an existing tenant by subdomain (or just the first one).
+	subdomain := cfg.TenantSubdomain
+	if subdomain == "" {
+		subdomain = "dev"
+	}
+
+	existing, err := repos.Tenants.GetBySubdomain(ctx, subdomain)
+	if err != nil {
+		return fmt.Errorf("lookup tenant: %w", err)
+	}
+
+	if existing != nil {
+		cfg.TenantID = existing.ID.String()
+		cfg.TenantSubdomain = existing.Subdomain
+		logger.Info("tenant resolved from database", "id", existing.ID, "subdomain", existing.Subdomain)
+		return nil
+	}
+
+	// No tenant exists — create one with default admin credentials.
+	token, err := service.GenerateAPIToken()
+	if err != nil {
+		return fmt.Errorf("generate api token: %w", err)
+	}
+	hash := service.HashAPIToken(token)
+
+	tenant := &domain.Tenant{Name: "Dev Tenant", Subdomain: subdomain, APITokenHash: hash}
+	if err := repos.Tenants.Create(ctx, tenant); err != nil {
+		return fmt.Errorf("create tenant: %w", err)
+	}
+
+	cfg.TenantID = tenant.ID.String()
+	cfg.TenantSubdomain = subdomain
+	logger.Info("dev tenant auto-created", "id", tenant.ID, "subdomain", subdomain)
+
+	// Create default admin user.
+	passwordHash, err := service.HashPassword("admin123")
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	adminUser := &domain.User{
+		Email:        "admin@dipole.dev",
+		Name:         "Admin",
+		FirstName:    "Admin",
+		IsActive:     true,
+		PasswordHash: passwordHash,
+	}
+	if err := repos.Users.Create(ctx, tenant.ID, adminUser); err != nil {
+		return fmt.Errorf("create admin user: %w", err)
+	}
+
+	logger.Info("admin user auto-created", "email", "admin@dipole.dev", "password", "admin123")
+	logger.Info("API token (save this)", "token", token)
+
+	return nil
 }

@@ -57,7 +57,8 @@ export function PolicyForm({
 
   const form = useForm<PolicyFormValues>({
     defaultValues: initialValues ?? EMPTY_POLICY_FORM_VALUES,
-    resolver: zodResolver(policyFormSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(policyFormSchema) as any,
   })
 
   const { control, handleSubmit, reset } = form
