@@ -293,3 +293,11 @@ type ListOptions struct {
 	OrderBy string
 	Search  string
 }
+
+// TenantSummary is a minimal tenant representation returned to users for
+// tenant switching. It never exposes API tokens or other secrets.
+type TenantSummary struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Subdomain string    `json:"subdomain"`
+}

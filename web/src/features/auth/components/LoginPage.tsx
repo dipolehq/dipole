@@ -14,18 +14,23 @@ export function LoginPage() {
   const [mfaToken, setMfaToken] = useState('')
   const [mfaCode, setMfaCode] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
+  // Multi-tenant picker state
+  const [tenants, setTenants] = useState<{ id: string; name: string; subdomain: string }[]>([])
+
+  async function handleSubmit(e: React.FormEvent, tenantId?: string) {
     e.preventDefault()
     setError('')
     setLoading(true)
 
     try {
-      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; user?: { id: string; email: string; name: string } }>(
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; user?: { id: string; email: string; name: string }; tenants?: { id: string; name: string; subdomain: string }[] }>(
         '/auth/login',
-        { email, password },
+        { email, password, tenantId },
       )
 
-      if (res.mfaRequired && res.mfaToken) {
+      if (res.tenants && res.tenants.length > 1) {
+        setTenants(res.tenants)
+      } else if (res.mfaRequired && res.mfaToken) {
         setMfaToken(res.mfaToken)
       } else if (res.token && res.user) {
         sessionStorage.setItem('dipole_token', res.token)
@@ -34,6 +39,30 @@ export function LoginPage() {
       }
     } catch {
       setError('Invalid email or password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleTenantSelect(tenantId: string) {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; user?: { id: string; email: string; name: string } }>(
+        '/auth/login',
+        { email, password, tenantId },
+      )
+
+      if (res.mfaRequired && res.mfaToken) {
+        setTenants([])
+        setMfaToken(res.mfaToken)
+      } else if (res.token && res.user) {
+        sessionStorage.setItem('dipole_token', res.token)
+        sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+        navigate('/')
+      }
+    } catch {
+      setError('Failed to sign in to selected tenant')
     } finally {
       setLoading(false)
     }
@@ -88,8 +117,13 @@ export function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
           <h1 className="text-lg font-semibold text-gray-900">
-            {mfaToken ? 'Verification Required' : 'Sign In to Dipole'}
+            {tenants.length > 0 ? 'Select Tenant' : mfaToken ? 'Verification Required' : 'Sign In to Dipole'}
           </h1>
+          {tenants.length > 0 && (
+            <p className="text-sm text-gray-500 mt-1 text-center">
+              Your account has access to multiple tenants. Choose one to continue.
+            </p>
+          )}
           {mfaToken && (
             <p className="text-sm text-gray-500 mt-1 text-center">
               Enter the 6-digit code from your authenticator app or a backup code.
@@ -97,7 +131,32 @@ export function LoginPage() {
           )}
         </div>
 
-        {mfaToken ? (
+        {tenants.length > 0 ? (
+          <div className="space-y-2">
+            {tenants.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleTenantSelect(t.id)}
+                disabled={loading}
+                className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors disabled:opacity-50"
+              >
+                <div className="text-sm font-medium text-gray-900">{t.name}</div>
+                <div className="text-xs text-gray-500">{t.subdomain}</div>
+              </button>
+            ))}
+
+            {error && <p className="text-sm text-red-600 text-center mt-2">{error}</p>}
+
+            <button
+              type="button"
+              onClick={() => { setTenants([]); setError('') }}
+              className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 mt-3"
+            >
+              ← Back to Sign In
+            </button>
+          </div>
+        ) : mfaToken ? (
           <form onSubmit={handleMFAVerify} className="space-y-4">
             <div>
               <input

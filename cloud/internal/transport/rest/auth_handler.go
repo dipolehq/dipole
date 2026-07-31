@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -24,12 +25,15 @@ func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", h.HandleForgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/reset-password", h.HandleResetPassword)
 	mux.HandleFunc("POST /api/v1/auth/mfa-verify", h.HandleMFAVerify)
+	mux.HandleFunc("POST /api/v1/auth/switch-tenant", h.HandleSwitchTenant)
+	mux.HandleFunc("GET /api/v1/user/tenants", h.HandleListUserTenants)
 }
 
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		TenantID string `json:"tenantId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -39,6 +43,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.loginSvc.Login(r.Context(), &service.LoginRequest{
 		Email:    req.Email,
 		Password: req.Password,
+		TenantID: req.TenantID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
@@ -107,4 +112,50 @@ func (h *AuthHandler) HandleMFAVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *AuthHandler) HandleSwitchTenant(w http.ResponseWriter, r *http.Request) {
+	email := UserEmailFromContext(r.Context())
+	if email == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+
+	var req struct {
+		TenantID string `json:"tenantId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	targetTenantID, err := uuid.Parse(req.TenantID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tenantId"})
+		return
+	}
+
+	resp, err := h.loginSvc.SwitchTenant(r.Context(), email, targetTenantID)
+	if err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *AuthHandler) HandleListUserTenants(w http.ResponseWriter, r *http.Request) {
+	email := UserEmailFromContext(r.Context())
+	if email == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+
+	tenants, err := h.loginSvc.ListTenantsForUser(r.Context(), email)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tenants"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": tenants})
 }

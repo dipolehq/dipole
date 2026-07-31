@@ -112,3 +112,30 @@ func (r *UserRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID)
 	}
 	return nil
 }
+
+// GetTenantsByEmail finds all tenants where a user with the given email exists.
+// This is a cross-tenant query used exclusively for the tenant switching feature.
+// It only returns non-secret tenant metadata (ID, name, subdomain).
+func (r *UserRepo) GetTenantsByEmail(ctx context.Context, email string) ([]domain.TenantSummary, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT t.id, t.name, t.subdomain
+		 FROM users u
+		 JOIN tenants t ON t.id = u.tenant_id
+		 WHERE u.email = $1 AND u.is_active = true
+		 ORDER BY t.name ASC`,
+		email)
+	if err != nil {
+		return nil, fmt.Errorf("get tenants by email: %w", err)
+	}
+	defer rows.Close()
+
+	var results []domain.TenantSummary
+	for rows.Next() {
+		var ts domain.TenantSummary
+		if err := rows.Scan(&ts.ID, &ts.Name, &ts.Subdomain); err != nil {
+			return nil, fmt.Errorf("scan tenant summary: %w", err)
+		}
+		results = append(results, ts)
+	}
+	return results, nil
+}

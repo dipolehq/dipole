@@ -101,6 +101,7 @@ type UserRepository interface {
 	Create(ctx context.Context, tenantID uuid.UUID, user *domain.User) error
 	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.User, error)
 	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.User, error)
+	GetTenantsByEmail(ctx context.Context, email string) ([]domain.TenantSummary, error)
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.User, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, user *domain.User) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error

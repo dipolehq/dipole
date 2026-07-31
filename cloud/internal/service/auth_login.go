@@ -50,14 +50,16 @@ func (s *LoginService) SetMFA(mfaRepo repository.UserMFARepository, encKey []byt
 type LoginRequest struct {
 	Email    string
 	Password string
+	TenantID string // Optional — if user has multiple tenants, they pick one
 }
 
 type LoginResponse struct {
-	Token       string    `json:"token,omitempty"`
-	ExpiresAt   time.Time `json:"expiresAt,omitempty"`
-	User        LoginUser `json:"user,omitempty"`
-	MFARequired bool      `json:"mfaRequired,omitempty"`
-	MFAToken    string    `json:"mfaToken,omitempty"`
+	Token       string                 `json:"token,omitempty"`
+	ExpiresAt   time.Time              `json:"expiresAt,omitempty"`
+	User        LoginUser              `json:"user,omitempty"`
+	MFARequired bool                   `json:"mfaRequired,omitempty"`
+	MFAToken    string                 `json:"mfaToken,omitempty"`
+	Tenants     []domain.TenantSummary `json:"tenants,omitempty"` // Returned when user must pick a tenant
 }
 
 type LoginUser struct {
@@ -71,7 +73,43 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		return nil, fmt.Errorf("email and password are required")
 	}
 
-	user, err := s.users.GetByEmail(ctx, s.tenantID, req.Email)
+	// Determine which tenant to authenticate against.
+	targetTenantID := s.tenantID
+
+	if req.TenantID != "" {
+		// User explicitly selected a tenant (from the picker).
+		parsed, err := uuid.Parse(req.TenantID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tenant selection")
+		}
+		targetTenantID = parsed
+	} else {
+		// Check if user exists in multiple tenants.
+		tenants, err := s.users.GetTenantsByEmail(ctx, req.Email)
+		if err == nil && len(tenants) > 1 {
+			// Validate password against the default tenant first to prevent enumeration.
+			user, _ := s.users.GetByEmail(ctx, s.tenantID, req.Email)
+			if user == nil {
+				// Try any tenant where the user exists for password validation.
+				for _, t := range tenants {
+					user, _ = s.users.GetByEmail(ctx, t.ID, req.Email)
+					if user != nil {
+						break
+					}
+				}
+			}
+			if user == nil {
+				return nil, fmt.Errorf("invalid email or password")
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+				return nil, fmt.Errorf("invalid email or password")
+			}
+			// Password valid — return tenant list for user to pick.
+			return &LoginResponse{Tenants: tenants}, nil
+		}
+	}
+
+	user, err := s.users.GetByEmail(ctx, targetTenantID, req.Email)
 	if err != nil || user == nil {
 		return nil, fmt.Errorf("invalid email or password")
 	}
@@ -86,7 +124,7 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 
 	// Check if MFA is enabled for this user.
 	if s.mfaRepo != nil {
-		mfa, _ := s.mfaRepo.GetByUserID(ctx, s.tenantID, user.ID)
+		mfa, _ := s.mfaRepo.GetByUserID(ctx, targetTenantID, user.ID)
 		if mfa != nil && mfa.IsEnabled {
 			// Issue a short-lived MFA token (5 min, limited scope).
 			mfaToken, err := s.issuer.IssueToken(identity.IssuanceRequest{
@@ -95,7 +133,7 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 				Lifetime:  5 * time.Minute,
 				Algorithm: "ES256",
 				CustomClaims: map[string]interface{}{
-					"tenant_id": s.tenantID.String(),
+					"tenant_id": targetTenantID.String(),
 					"user_id":   user.ID.String(),
 					"purpose":   "mfa_challenge",
 				},
@@ -110,7 +148,7 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		}
 	}
 
-	return s.issueSessionToken(user)
+	return s.issueSessionTokenForTenant(user, targetTenantID)
 }
 
 // VerifyMFA validates a TOTP code (or backup code) and issues the session JWT.
@@ -161,13 +199,17 @@ func (s *LoginService) VerifyMFA(ctx context.Context, mfaToken string, code stri
 }
 
 func (s *LoginService) issueSessionToken(user *domain.User) (*LoginResponse, error) {
+	return s.issueSessionTokenForTenant(user, s.tenantID)
+}
+
+func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uuid.UUID) (*LoginResponse, error) {
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
 		Audience:  "dipole-admin",
 		Lifetime:  24 * time.Hour,
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
-			"tenant_id": s.tenantID.String(),
+			"tenant_id": tenantID.String(),
 			"user_id":   user.ID.String(),
 			"email":     user.Email,
 			"name":      user.Name,
@@ -246,4 +288,60 @@ func (s *LoginService) SetPassword(ctx context.Context, userID uuid.UUID, passwo
 
 	user.PasswordHash = hash
 	return s.users.Update(ctx, s.tenantID, user)
+}
+
+// SwitchTenant issues a new session JWT scoped to a different tenant.
+// The caller must already be authenticated. We verify the user's email
+// has an active record in the target tenant to prevent unauthorized access.
+func (s *LoginService) SwitchTenant(ctx context.Context, email string, targetTenantID uuid.UUID) (*LoginResponse, error) {
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	if targetTenantID == uuid.Nil {
+		return nil, fmt.Errorf("target tenant is required")
+	}
+
+	// Verify the user has an active account in the target tenant.
+	user, err := s.users.GetByEmail(ctx, targetTenantID, email)
+	if err != nil || user == nil {
+		return nil, fmt.Errorf("access denied: no account in target tenant")
+	}
+	if !user.IsActive {
+		return nil, fmt.Errorf("access denied: account is disabled in target tenant")
+	}
+
+	// Issue a new session token scoped to the target tenant.
+	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
+		Subject:   user.Email,
+		Audience:  "dipole-admin",
+		Lifetime:  24 * time.Hour,
+		Algorithm: "ES256",
+		CustomClaims: map[string]interface{}{
+			"tenant_id": targetTenantID.String(),
+			"user_id":   user.ID.String(),
+			"email":     user.Email,
+			"name":      user.Name,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("issue session token: %w", err)
+	}
+
+	return &LoginResponse{
+		Token:     token,
+		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		User: LoginUser{
+			ID:    user.ID.String(),
+			Email: user.Email,
+			Name:  user.Name,
+		},
+	}, nil
+}
+
+// ListTenantsForUser returns all tenants where the given email has an active account.
+func (s *LoginService) ListTenantsForUser(ctx context.Context, email string) ([]domain.TenantSummary, error) {
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	return s.users.GetTenantsByEmail(ctx, email)
 }
