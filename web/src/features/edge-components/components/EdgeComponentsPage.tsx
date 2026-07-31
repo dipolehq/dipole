@@ -3,13 +3,16 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Search, FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { AgentControllersTable } from '@/features/edge-components/components/AgentControllersTable'
+import { AgentProxiesTable } from '@/features/edge-components/components/AgentProxiesTable'
 import { DeployEdgePanel } from '@/features/edge-components/components/DeployEdgePanel'
 import { TlsDecryptPanel } from '@/features/edge-components/components/TlsDecryptPanel'
 import { useAgentControllers } from '@/features/edge-components/hooks/useAgentControllers'
+import { useAgentProxies } from '@/features/edge-components/hooks/useAgentProxies'
 import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
 const EDGE_SECTIONS = [
   { value: 'agent_controllers', label: 'Agent Controllers' },
+  { value: 'agent_proxies', label: 'Agent Proxies' },
   { value: 'deploy_edge', label: 'Deploy Dipole Edge' },
   { value: 'tls_decrypt', label: 'TLS Decrypt' },
 ] as const
@@ -34,10 +37,16 @@ export function EdgeComponentsPage() {
   const { data, isLoading } = useAgentControllers(currentPage, pageSize, searchQuery)
   const items = data?.items ?? []
   const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const { data: proxyData, isLoading: proxyLoading } = useAgentProxies(currentPage, pageSize, searchQuery)
+  const proxyItems = proxyData?.items ?? []
+  const proxyTotal = proxyData?.total ?? 0
+
+  const activeTotal = selectedSection === 'agent_proxies' ? proxyTotal : total
+  const totalPages = Math.max(1, Math.ceil(activeTotal / pageSize))
 
   const selectedLabel = EDGE_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
-  const showPagination = selectedSection === 'agent_controllers'
+  const showPagination = selectedSection === 'agent_controllers' || selectedSection === 'agent_proxies'
   const showNewButton = selectedSection === 'agent_controllers'
 
   return (
@@ -80,6 +89,8 @@ export function EdgeComponentsPage() {
       <div className="flex-1 overflow-y-auto min-h-0">
         {selectedSection === 'agent_controllers' ? (
           <AgentControllersTable items={items} isLoading={isLoading} />
+        ) : selectedSection === 'agent_proxies' ? (
+          <AgentProxiesTable items={proxyItems} isLoading={proxyLoading} />
         ) : selectedSection === 'deploy_edge' ? (
           <DeployEdgePanel />
         ) : selectedSection === 'tls_decrypt' ? (
@@ -91,7 +102,7 @@ export function EdgeComponentsPage() {
         <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
           <div className="flex items-center gap-2 text-xs text-gray-600">
             <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v) }} />
-            <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
+            <span>Showing {activeTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, activeTotal)} of {activeTotal} Results</span>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">←</button>

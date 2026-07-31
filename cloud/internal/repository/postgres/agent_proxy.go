@@ -25,6 +25,36 @@ func (r *AgentProxyRepo) Create(ctx context.Context, tenantID uuid.UUID, proxy *
 	return nil
 }
 
+func (r *AgentProxyRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentProxy, int, error) {
+	countRow := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM agent_proxies WHERE tenant_id = $1`, tenantID)
+	var total int
+	if err := countRow.Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count agent proxies: %w", err)
+	}
+
+	offset := (opts.Page - 1) * opts.PerPage
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at
+		 FROM agent_proxies WHERE tenant_id = $1
+		 ORDER BY registered_at DESC NULLS LAST
+		 LIMIT $2 OFFSET $3`,
+		tenantID, opts.PerPage, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list agent proxies: %w", err)
+	}
+	defer rows.Close()
+
+	var results []domain.AgentProxy
+	for rows.Next() {
+		var p domain.AgentProxy
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.AgentControllerID, &p.Status, &p.LastHealthAt, &p.ResourceSetID, &p.RegisteredAt); err != nil {
+			return nil, 0, fmt.Errorf("scan agent proxy: %w", err)
+		}
+		results = append(results, p)
+	}
+	return results, total, nil
+}
+
 func (r *AgentProxyRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error) {
 	proxy := &domain.AgentProxy{}
 	err := r.pool.QueryRow(ctx,

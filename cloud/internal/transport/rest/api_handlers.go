@@ -39,6 +39,7 @@ type ControllerCreator interface {
 
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
+	agentProxies           repository.AgentProxyRepository
 	users                  repository.UserRepository
 	roles                  repository.RoleRepository
 	resourceSets           repository.ResourceSetRepository
@@ -53,6 +54,7 @@ type APIHandlers struct {
 
 func NewAPIHandlers(
 	agc repository.AgentControllerRepository,
+	ap repository.AgentProxyRepository,
 	u repository.UserRepository,
 	r repository.RoleRepository,
 	rs repository.ResourceSetRepository,
@@ -66,6 +68,7 @@ func NewAPIHandlers(
 ) *APIHandlers {
 	return &APIHandlers{
 		agentControllers:       agc,
+		agentProxies:           ap,
 		users:                  u,
 		roles:                  r,
 		resourceSets:           rs,
@@ -87,6 +90,7 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/agent-controllers/{id}", h.GetAgentController)
 	mux.HandleFunc("PUT /api/v1/agent-controllers/{id}", h.UpdateAgentController)
 	mux.HandleFunc("DELETE /api/v1/agent-controllers/{id}", h.DeleteAgentController)
+	mux.HandleFunc("GET /api/v1/agent-proxies", h.ListAgentProxies)
 	mux.HandleFunc("POST /api/v1/agent-controllers/{id}/device-code", h.RegenerateDeviceCode)
 
 	mux.HandleFunc("GET /api/v1/users", h.ListUsers)
@@ -146,6 +150,50 @@ func (h *APIHandlers) ListAgentControllers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	respondJSON(w, http.StatusOK, NewListResponse(toAgentControllerResponses(items), total, opts))
+}
+
+func (h *APIHandlers) ListAgentProxies(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+	opts := parseListOptions(r)
+	items, total, err := h.agentProxies.List(r.Context(), tenantID, opts)
+	if err != nil {
+		slog.Error("list agent proxies failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return
+	}
+	type proxyResponse struct {
+		ID                string  `json:"id"`
+		Status            string  `json:"status"`
+		AgentControllerID *string `json:"agentControllerId"`
+		LastHealthAt      *string `json:"lastHealthAt"`
+		ResourceSetID     *string `json:"resourceSetId"`
+		RegisteredAt      *string `json:"registeredAt"`
+	}
+	resp := make([]proxyResponse, 0, len(items))
+	for _, p := range items {
+		pr := proxyResponse{
+			ID:     p.ID.String(),
+			Status: p.Status,
+		}
+		if p.AgentControllerID != nil {
+			s := p.AgentControllerID.String()
+			pr.AgentControllerID = &s
+		}
+		if p.LastHealthAt != nil {
+			s := p.LastHealthAt.Format("2006-01-02T15:04:05Z")
+			pr.LastHealthAt = &s
+		}
+		if p.ResourceSetID != nil {
+			s := p.ResourceSetID.String()
+			pr.ResourceSetID = &s
+		}
+		if p.RegisteredAt != nil {
+			s := p.RegisteredAt.Format("2006-01-02T15:04:05Z")
+			pr.RegisteredAt = &s
+		}
+		resp = append(resp, pr)
+	}
+	respondJSON(w, http.StatusOK, NewListResponse(resp, total, opts))
 }
 
 func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Request) {

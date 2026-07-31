@@ -57,6 +57,9 @@ func (m *mockProxyRepo) UpdateHealth(_ context.Context, _ uuid.UUID, _ uuid.UUID
 func (m *mockProxyRepo) ListByController(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]domain.AgentProxy, error) {
 	return nil, nil
 }
+func (m *mockProxyRepo) List(_ context.Context, _ uuid.UUID, _ domain.ListOptions) ([]domain.AgentProxy, int, error) {
+	return nil, 0, nil
+}
 
 type mockTokenRepo struct {
 	stored   []storedToken

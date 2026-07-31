@@ -135,6 +135,7 @@ type LogStreamRepository interface {
 type AgentProxyRepository interface {
 	Create(ctx context.Context, tenantID uuid.UUID, proxy *domain.AgentProxy) error
 	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error)
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentProxy, int, error)
 	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
 	ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error)
 }

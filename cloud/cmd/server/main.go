@@ -254,6 +254,7 @@ func buildHTTPServer(
 
 	apiHandlers := rest.NewAPIHandlers(
 		repos.AgentControllers,
+		repos.AgentProxies,
 		repos.Users,
 		repos.Roles,
 		repos.ResourceSets,
