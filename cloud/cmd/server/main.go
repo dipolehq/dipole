@@ -69,7 +69,6 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Logger) error {
-	// Auto-migrate schema on startup (idempotent — no-ops if already current).
 	if migrator, merr := postgres.NewMigrator(cfg.DatabaseURL); merr != nil {
 		logger.Warn("skip auto-migration", "error", merr)
 	} else {
@@ -91,8 +90,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
 
-	// Auto-bootstrap: ensure at least one tenant + admin user exists.
-	// This makes `docker compose up` fully self-contained with no manual steps.
 	if err := autoBootstrap(ctx, repos, cfg, logger); err != nil {
 		return fmt.Errorf("auto-bootstrap: %w", err)
 	}
@@ -127,13 +124,11 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
-	// Edge API (proxyless credential retrieval for CI/CD)
 	edgeTrustValidator := trust.NewEdgeTrustValidator(repos.TrustProviders, trustValidator)
 	edgePolicyAdapter := policy.NewEdgePolicyAdapter(policyService)
 	edgeTenantResolver := service.NewTenantResolverAdapter(repos.Tenants)
 	edgeAPI := rest.NewEdgeAPIHandler(issuer, edgeTrustValidator, edgePolicyAdapter, edgeTenantResolver)
 
-	// MCP services (wired only when tenant is resolved)
 	var mcpAuthServer *rest.MCPAuthServer
 	var mcpGatewayServer *rest.MCPGatewayServer
 	var mcpDipoleServer *rest.DipoleMCPServer
@@ -144,7 +139,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		mcpAuthServerURL := "https://" + cfg.TenantSubdomain + ".mcp." + cfg.Region + ".dipolehq.com"
 		gatewayURL := "https://" + cfg.TenantSubdomain + ".mcpgateway." + cfg.Region + ".dipolehq.com/"
 
-		// MCP Authorization Server services
 		mcpCodeStore := mcpsvc.NewAuthCodeStore()
 		mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 		mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
@@ -154,7 +148,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		mcpTokenService := mcpsvc.NewTokenService(mcpCodeStore, issuer, mcpTokenConfigResolver)
 		mcpAuthorizeService := mcpsvc.NewAuthorizeService(mcpDCR, mcpCodeStore, mcpPolicyFinder, conditionEval, mcpIdPService)
 
-		// MCP Identity Gateway services
 		gwLeftAuth := mcpgw.NewLeftSideAuth(issuer, gatewayURL)
 		gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 		gwTokenStore := repos.MCPUserCredentials
@@ -164,16 +157,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		gwClients := buildMCPServerClients(ctx, repos, tenantUUID, logger)
 		gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClients, tenantUUID, gwEventEmitter)
 
-		// Consent callback service
 		consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey, gatewayURL)
 		consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-		// Dipole MCP Server services
 		mcpAuditLogger := mcpserver.NewAuditLogger(repos.Events)
 		mcpToolService := mcpserver.NewToolService(repos.Events, mcpAuditLogger)
 		mcpResourceService := mcpserver.NewResourceService()
 
-		// HTTP transport handlers
 		mcpAuthConfig := rest.MCPAuthConfig{
 			TenantID:        tenantUUID,
 			TenantSubdomain: cfg.TenantSubdomain,
@@ -284,7 +274,6 @@ func buildHTTPServer(
 	)).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
-	// MFA profile endpoints (require auth — protected by middleware)
 	if cfg.TenantID != "" {
 		mfaTenantID, _ := uuid.Parse(cfg.TenantID)
 		if mfaTenantID != uuid.Nil {
@@ -293,7 +282,6 @@ func buildHTTPServer(
 		}
 	}
 
-	// Auth login route (public — no auth required)
 	if cfg.TenantID != "" {
 		loginTenantID, _ := uuid.Parse(cfg.TenantID)
 		if loginTenantID != uuid.Nil {
@@ -301,18 +289,18 @@ func buildHTTPServer(
 			loginSvc.SetMFA(repos.UserMFA, encKey)
 			passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens, loginTenantID)
 			rest.NewAuthHandler(loginSvc, passwordResetSvc).RegisterRoutes(mux)
+
+			oidcClient := service.NewHTTPOIDCClient()
+			ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
+			rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer.(*identity.IdentityIssuer), loginTenantID).RegisterRoutes(mux)
 		}
 	}
 
-	// Edge API routes (always available — handles its own authentication)
 	edgeAPI.RegisterEdgeRoutes(mux)
 
-	// MCP routes (registered only when MCP is configured)
 	if mcpAuth != nil {
 		mcpAuth.RegisterRoutes(mux)
 	} else {
-		// When MCP is not configured, serve OIDC Discovery + JWKS unconditionally
-		// so external systems (AWS STS, Azure, GCP) can verify our issued tokens.
 		rest.NewOIDCHandler(issuer).RegisterRoutes(mux)
 	}
 	if mcpGateway != nil {
@@ -349,14 +337,12 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/internal/") {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/api/v1/auth/sso/") || strings.HasPrefix(path, "/internal/") {
 		return true
 	}
-	// Edge API handles its own authentication
 	if strings.HasPrefix(path, "/edge/") {
 		return true
 	}
-	// MCP routes handle their own authentication
 	if strings.HasPrefix(path, "/.well-known/") ||
 		strings.HasPrefix(path, "/register") ||
 		strings.HasPrefix(path, "/connect/") ||
@@ -414,12 +400,7 @@ func setupLogger() *slog.Logger {
 	}))
 }
 
-// autoBootstrap ensures at least one tenant and admin user exist in the database.
-// If DIPOLE_TENANT_ID is already set and valid, it does nothing extra.
-// Otherwise, it looks up the first tenant (or creates one) and sets cfg.TenantID
-// so the rest of the startup (MCP, login) can use it.
 func autoBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *config.Config, logger *slog.Logger) error {
-	// If TenantID is explicitly set and valid, nothing to do.
 	if cfg.TenantID != "" {
 		if _, err := uuid.Parse(cfg.TenantID); err != nil {
 			return fmt.Errorf("invalid DIPOLE_TENANT_ID %q: %w", cfg.TenantID, err)
@@ -427,7 +408,6 @@ func autoBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *confi
 		return nil
 	}
 
-	// Try to find an existing tenant by subdomain (or just the first one).
 	subdomain := cfg.TenantSubdomain
 	if subdomain == "" {
 		subdomain = "dev"
@@ -445,7 +425,6 @@ func autoBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *confi
 		return nil
 	}
 
-	// No tenant exists — create one with default admin credentials.
 	token, err := service.GenerateAPIToken()
 	if err != nil {
 		return fmt.Errorf("generate api token: %w", err)
@@ -461,7 +440,6 @@ func autoBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *confi
 	cfg.TenantSubdomain = subdomain
 	logger.Info("dev tenant auto-created", "id", tenant.ID, "subdomain", subdomain)
 
-	// Create default admin user.
 	passwordHash, err := service.HashPassword("admin123")
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)

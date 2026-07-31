@@ -54,12 +54,14 @@ import {
 import { LoginPage } from '@/features/auth/components/LoginPage'
 import { ForgotPasswordPage } from '@/features/auth/components/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/features/auth/components/ResetPasswordPage'
+import { SSOCallbackPage } from '@/features/auth/components/SSOCallbackPage'
 import { AuthGuard } from '@/features/auth/components/AuthGuard'
 
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/sso/callback" element={<SSOCallbackPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/*" element={

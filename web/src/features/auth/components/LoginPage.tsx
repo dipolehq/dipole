@@ -1,22 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 
+interface SSOProvider {
+  id: string
+  name: string
+  type: string
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
+  const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([])
+  const [ssoLoading, setSsoLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // MFA challenge state
   const [mfaToken, setMfaToken] = useState('')
   const [mfaCode, setMfaCode] = useState('')
 
-  // Multi-tenant picker state
   const [tenants, setTenants] = useState<{ id: string; name: string; subdomain: string }[]>([])
 
+  useEffect(() => {
+    apiClient.get<{ providers: SSOProvider[] }>('/auth/sso/providers')
+      .then((res) => setSsoProviders(res.providers ?? []))
+      .catch(() => {}) // Silently fail — SSO button just won't show.
+  }, [])
+
+  async function handleSSOLogin(providerId: string) {
+    setSsoLoading(true)
+    setError('')
+    try {
+      const callbackUrl = window.location.origin + '/auth/sso/callback'
+      const res = await apiClient.get<{ redirectUrl: string; state: string }>(
+        `/auth/sso/authorize?provider_id=${providerId}&callback_url=${encodeURIComponent(callbackUrl)}`,
+      )
+      sessionStorage.setItem('dipole_sso_state', res.state)
+      sessionStorage.setItem('dipole_sso_provider', providerId)
+      window.location.href = res.redirectUrl
+    } catch {
+      setError('Failed to initiate SSO login')
+      setSsoLoading(false)
+    }
+  }
   async function handleSubmit(e: React.FormEvent, tenantId?: string) {
     e.preventDefault()
     setError('')
@@ -231,6 +259,27 @@ export function LoginPage() {
             >
               Forgot password?
             </Link>
+
+            {ssoProviders.length > 0 && (
+              <>
+                <div className="flex items-center gap-3 mt-2">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-xs text-gray-400">or</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+                {ssoProviders.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() => handleSSOLogin(provider.id)}
+                    disabled={ssoLoading}
+                    className="w-full py-3 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    {ssoLoading ? 'Redirecting…' : `Sign in with ${provider.name}`}
+                  </button>
+                ))}
+              </>
+            )}
           </form>
         )}
       </div>
