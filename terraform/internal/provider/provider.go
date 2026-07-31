@@ -175,6 +175,8 @@ func (p *DipoleProvider) DataSources(_ context.Context) []func() datasource.Data
 		NewServerWorkloadDataSource,
 		NewTrustProviderDataSource,
 		NewAccessPolicyDataSource,
+		NewCredentialProviderDataSource,
+		NewAccessConditionDataSource,
 	}
 }
 
