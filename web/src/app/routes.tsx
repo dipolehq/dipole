@@ -57,6 +57,7 @@ import { ForgotPasswordPage } from '@/features/auth/components/ForgotPasswordPag
 import { ResetPasswordPage } from '@/features/auth/components/ResetPasswordPage'
 import { SSOCallbackPage } from '@/features/auth/components/SSOCallbackPage'
 import { AuthGuard } from '@/features/auth/components/AuthGuard'
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
 
 export function AppRoutes() {
   return (
@@ -68,7 +69,8 @@ export function AppRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/*" element={
         <AuthGuard>
-          <Layout>
+          <ErrorBoundary>
+            <Layout>
             <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/access-policies" element={<PoliciesPage />} />
@@ -121,6 +123,7 @@ export function AppRoutes() {
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </Layout>
+    </ErrorBoundary>
     </AuthGuard>
     } />
     </Routes>
