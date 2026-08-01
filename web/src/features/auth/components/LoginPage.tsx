@@ -282,6 +282,13 @@ export function LoginPage() {
             )}
           </form>
         )}
+
+        <Link
+          to="/signup"
+          className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors mt-4"
+        >
+          Don't have an account? Sign up
+        </Link>
       </div>
     </div>
   )

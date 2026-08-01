@@ -14,14 +14,16 @@ import (
 type AuthHandler struct {
 	loginSvc    *service.LoginService
 	passwordSvc *service.PasswordResetService
+	signupSvc   *service.SignupService
 }
 
-func NewAuthHandler(loginSvc *service.LoginService, passwordSvc *service.PasswordResetService) *AuthHandler {
-	return &AuthHandler{loginSvc: loginSvc, passwordSvc: passwordSvc}
+func NewAuthHandler(loginSvc *service.LoginService, passwordSvc *service.PasswordResetService, signupSvc *service.SignupService) *AuthHandler {
+	return &AuthHandler{loginSvc: loginSvc, passwordSvc: passwordSvc, signupSvc: signupSvc}
 }
 
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/login", h.HandleLogin)
+	mux.HandleFunc("POST /api/v1/auth/signup", h.HandleSignup)
 	mux.HandleFunc("POST /api/v1/auth/forgot-password", h.HandleForgotPassword)
 	mux.HandleFunc("POST /api/v1/auth/reset-password", h.HandleResetPassword)
 	mux.HandleFunc("POST /api/v1/auth/mfa-verify", h.HandleMFAVerify)
@@ -158,4 +160,28 @@ func (h *AuthHandler) HandleListUserTenants(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": tenants})
+}
+
+func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CompanyName string `json:"companyName"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	resp, err := h.signupSvc.Signup(r.Context(), &service.SignupRequest{
+		CompanyName: req.CompanyName,
+		Email:       req.Email,
+		Password:    req.Password,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, resp)
 }

@@ -84,13 +84,10 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		}
 		targetTenantID = parsed
 	} else {
-		// Check if user exists in multiple tenants.
 		tenants, err := s.users.GetTenantsByEmail(ctx, req.Email)
 		if err == nil && len(tenants) > 1 {
-			// Validate password against the default tenant first to prevent enumeration.
 			user, _ := s.users.GetByEmail(ctx, s.tenantID, req.Email)
 			if user == nil {
-				// Try any tenant where the user exists for password validation.
 				for _, t := range tenants {
 					user, _ = s.users.GetByEmail(ctx, t.ID, req.Email)
 					if user != nil {
@@ -104,8 +101,9 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 			if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 				return nil, fmt.Errorf("invalid email or password")
 			}
-			// Password valid — return tenant list for user to pick.
 			return &LoginResponse{Tenants: tenants}, nil
+		} else if err == nil && len(tenants) == 1 {
+			targetTenantID = tenants[0].ID
 		}
 	}
 

@@ -288,7 +288,8 @@ func buildHTTPServer(
 			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
 			loginSvc.SetMFA(repos.UserMFA, encKey)
 			passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens, loginTenantID)
-			rest.NewAuthHandler(loginSvc, passwordResetSvc).RegisterRoutes(mux)
+			signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer.(*identity.IdentityIssuer))
+			rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc).RegisterRoutes(mux)
 
 			oidcClient := service.NewHTTPOIDCClient()
 			ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
@@ -337,7 +338,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 }
 
 func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/api/v1/auth/sso/") || strings.HasPrefix(path, "/internal/") {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/signup" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/api/v1/auth/sso/") || strings.HasPrefix(path, "/internal/") {
 		return true
 	}
 	if strings.HasPrefix(path, "/edge/") {

@@ -48,8 +48,9 @@ logs: ## Tail logs from all services
 # ---------------------------------------------------------------------------
 
 .PHONY: db-up
-db-up: ## Start the local Postgres container
+db-up: ## Start the local Postgres container + Adminer (DB browser at localhost:8090)
 	docker compose up -d postgres
+	docker compose --profile tools up -d adminer
 
 .PHONY: db-down
 db-down: ## Stop the local Postgres container (keeps data volume)
