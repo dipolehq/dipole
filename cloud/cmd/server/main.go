@@ -328,7 +328,7 @@ func buildHTTPServer(
 		mcpDipole.RegisterMCPServerRoutes(mux)
 	}
 
-	handler := applyMiddleware(mux, authenticator)
+	handler := applyMiddleware(mux, authenticator, parseCORSOrigins(cfg.CORSAllowedOrigins))
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
@@ -337,7 +337,7 @@ func buildHTTPServer(
 	}
 }
 
-func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) http.Handler {
+func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator, allowedOrigins []string) http.Handler {
 	rateLimiter := rest.NewRateLimiter(100, 30)
 
 	protected := rateLimiter.Middleware(mux)
@@ -351,7 +351,7 @@ func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator) ht
 		protected.ServeHTTP(w, r)
 	})
 
-	return rest.RequestIDMiddleware(rest.CORSMiddleware(rest.ResourceSetMiddleware(routed)))
+	return rest.RequestIDMiddleware(rest.CORSMiddleware(allowedOrigins)(rest.ResourceSetMiddleware(routed)))
 }
 
 func isPublicPath(path string) bool {
@@ -369,6 +369,20 @@ func isPublicPath(path string) bool {
 		return true
 	}
 	return false
+}
+
+func parseCORSOrigins(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var origins []string
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			origins = append(origins, o)
+		}
+	}
+	return origins
 }
 
 func buildMCPServerClients(ctx context.Context, repos *postgres.Repositories, tenantID uuid.UUID, logger *slog.Logger) map[string]mcpgw.MCPServerClient {

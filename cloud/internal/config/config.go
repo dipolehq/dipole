@@ -7,36 +7,38 @@ import (
 )
 
 type Config struct {
-	DatabaseURL     string
-	EncryptionKey   string
-	GRPCPort        int
-	HTTPPort        int
-	LogLevel        string
-	Region          string
-	TenantID        string
-	TenantSubdomain string
-	GRPCTLSCert     string
-	GRPCTLSKey      string
-	GeoIPDBPath     string
-	ResendAPIKey    string
-	EmailFrom       string
+	DatabaseURL        string
+	EncryptionKey      string
+	GRPCPort           int
+	HTTPPort           int
+	LogLevel           string
+	Region             string
+	TenantID           string
+	TenantSubdomain    string
+	GRPCTLSCert        string
+	GRPCTLSKey         string
+	GeoIPDBPath        string
+	ResendAPIKey       string
+	EmailFrom          string
+	CORSAllowedOrigins string
 }
 
 func LoadFromEnv() (*Config, error) {
 	cfg := &Config{
-		DatabaseURL:     os.Getenv("DIPOLE_DATABASE_URL"),
-		EncryptionKey:   os.Getenv("DIPOLE_ENCRYPTION_KEY"),
-		GRPCPort:        envInt("DIPOLE_GRPC_PORT", 50051),
-		HTTPPort:        envInt("DIPOLE_HTTP_PORT", 8080),
-		LogLevel:        envStr("DIPOLE_LOG_LEVEL", "info"),
-		Region:          envStr("DIPOLE_REGION", "ap-south-1"),
-		TenantID:        os.Getenv("DIPOLE_TENANT_ID"),
-		TenantSubdomain: envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
-		GRPCTLSCert:     os.Getenv("DIPOLE_GRPC_TLS_CERT"),
-		GRPCTLSKey:      os.Getenv("DIPOLE_GRPC_TLS_KEY"),
-		GeoIPDBPath:     os.Getenv("DIPOLE_GEOIP_DB_PATH"),
-		ResendAPIKey:    os.Getenv("DIPOLE_RESEND_API_KEY"),
-		EmailFrom:       envStr("DIPOLE_EMAIL_FROM", "Dipole <noreply@dipolehq.com>"),
+		DatabaseURL:        os.Getenv("DIPOLE_DATABASE_URL"),
+		EncryptionKey:      os.Getenv("DIPOLE_ENCRYPTION_KEY"),
+		GRPCPort:           envInt("DIPOLE_GRPC_PORT", 50051),
+		HTTPPort:           envInt("DIPOLE_HTTP_PORT", 8080),
+		LogLevel:           envStr("DIPOLE_LOG_LEVEL", "info"),
+		Region:             envStr("DIPOLE_REGION", "ap-south-1"),
+		TenantID:           os.Getenv("DIPOLE_TENANT_ID"),
+		TenantSubdomain:    envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
+		GRPCTLSCert:        os.Getenv("DIPOLE_GRPC_TLS_CERT"),
+		GRPCTLSKey:         os.Getenv("DIPOLE_GRPC_TLS_KEY"),
+		GeoIPDBPath:        os.Getenv("DIPOLE_GEOIP_DB_PATH"),
+		ResendAPIKey:       os.Getenv("DIPOLE_RESEND_API_KEY"),
+		EmailFrom:          envStr("DIPOLE_EMAIL_FROM", "Dipole <noreply@dipolehq.com>"),
+		CORSAllowedOrigins: os.Getenv("DIPOLE_CORS_ALLOWED_ORIGINS"),
 	}
 
 	if err := cfg.validate(); err != nil {
