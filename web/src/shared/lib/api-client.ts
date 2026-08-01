@@ -63,7 +63,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   })
 
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 && !import.meta.env.DEV) {
       sessionStorage.removeItem('dipole_token')
       sessionStorage.removeItem('dipole_user')
       if (window.location.pathname !== '/login') {
