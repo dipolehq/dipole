@@ -124,6 +124,19 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
+	resourceCounter := service.NewDBResourceCounter(
+		repos.ClientWorkloads, repos.ServerWorkloads, repos.AccessPolicies, repos.TrustProviders,
+		repos.CredentialProviders, repos.AccessConditions, repos.ResourceSets, repos.Users,
+		repos.AgentControllers, repos.LogStreams,
+	)
+	planLimiter := service.NewPlanLimiter(repos.Tenants, resourceCounter)
+	clientWorkloadSvc.SetLimiter(planLimiter)
+	serverWorkloadSvc.SetLimiter(planLimiter)
+	trustProviderSvc.SetLimiter(planLimiter)
+	accessConditionSvc.SetLimiter(planLimiter)
+	credentialProviderSvc.SetLimiter(planLimiter)
+	accessPolicySvc.SetLimiter(planLimiter)
+
 	edgeTrustValidator := trust.NewEdgeTrustValidator(repos.TrustProviders, trustValidator)
 	edgePolicyAdapter := policy.NewEdgePolicyAdapter(policyService)
 	edgeTenantResolver := service.NewTenantResolverAdapter(repos.Tenants)
@@ -180,7 +193,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		)
 	}
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer, tracingBus)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, issuer, tracingBus)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -226,6 +239,7 @@ func buildHTTPServer(
 	cfg *config.Config,
 	repos *postgres.Repositories,
 	encKey []byte,
+	planLimiter *service.PlanLimiter,
 	clientWorkloadSvc *service.ClientWorkloadService,
 	serverWorkloadSvc *service.ServerWorkloadService,
 	trustProviderSvc *service.TrustProviderService,
@@ -259,6 +273,7 @@ func buildHTTPServer(
 		repos.Tenants,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
+	apiHandlers.SetPlanLimiter(planLimiter)
 
 	rest.NewClientWorkloadHandler(clientWorkloadSvc).RegisterRoutes(mux)
 	rest.NewServerWorkloadHandler(serverWorkloadSvc).RegisterRoutes(mux)

@@ -51,6 +51,7 @@ type APIHandlers struct {
 	tenantProfiles         tenantProfileStore
 	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
+	planLimiter            *service.PlanLimiter
 }
 
 func NewAPIHandlers(
@@ -84,6 +85,8 @@ func NewAPIHandlers(
 		registrationSvc:        regSvc,
 	}
 }
+
+func (h *APIHandlers) SetPlanLimiter(l *service.PlanLimiter) { h.planLimiter = l }
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
@@ -203,6 +206,12 @@ func (h *APIHandlers) ListAgentProxies(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
+	if h.planLimiter != nil {
+		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceAgentControllers); err != nil {
+			respondBadRequest(w, err.Error())
+			return
+		}
+	}
 	var req agentControllerRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
@@ -366,6 +375,12 @@ func (h *APIHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
+	if h.planLimiter != nil {
+		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceUsers); err != nil {
+			respondBadRequest(w, err.Error())
+			return
+		}
+	}
 	var req userRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
@@ -1191,6 +1206,12 @@ func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
+	if h.planLimiter != nil {
+		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceLogStreams); err != nil {
+			respondBadRequest(w, err.Error())
+			return
+		}
+	}
 	var req logStreamRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())

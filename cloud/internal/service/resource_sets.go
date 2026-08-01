@@ -22,12 +22,13 @@ import (
 var DefaultResourceSetID = uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
 
 type ResourceSetService struct {
-	rsRepo repository.ResourceSetRepository
-	cwRepo repository.ClientWorkloadRepository
-	swRepo repository.ServerWorkloadRepository
-	tpRepo repository.TrustProviderRepository
-	cpRepo repository.CredentialProviderRepository
-	apRepo repository.AccessPolicyRepository
+	rsRepo  repository.ResourceSetRepository
+	cwRepo  repository.ClientWorkloadRepository
+	swRepo  repository.ServerWorkloadRepository
+	tpRepo  repository.TrustProviderRepository
+	cpRepo  repository.CredentialProviderRepository
+	apRepo  repository.AccessPolicyRepository
+	limiter *PlanLimiter
 }
 
 func NewResourceSetService(
@@ -43,7 +44,14 @@ func NewResourceSetService(
 	}
 }
 
+func (s *ResourceSetService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+
 func (s *ResourceSetService) Create(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceResourceSets); err != nil {
+			return err
+		}
+	}
 	rs.ID = uuid.New()
 	rs.TenantID = tenantID
 	return s.rsRepo.Create(ctx, tenantID, rs)

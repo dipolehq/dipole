@@ -16,6 +16,7 @@ type Tenant struct {
 	ID           uuid.UUID
 	Name         string
 	Subdomain    string
+	Plan         string
 	APITokenHash string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

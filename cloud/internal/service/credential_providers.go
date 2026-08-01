@@ -17,11 +17,14 @@ import (
 type CredentialProviderService struct {
 	repo          repository.CredentialProviderRepository
 	encryptionKey []byte
+	limiter       *PlanLimiter
 }
 
 func NewCredentialProviderService(repo repository.CredentialProviderRepository, encryptionKey []byte) *CredentialProviderService {
 	return &CredentialProviderService{repo: repo, encryptionKey: encryptionKey}
 }
+
+func (s *CredentialProviderService) SetLimiter(l *PlanLimiter) { s.limiter = l }
 
 func (s *CredentialProviderService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.CredentialProvider, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -52,6 +55,11 @@ func (s *CredentialProviderService) Get(ctx context.Context, tenantID, id uuid.U
 }
 
 func (s *CredentialProviderService) Create(ctx context.Context, tenantID uuid.UUID, cp *domain.CredentialProvider, configJSON json.RawMessage) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceCredentialProviders); err != nil {
+			return err
+		}
+	}
 	normalizeCredentialProvider(cp)
 	if err := validateCredentialProvider(cp); err != nil {
 		return err

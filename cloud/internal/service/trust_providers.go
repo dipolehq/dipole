@@ -16,11 +16,14 @@ type TrustProviderService struct {
 	repo            repository.TrustProviderRepository
 	region          string
 	tenantSubdomain string
+	limiter         *PlanLimiter
 }
 
 func NewTrustProviderService(repo repository.TrustProviderRepository, region string, tenantSubdomain string) *TrustProviderService {
 	return &TrustProviderService{repo: repo, region: region, tenantSubdomain: tenantSubdomain}
 }
+
+func (s *TrustProviderService) SetLimiter(l *PlanLimiter) { s.limiter = l }
 
 func (s *TrustProviderService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -38,6 +41,11 @@ func (s *TrustProviderService) Get(ctx context.Context, tenantID, id uuid.UUID) 
 }
 
 func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, tp *domain.TrustProvider) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceTrustProviders); err != nil {
+			return err
+		}
+	}
 	normalizeTrustProvider(tp)
 	if err := validateTrustProvider(tp); err != nil {
 		return err

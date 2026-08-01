@@ -51,12 +51,15 @@ var validClientIdentifierTypes = map[string]struct{}{
 }
 
 type ClientWorkloadService struct {
-	repo repository.ClientWorkloadRepository
+	repo    repository.ClientWorkloadRepository
+	limiter *PlanLimiter
 }
 
 func NewClientWorkloadService(repo repository.ClientWorkloadRepository) *ClientWorkloadService {
 	return &ClientWorkloadService{repo: repo}
 }
+
+func (s *ClientWorkloadService) SetLimiter(l *PlanLimiter) { s.limiter = l }
 
 func (s *ClientWorkloadService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ClientWorkload, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -74,6 +77,11 @@ func (s *ClientWorkloadService) Get(ctx context.Context, tenantID, id uuid.UUID)
 }
 
 func (s *ClientWorkloadService) Create(ctx context.Context, tenantID uuid.UUID, cw *domain.ClientWorkload) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceClientWorkloads); err != nil {
+			return err
+		}
+	}
 	normalizeClientWorkload(cw)
 	if err := validateClientWorkload(cw); err != nil {
 		return err

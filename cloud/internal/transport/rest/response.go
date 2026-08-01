@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 type ErrorResponse struct {
@@ -61,6 +62,8 @@ func respondDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		respondError(w, http.StatusNotFound, "not_found", "resource not found")
+	case errors.Is(err, service.ErrPlanLimitReached):
+		respondError(w, http.StatusForbidden, "plan_limit_reached", err.Error())
 	case errors.As(err, &validationErr):
 		respondJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: ErrorDetail{
 			Code:    "validation_failed",

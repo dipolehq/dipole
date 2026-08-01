@@ -13,12 +13,15 @@ import (
 )
 
 type AccessPolicyService struct {
-	repo repository.AccessPolicyRepository
+	repo    repository.AccessPolicyRepository
+	limiter *PlanLimiter
 }
 
 func NewAccessPolicyService(repo repository.AccessPolicyRepository) *AccessPolicyService {
 	return &AccessPolicyService{repo: repo}
 }
+
+func (s *AccessPolicyService) SetLimiter(l *PlanLimiter) { s.limiter = l }
 
 func (s *AccessPolicyService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessPolicy, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -36,6 +39,11 @@ func (s *AccessPolicyService) Get(ctx context.Context, tenantID, id uuid.UUID) (
 }
 
 func (s *AccessPolicyService) Create(ctx context.Context, tenantID uuid.UUID, p *domain.AccessPolicy) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceAccessPolicies); err != nil {
+			return err
+		}
+	}
 	normalizeAccessPolicy(p)
 	if err := validateAccessPolicy(p); err != nil {
 		return err

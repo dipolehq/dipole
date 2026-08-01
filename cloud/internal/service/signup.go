@@ -90,6 +90,7 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	tenant := &domain.Tenant{
 		Name:         req.CompanyName,
 		Subdomain:    subdomain,
+		Plan:         "starter",
 		APITokenHash: apiTokenHash,
 	}
 	if err := s.tenants.Create(ctx, tenant); err != nil {

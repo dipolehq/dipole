@@ -13,12 +13,15 @@ import (
 )
 
 type AccessConditionService struct {
-	repo repository.AccessConditionRepository
+	repo    repository.AccessConditionRepository
+	limiter *PlanLimiter
 }
 
 func NewAccessConditionService(repo repository.AccessConditionRepository) *AccessConditionService {
 	return &AccessConditionService{repo: repo}
 }
+
+func (s *AccessConditionService) SetLimiter(l *PlanLimiter) { s.limiter = l }
 
 func (s *AccessConditionService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -36,6 +39,11 @@ func (s *AccessConditionService) Get(ctx context.Context, tenantID, id uuid.UUID
 }
 
 func (s *AccessConditionService) Create(ctx context.Context, tenantID uuid.UUID, ac *domain.AccessCondition) error {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, ResourceAccessConditions); err != nil {
+			return err
+		}
+	}
 	normalizeAccessCondition(ac)
 	if err := validateAccessCondition(ac); err != nil {
 		return err
