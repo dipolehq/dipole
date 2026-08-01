@@ -32,9 +32,11 @@ const (
 )
 
 type PasswordResetService struct {
-	users      repository.UserRepository
-	resetRepo  repository.PasswordResetTokenRepository
-	tenantID   uuid.UUID
+	users        repository.UserRepository
+	resetRepo    repository.PasswordResetTokenRepository
+	tenantID     uuid.UUID
+	emailSvc     EmailService
+	resetBaseURL string
 }
 
 func NewPasswordResetService(
@@ -47,6 +49,11 @@ func NewPasswordResetService(
 		resetRepo: resetRepo,
 		tenantID:  tenantID,
 	}
+}
+
+func (s *PasswordResetService) SetEmail(emailSvc EmailService, resetBaseURL string) {
+	s.emailSvc = emailSvc
+	s.resetBaseURL = resetBaseURL
 }
 
 type ForgotPasswordRequest struct {
@@ -99,6 +106,24 @@ func (s *PasswordResetService) ForgotPassword(ctx context.Context, req *ForgotPa
 
 	if err := s.resetRepo.Create(ctx, s.tenantID, resetToken); err != nil {
 		return nil, fmt.Errorf("store reset token: %w", err)
+	}
+
+	if s.emailSvc != nil {
+		resetLink := s.resetBaseURL + "/reset-password?token=" + rawToken
+		htmlBody := fmt.Sprintf(
+			`<h2>Reset Your Password</h2>
+			<p>Click the link below to reset your password. This link expires in 1 hour.</p>
+			<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#f97316;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
+			<p style="color:#666;font-size:12px;">If you didn't request this, you can safely ignore this email.</p>`,
+			resetLink,
+		)
+		if err := s.emailSvc.Send(ctx, req.Email, "Reset your Dipole password", htmlBody); err != nil {
+			fmt.Printf("[EMAIL ERROR] %v\n", err)
+		}
+
+		return &ForgotPasswordResponse{
+			Message: "If an account with that email exists, a password reset link has been sent.",
+		}, nil
 	}
 
 	return &ForgotPasswordResponse{

@@ -18,6 +18,8 @@ type Config struct {
 	GRPCTLSCert     string
 	GRPCTLSKey      string
 	GeoIPDBPath     string
+	ResendAPIKey    string
+	EmailFrom       string
 }
 
 func LoadFromEnv() (*Config, error) {
@@ -33,6 +35,8 @@ func LoadFromEnv() (*Config, error) {
 		GRPCTLSCert:     os.Getenv("DIPOLE_GRPC_TLS_CERT"),
 		GRPCTLSKey:      os.Getenv("DIPOLE_GRPC_TLS_KEY"),
 		GeoIPDBPath:     os.Getenv("DIPOLE_GEOIP_DB_PATH"),
+		ResendAPIKey:    os.Getenv("DIPOLE_RESEND_API_KEY"),
+		EmailFrom:       envStr("DIPOLE_EMAIL_FROM", "Dipole <noreply@dipolehq.com>"),
 	}
 
 	if err := cfg.validate(); err != nil {

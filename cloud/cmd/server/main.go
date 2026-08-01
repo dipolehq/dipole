@@ -303,6 +303,8 @@ func buildHTTPServer(
 			loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer.(*identity.IdentityIssuer), loginTenantID)
 			loginSvc.SetMFA(repos.UserMFA, encKey)
 			passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens, loginTenantID)
+			emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
+			passwordResetSvc.SetEmail(emailSvc, "https://app.dipolehq.com")
 			signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer.(*identity.IdentityIssuer))
 			rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc).RegisterRoutes(mux)
 
