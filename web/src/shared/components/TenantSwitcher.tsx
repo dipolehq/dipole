@@ -37,7 +37,7 @@ export function TenantSwitcher() {
   }
 
   const currentTenantId = getCurrentTenantId()
-  const currentTenant = tenants.find((t) => t.id === currentTenantId)
+  const currentTenant = (tenants ?? []).find((t) => t.id === currentTenantId)
 
   async function handleSwitch(tenantId: string) {
     if (tenantId === currentTenantId || switching) return
