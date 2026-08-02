@@ -3,7 +3,10 @@
  * Features use this via their own api/ layer — never import fetch/axios directly.
  */
 
-const BASE_URL = '/api/v1'
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL
+const sanitizedBaseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : ''
+
+export const BASE_URL = sanitizedBaseUrl ? `${sanitizedBaseUrl}/api/v1` : '/api/v1'
 
 const DEFAULT_RESOURCE_SET_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
 

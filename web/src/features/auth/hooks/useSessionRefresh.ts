@@ -4,6 +4,7 @@
  * If no activity for 30 minutes, the token expires and the user is redirected to login.
  */
 import { useEffect, useRef } from 'react'
+import { BASE_URL } from '@/shared/lib/api-client'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const INACTIVITY_THRESHOLD_MS = 25 * 60 * 1000
@@ -40,7 +41,7 @@ export function useSessionRefresh() {
       }
 
       try {
-        const resp = await fetch('/api/v1/auth/refresh', {
+        const resp = await fetch(`${BASE_URL}/auth/refresh`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
