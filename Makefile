@@ -13,7 +13,7 @@ DIPOLE_GEOIP_DB_PATH ?= $(shell pwd)/data/GeoLite2-City.mmdb
 export DIPOLE_GEOIP_DB_PATH
 
 # Local-dev encryption key (32 bytes hex). Production must supply this via a secret.
-DIPOLE_ENCRYPTION_KEY ?= 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+DIPOLE_ENCRYPTION_KEY ?= deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 export DIPOLE_ENCRYPTION_KEY
 
 CLOUD_DIR := cloud
@@ -92,7 +92,7 @@ migrate-force: ## Force schema to VERSION and clear dirty flag (recovery only): 
 
 .PHONY: run
 run: ## Run the cloud server (REST + gRPC)
-	cd $(CLOUD_DIR) && DIPOLE_ENCRYPTION_KEY=$(DIPOLE_ENCRYPTION_KEY) go run ./cmd/server
+	@cd $(CLOUD_DIR) && if [ -f .env ]; then set -a && . ./.env && set +a; fi && go run ./cmd/server
 
 .PHONY: bootstrap
 bootstrap: ## Provision a dev tenant and print an API token: make bootstrap [SUBDOMAIN=dev]
