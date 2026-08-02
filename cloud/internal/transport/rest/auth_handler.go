@@ -28,6 +28,7 @@ func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/reset-password", h.HandleResetPassword)
 	mux.HandleFunc("POST /api/v1/auth/mfa-verify", h.HandleMFAVerify)
 	mux.HandleFunc("POST /api/v1/auth/switch-tenant", h.HandleSwitchTenant)
+	mux.HandleFunc("POST /api/v1/auth/refresh", h.HandleRefresh)
 	mux.HandleFunc("GET /api/v1/user/tenants", h.HandleListUserTenants)
 }
 
@@ -160,6 +161,23 @@ func (h *AuthHandler) HandleListUserTenants(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tenants": tenants})
+}
+
+func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
+	email := UserEmailFromContext(r.Context())
+	tenantID := TenantIDFromContext(r.Context())
+	if email == "" || tenantID == uuid.Nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+
+	resp, err := h.loginSvc.RefreshSession(r.Context(), email, tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {

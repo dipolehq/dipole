@@ -204,7 +204,7 @@ func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uu
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
 		Audience:  "dipole-admin",
-		Lifetime:  24 * time.Hour,
+		Lifetime:  30 * time.Minute,
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
 			"tenant_id": tenantID.String(),
@@ -219,7 +219,7 @@ func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uu
 
 	return &LoginResponse{
 		Token:     token,
-		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
 		User: LoginUser{
 			ID:    user.ID.String(),
 			Email: user.Email,
@@ -312,7 +312,7 @@ func (s *LoginService) SwitchTenant(ctx context.Context, email string, targetTen
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
 		Audience:  "dipole-admin",
-		Lifetime:  24 * time.Hour,
+		Lifetime:  30 * time.Minute,
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
 			"tenant_id": targetTenantID.String(),
@@ -327,13 +327,31 @@ func (s *LoginService) SwitchTenant(ctx context.Context, email string, targetTen
 
 	return &LoginResponse{
 		Token:     token,
-		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
 		User: LoginUser{
 			ID:    user.ID.String(),
 			Email: user.Email,
 			Name:  user.Name,
 		},
 	}, nil
+}
+
+// RefreshSession issues a fresh session token for an already-authenticated user.
+// Called by the frontend every 5 minutes to extend the session without re-login.
+func (s *LoginService) RefreshSession(ctx context.Context, email string, tenantID uuid.UUID) (*LoginResponse, error) {
+	if email == "" || tenantID == uuid.Nil {
+		return nil, fmt.Errorf("invalid session")
+	}
+
+	user, err := s.users.GetByEmail(ctx, tenantID, email)
+	if err != nil || user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	if !user.IsActive {
+		return nil, fmt.Errorf("account is disabled")
+	}
+
+	return s.issueSessionTokenForTenant(user, tenantID)
 }
 
 // ListTenantsForUser returns all tenants where the given email has an active account.
