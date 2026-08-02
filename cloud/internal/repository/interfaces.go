@@ -131,6 +131,8 @@ type LogStreamRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.LogStream, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	ListAllActive(ctx context.Context) ([]domain.LogStream, error)
+	UpdateLastExportedAt(ctx context.Context, id uuid.UUID, t time.Time) error
 }
 
 type AgentProxyRepository interface {

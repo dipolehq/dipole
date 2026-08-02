@@ -265,6 +265,7 @@ type LogStream struct {
 	EventType       string // "access_authorization", "audit_logs", "workload_events"
 	DestinationType string // "aws_s3", "gcs_bucket", "crowdstrike_siem", "splunk_siem"
 	Config          json.RawMessage
+	LastExportedAt  *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

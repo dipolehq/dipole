@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -107,6 +108,36 @@ func (r *LogStreamRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.
 	_, err := r.pool.Exec(ctx, `DELETE FROM log_streams WHERE tenant_id = $1 AND id = $2`, tenantID, id)
 	if err != nil {
 		return fmt.Errorf("delete log stream: %w", err)
+	}
+	return nil
+}
+
+func (r *LogStreamRepo) ListAllActive(ctx context.Context) ([]domain.LogStream, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, tenant_id, name, description, is_active, event_type, destination_type, config, created_at, updated_at, last_exported_at
+		 FROM log_streams WHERE is_active = true`)
+	if err != nil {
+		return nil, fmt.Errorf("list all active log streams: %w", err)
+	}
+	defer rows.Close()
+
+	var results []domain.LogStream
+	for rows.Next() {
+		var ls domain.LogStream
+		var config []byte
+		if err := rows.Scan(&ls.ID, &ls.TenantID, &ls.Name, &ls.Description, &ls.IsActive, &ls.EventType, &ls.DestinationType, &config, &ls.CreatedAt, &ls.UpdatedAt, &ls.LastExportedAt); err != nil {
+			return nil, fmt.Errorf("scan log stream: %w", err)
+		}
+		ls.Config = config
+		results = append(results, ls)
+	}
+	return results, nil
+}
+
+func (r *LogStreamRepo) UpdateLastExportedAt(ctx context.Context, id uuid.UUID, t time.Time) error {
+	_, err := r.pool.Exec(ctx, `UPDATE log_streams SET last_exported_at = $1 WHERE id = $2`, t, id)
+	if err != nil {
+		return fmt.Errorf("update last_exported_at: %w", err)
 	}
 	return nil
 }

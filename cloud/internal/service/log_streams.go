@@ -17,23 +17,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
-
-type LogStreamConfig struct {
-	ID             uuid.UUID
-	TenantID       uuid.UUID
-	Name           string
-	Type           string
-	Config         json.RawMessage
-	EventTypes     []string
-	Enabled        bool
-	LastExportedAt *time.Time
-	CreatedAt      time.Time
-}
 
 type LogExporter interface {
 	Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error
@@ -41,13 +27,15 @@ type LogExporter interface {
 
 type LogStreamService struct {
 	repo      repository.EventRepository
+	lsRepo    repository.LogStreamRepository
 	exporters map[string]LogExporter
 	logger    *slog.Logger
 }
 
-func NewLogStreamService(repo repository.EventRepository, logger *slog.Logger) *LogStreamService {
+func NewLogStreamService(repo repository.EventRepository, lsRepo repository.LogStreamRepository, logger *slog.Logger) *LogStreamService {
 	return &LogStreamService{
 		repo:      repo,
+		lsRepo:    lsRepo,
 		exporters: make(map[string]LogExporter),
 		logger:    logger,
 	}
@@ -57,26 +45,29 @@ func (s *LogStreamService) RegisterExporter(streamType string, exporter LogExpor
 	s.exporters[streamType] = exporter
 }
 
-func (s *LogStreamService) ExportCycle(ctx context.Context, streams []LogStreamConfig) {
+func (s *LogStreamService) ExportCycle(ctx context.Context) {
+	streams, err := s.lsRepo.ListAllActive(ctx)
+	if err != nil {
+		s.logger.Error("failed to load active log streams", "error", err)
+		return
+	}
+
 	for i := range streams {
 		stream := &streams[i]
-		if !stream.Enabled {
-			continue
-		}
 
-		exporter, ok := s.exporters[stream.Type]
+		exporter, ok := s.exporters[stream.DestinationType]
 		if !ok {
-			s.logger.Warn("no exporter for log stream type", "type", stream.Type)
+			s.logger.Warn("no exporter for log stream type", "type", stream.DestinationType, "stream_id", stream.ID)
 			continue
 		}
 
 		if err := s.exportForStream(ctx, stream, exporter); err != nil {
-			s.logger.Error("log stream export failed", "stream_id", stream.ID, "type", stream.Type, "error", err)
+			s.logger.Error("log stream export failed", "stream_id", stream.ID, "type", stream.DestinationType, "error", err)
 		}
 	}
 }
 
-func (s *LogStreamService) exportForStream(ctx context.Context, stream *LogStreamConfig, exporter LogExporter) error {
+func (s *LogStreamService) exportForStream(ctx context.Context, stream *domain.LogStream, exporter LogExporter) error {
 	events, err := s.gatherEvents(ctx, stream)
 	if err != nil {
 		return err
@@ -91,11 +82,13 @@ func (s *LogStreamService) exportForStream(ctx context.Context, stream *LogStrea
 	}
 
 	now := time.Now().UTC()
-	stream.LastExportedAt = &now
+	if err := s.lsRepo.UpdateLastExportedAt(ctx, stream.ID, now); err != nil {
+		s.logger.Error("failed to update last_exported_at", "stream_id", stream.ID, "error", err)
+	}
 	return nil
 }
 
-func (s *LogStreamService) gatherEvents(ctx context.Context, stream *LogStreamConfig) ([]json.RawMessage, error) {
+func (s *LogStreamService) gatherEvents(ctx context.Context, stream *domain.LogStream) ([]json.RawMessage, error) {
 	var since time.Time
 	if stream.LastExportedAt != nil {
 		since = *stream.LastExportedAt
@@ -111,65 +104,63 @@ func (s *LogStreamService) gatherEvents(ctx context.Context, stream *LogStreamCo
 
 	var events []json.RawMessage
 
-	for _, eventType := range stream.EventTypes {
-		switch eventType {
-		case "access_authorization":
-			authEvents, _, err := s.repo.QueryAuthEvents(ctx, stream.TenantID, opts)
-			if err != nil {
-				return nil, fmt.Errorf("gather auth events: %w", err)
-			}
-			for _, e := range authEvents {
-				raw, _ := json.Marshal(map[string]any{
-					"type":          e.EventType,
-					"contextId":     e.ContextID.String(),
-					"severity":      e.Severity,
-					"clientIp":      e.ClientIP,
-					"timestamp":     e.Timestamp.Format(time.RFC3339Nano),
-					"payload":       e.Payload,
-					"resourceSetId": e.ResourceSetID,
-				})
-				events = append(events, raw)
-			}
+	switch stream.EventType {
+	case "access_authorization":
+		authEvents, _, err := s.repo.QueryAuthEvents(ctx, stream.TenantID, opts)
+		if err != nil {
+			return nil, fmt.Errorf("gather auth events: %w", err)
+		}
+		for _, e := range authEvents {
+			raw, _ := json.Marshal(map[string]any{
+				"type":          e.EventType,
+				"contextId":     e.ContextID.String(),
+				"severity":      e.Severity,
+				"clientIp":      e.ClientIP,
+				"timestamp":     e.Timestamp.Format(time.RFC3339Nano),
+				"payload":       e.Payload,
+				"resourceSetId": e.ResourceSetID,
+			})
+			events = append(events, raw)
+		}
 
-		case "workload_events":
-			wlEvents, _, err := s.repo.QueryWorkloadEvents(ctx, stream.TenantID, opts)
-			if err != nil {
-				return nil, fmt.Errorf("gather workload events: %w", err)
-			}
-			for _, e := range wlEvents {
-				raw, _ := json.Marshal(map[string]any{
-					"type":             e.EventType,
-					"connectionId":     e.ConnectionID.String(),
-					"policyId":         e.PolicyID,
-					"clientWorkloadId": e.ClientWorkloadID,
-					"serverWorkloadId": e.ServerWorkloadID,
-					"outcome":          e.Outcome,
-					"severity":         e.Severity,
-					"timestamp":        e.Timestamp.Format(time.RFC3339Nano),
-					"payload":          e.Payload,
-					"resourceSetId":    e.ResourceSetID,
-				})
-				events = append(events, raw)
-			}
+	case "workload_events":
+		wlEvents, _, err := s.repo.QueryWorkloadEvents(ctx, stream.TenantID, opts)
+		if err != nil {
+			return nil, fmt.Errorf("gather workload events: %w", err)
+		}
+		for _, e := range wlEvents {
+			raw, _ := json.Marshal(map[string]any{
+				"type":             e.EventType,
+				"connectionId":     e.ConnectionID.String(),
+				"policyId":         e.PolicyID,
+				"clientWorkloadId": e.ClientWorkloadID,
+				"serverWorkloadId": e.ServerWorkloadID,
+				"outcome":          e.Outcome,
+				"severity":         e.Severity,
+				"timestamp":        e.Timestamp.Format(time.RFC3339Nano),
+				"payload":          e.Payload,
+				"resourceSetId":    e.ResourceSetID,
+			})
+			events = append(events, raw)
+		}
 
-		case "audit_logs":
-			auditLogs, _, err := s.repo.QueryAuditLogs(ctx, stream.TenantID, opts)
-			if err != nil {
-				return nil, fmt.Errorf("gather audit logs: %w", err)
-			}
-			for _, l := range auditLogs {
-				raw, _ := json.Marshal(map[string]any{
-					"actorEmail": l.ActorEmail,
-					"category":   l.Category,
-					"activity":   l.Activity,
-					"targetType": l.TargetType,
-					"targetName": l.TargetName,
-					"severity":   l.Severity,
-					"clientIp":   l.ClientIP,
-					"timestamp":  l.Timestamp.Format(time.RFC3339Nano),
-				})
-				events = append(events, raw)
-			}
+	case "audit_logs":
+		auditLogs, _, err := s.repo.QueryAuditLogs(ctx, stream.TenantID, opts)
+		if err != nil {
+			return nil, fmt.Errorf("gather audit logs: %w", err)
+		}
+		for _, l := range auditLogs {
+			raw, _ := json.Marshal(map[string]any{
+				"actorEmail": l.ActorEmail,
+				"category":   l.Category,
+				"activity":   l.Activity,
+				"targetType": l.TargetType,
+				"targetName": l.TargetName,
+				"severity":   l.Severity,
+				"clientIp":   l.ClientIP,
+				"timestamp":  l.Timestamp.Format(time.RFC3339Nano),
+			})
+			events = append(events, raw)
 		}
 	}
 

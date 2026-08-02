@@ -219,6 +219,18 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		}
 	}()
 
+	logStreamSvc := service.NewLogStreamService(repos.Events, repos.LogStreams, logger)
+	logStreamSvc.RegisterExporter("splunk_siem", service.NewSplunkExporter())
+	logStreamSvc.RegisterExporter("crowdstrike_siem", service.NewCrowdStrikeExporter())
+	logStreamSvc.RegisterExporter("aws_s3", &service.S3Exporter{})
+	logStreamSvc.RegisterExporter("gcs_bucket", &service.GCSExporter{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runLogStreamScheduler(runCtx, logStreamSvc, logger)
+	}()
+
 	var runErr error
 	select {
 	case <-runCtx.Done():
@@ -383,6 +395,23 @@ func parseCORSOrigins(raw string) []string {
 		}
 	}
 	return origins
+}
+
+func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, logger *slog.Logger) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	logger.Info("log stream export scheduler started", "interval", "60s")
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("log stream export scheduler stopped")
+			return
+		case <-ticker.C:
+			svc.ExportCycle(ctx)
+		}
+	}
 }
 
 func buildMCPServerClients(ctx context.Context, repos *postgres.Repositories, tenantID uuid.UUID, logger *slog.Logger) map[string]mcpgw.MCPServerClient {
