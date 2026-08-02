@@ -30,14 +30,15 @@ export function TenantSwitcher() {
       const token = sessionStorage.getItem('dipole_token')
       if (!token) return ''
       const parts = token.split('.')
-      if (parts.length < 2) return ''
-      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+      const segment = parts[1]
+      if (!segment) return ''
+      const payload = JSON.parse(atob(segment.replace(/-/g, '+').replace(/_/g, '/')))
       return payload.tenant_id || ''
     } catch { return '' }
   }
 
   const currentTenantId = getCurrentTenantId()
-  const currentTenant = (tenants ?? []).find((t) => t.id === currentTenantId)
+  const currentTenant = tenants.find((t) => t.id === currentTenantId)
 
   async function handleSwitch(tenantId: string) {
     if (tenantId === currentTenantId || switching) return
