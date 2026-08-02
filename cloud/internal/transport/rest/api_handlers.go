@@ -37,6 +37,11 @@ type ControllerCreator interface {
 	RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error)
 }
 
+// HealthPinger checks database connectivity for the health endpoint.
+type HealthPinger interface {
+	Ping(ctx context.Context) error
+}
+
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	agentProxies           repository.AgentProxyRepository
@@ -53,6 +58,7 @@ type APIHandlers struct {
 	registrationSvc        ControllerCreator
 	planLimiter            *service.PlanLimiter
 	audit                  *AuditEmitter
+	healthPinger           HealthPinger
 }
 
 func NewAPIHandlers(
@@ -90,6 +96,8 @@ func NewAPIHandlers(
 func (h *APIHandlers) SetPlanLimiter(l *service.PlanLimiter) { h.planLimiter = l }
 
 func (h *APIHandlers) SetAudit(a *AuditEmitter) { h.audit = a }
+
+func (h *APIHandlers) SetHealthPinger(p HealthPinger) { h.healthPinger = p }
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
@@ -146,7 +154,13 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/log-streams/{id}", h.DeleteLogStream)
 }
 
-func (h *APIHandlers) Health(w http.ResponseWriter, _ *http.Request) {
+func (h *APIHandlers) Health(w http.ResponseWriter, r *http.Request) {
+	if h.healthPinger != nil {
+		if err := h.healthPinger.Ping(r.Context()); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "Unhealthy", "error": "database unreachable"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Healthy"})
 }
 

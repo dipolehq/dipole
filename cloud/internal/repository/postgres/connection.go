@@ -109,3 +109,10 @@ func (r *Repositories) Close() {
 		p.Close()
 	}
 }
+
+func (r *Repositories) Ping(ctx context.Context) error {
+	if p, ok := r.pool.(*pgxpool.Pool); ok {
+		return p.Ping(ctx)
+	}
+	return nil
+}

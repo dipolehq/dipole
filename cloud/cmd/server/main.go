@@ -286,6 +286,7 @@ func buildHTTPServer(
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
 	apiHandlers.SetPlanLimiter(planLimiter)
+	apiHandlers.SetHealthPinger(repos)
 
 	auditEmitter := events.NewAuditLogEmitter(repos.Events)
 	apiHandlers.SetAudit(auditEmitter)
