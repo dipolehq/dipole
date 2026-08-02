@@ -23,12 +23,15 @@ type clientWorkloadService interface {
 }
 
 type ClientWorkloadHandler struct {
-	svc clientWorkloadService
+	svc   clientWorkloadService
+	audit *AuditEmitter
 }
 
 func NewClientWorkloadHandler(svc clientWorkloadService) *ClientWorkloadHandler {
 	return &ClientWorkloadHandler{svc: svc}
 }
+
+func (h *ClientWorkloadHandler) SetAudit(a *AuditEmitter) { h.audit = a }
 
 func (h *ClientWorkloadHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/client-workloads", h.List)
@@ -152,6 +155,9 @@ func (h *ClientWorkloadHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "client_workload", cw.ID, cw.Name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusCreated, toClientWorkloadResponse(&cw))
 }
 
@@ -191,6 +197,9 @@ func (h *ClientWorkloadHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "client_workload", cw.ID, cw.Name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, toClientWorkloadResponse(&cw))
 }
 
@@ -205,6 +214,9 @@ func (h *ClientWorkloadHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "client_workload", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

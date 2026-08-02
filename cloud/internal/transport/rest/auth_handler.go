@@ -15,11 +15,14 @@ type AuthHandler struct {
 	loginSvc    *service.LoginService
 	passwordSvc *service.PasswordResetService
 	signupSvc   *service.SignupService
+	audit       *AuditEmitter
 }
 
 func NewAuthHandler(loginSvc *service.LoginService, passwordSvc *service.PasswordResetService, signupSvc *service.SignupService) *AuthHandler {
 	return &AuthHandler{loginSvc: loginSvc, passwordSvc: passwordSvc, signupSvc: signupSvc}
 }
+
+func (h *AuthHandler) SetAudit(a *AuditEmitter) { h.audit = a }
 
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/login", h.HandleLogin)
@@ -53,6 +56,9 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resp.Token != "" && h.audit != nil {
+		h.audit.EmitAuditLog(r.Context(), TenantIDFromContext(r.Context()), req.Email, "Authentication", "Login", "user", uuid.Nil, req.Email, clientIP(r), userAgent(r))
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -201,5 +207,8 @@ func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.audit != nil {
+		h.audit.EmitAuditLog(r.Context(), uuid.Nil, req.Email, "Tenant", "Signup", "tenant", uuid.Nil, req.CompanyName, clientIP(r), userAgent(r))
+	}
 	writeJSON(w, http.StatusCreated, resp)
 }

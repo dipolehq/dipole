@@ -22,12 +22,15 @@ type trustProviderService interface {
 }
 
 type TrustProviderHandler struct {
-	svc trustProviderService
+	svc   trustProviderService
+	audit *AuditEmitter
 }
 
 func NewTrustProviderHandler(svc trustProviderService) *TrustProviderHandler {
 	return &TrustProviderHandler{svc: svc}
 }
+
+func (h *TrustProviderHandler) SetAudit(a *AuditEmitter) { h.audit = a }
 
 func (h *TrustProviderHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/trust-providers", h.List)
@@ -170,6 +173,9 @@ func (h *TrustProviderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "TrustProvider", "trust_provider", tp.ID, tp.Name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusCreated, toTrustProviderResponse(&tp))
 }
 
@@ -209,6 +215,9 @@ func (h *TrustProviderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "TrustProvider", "trust_provider", tp.ID, tp.Name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, toTrustProviderResponse(&tp))
 }
 
@@ -223,6 +232,9 @@ func (h *TrustProviderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "TrustProvider", "trust_provider", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

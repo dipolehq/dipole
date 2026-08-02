@@ -287,12 +287,32 @@ func buildHTTPServer(
 	apiHandlers.RegisterAPIRoutes(mux)
 	apiHandlers.SetPlanLimiter(planLimiter)
 
-	rest.NewClientWorkloadHandler(clientWorkloadSvc).RegisterRoutes(mux)
-	rest.NewServerWorkloadHandler(serverWorkloadSvc).RegisterRoutes(mux)
-	rest.NewTrustProviderHandler(trustProviderSvc).RegisterRoutes(mux)
-	rest.NewAccessConditionHandler(accessConditionSvc).RegisterRoutes(mux)
-	rest.NewCredentialProviderHandler(credentialProviderSvc).RegisterRoutes(mux)
-	rest.NewAccessPolicyHandler(accessPolicySvc).RegisterRoutes(mux)
+	auditEmitter := events.NewAuditLogEmitter(repos.Events)
+	apiHandlers.SetAudit(auditEmitter)
+
+	cwHandler := rest.NewClientWorkloadHandler(clientWorkloadSvc)
+	cwHandler.SetAudit(auditEmitter)
+	cwHandler.RegisterRoutes(mux)
+
+	swHandler := rest.NewServerWorkloadHandler(serverWorkloadSvc)
+	swHandler.SetAudit(auditEmitter)
+	swHandler.RegisterRoutes(mux)
+
+	tpHandler := rest.NewTrustProviderHandler(trustProviderSvc)
+	tpHandler.SetAudit(auditEmitter)
+	tpHandler.RegisterRoutes(mux)
+
+	acHandler := rest.NewAccessConditionHandler(accessConditionSvc)
+	acHandler.SetAudit(auditEmitter)
+	acHandler.RegisterRoutes(mux)
+
+	cpHandler := rest.NewCredentialProviderHandler(credentialProviderSvc)
+	cpHandler.SetAudit(auditEmitter)
+	cpHandler.RegisterRoutes(mux)
+
+	apHandler := rest.NewAccessPolicyHandler(accessPolicySvc)
+	apHandler.SetAudit(auditEmitter)
+	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 	rest.NewMCPTracingHandler(tracingBus).RegisterRoutes(mux)
 	rest.NewDashboardHandler(service.NewDashboardService(
@@ -305,7 +325,9 @@ func buildHTTPServer(
 		mfaTenantID, _ := uuid.Parse(cfg.TenantID)
 		if mfaTenantID != uuid.Nil {
 			mfaSvc := service.NewMFAService(repos.UserMFA, encKey, mfaTenantID)
-			rest.NewMFAHandler(mfaSvc, repos.Users).RegisterRoutes(mux)
+			mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
+			mfaHandler.SetAudit(auditEmitter)
+			mfaHandler.RegisterRoutes(mux)
 		}
 	}
 
@@ -318,7 +340,9 @@ func buildHTTPServer(
 			emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 			passwordResetSvc.SetEmail(emailSvc, "https://app.dipolehq.com")
 			signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer.(*identity.IdentityIssuer))
-			rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc).RegisterRoutes(mux)
+			authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
+			authHandler.SetAudit(auditEmitter)
+			authHandler.RegisterRoutes(mux)
 
 			oidcClient := service.NewHTTPOIDCClient()
 			ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)

@@ -52,6 +52,7 @@ type APIHandlers struct {
 	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
 	planLimiter            *service.PlanLimiter
+	audit                  *AuditEmitter
 }
 
 func NewAPIHandlers(
@@ -87,6 +88,8 @@ func NewAPIHandlers(
 }
 
 func (h *APIHandlers) SetPlanLimiter(l *service.PlanLimiter) { h.planLimiter = l }
+
+func (h *APIHandlers) SetAudit(a *AuditEmitter) { h.audit = a }
 
 func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/health", h.Health)
@@ -264,6 +267,9 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusCreated, toAgentControllerResponse(ac))
 }
 
@@ -316,8 +322,14 @@ func (h *APIHandlers) UpdateAgentController(w http.ResponseWriter, r *http.Reque
 	}
 	saved, err := h.agentControllers.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toAgentControllerResponse(&ac))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toAgentControllerResponse(saved))
 }
@@ -341,6 +353,9 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 	if err := h.agentControllers.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -401,8 +416,14 @@ func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.users.GetByID(r.Context(), tenantID, u.ID)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusCreated, toUserResponse(&u))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusCreated, toUserResponse(saved))
 }
@@ -456,8 +477,14 @@ func (h *APIHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.users.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toUserResponse(&u))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toUserResponse(saved))
 }
@@ -481,6 +508,9 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -512,8 +542,14 @@ func (h *APIHandlers) CreateRole(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.roles.GetByID(r.Context(), tenantID, role.ID)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", role.ID, role.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusCreated, toRoleResponse(&role))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusCreated, toRoleResponse(saved))
 }
@@ -567,8 +603,14 @@ func (h *APIHandlers) UpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.roles.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", role.ID, role.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toRoleResponse(&role))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toRoleResponse(saved))
 }
@@ -592,6 +634,9 @@ func (h *APIHandlers) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	if err := h.roles.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -834,8 +879,14 @@ func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) 
 	}
 	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, rs.ID)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusCreated, toResourceSetResponse(&rs))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusCreated, toResourceSetResponse(saved))
 }
@@ -889,8 +940,14 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 	}
 	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toResourceSetResponse(&rs))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toResourceSetResponse(saved))
 }
@@ -914,6 +971,9 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 	if err := h.resourceSets.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -998,8 +1058,14 @@ func (h *APIHandlers) CreateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	}
 	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, idp.ID)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusCreated, toIdpResponse(&idp))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusCreated, toIdpResponse(saved))
 }
@@ -1053,8 +1119,14 @@ func (h *APIHandlers) UpdateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	}
 	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toIdpResponse(&idp))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toIdpResponse(saved))
 }
@@ -1078,6 +1150,9 @@ func (h *APIHandlers) DeleteIdentityProvider(w http.ResponseWriter, r *http.Requ
 	if err := h.identityProviders.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1184,6 +1259,9 @@ func (h *APIHandlers) UpdateSignOnPolicy(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "SignOnPolicies", "sign_on_policy", uuid.Nil, "sign-on-policy", clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"requireSso": req.RequireSSO,
 		"requireMfa": req.RequireMFA,
@@ -1246,8 +1324,14 @@ func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.logStreams.GetByID(r.Context(), tenantID, ls.ID)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusCreated, toLogStreamResponse(&ls))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusCreated, toLogStreamResponse(saved))
 }
@@ -1301,8 +1385,14 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.logStreams.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
+		if h.audit != nil {
+			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
+		}
 		respondJSON(w, http.StatusOK, toLogStreamResponse(&ls))
 		return
+	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	}
 	respondJSON(w, http.StatusOK, toLogStreamResponse(saved))
 }
@@ -1326,6 +1416,9 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 	if err := h.logStreams.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
+	}
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", id, "", clientIP(r), userAgent(r))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1445,6 +1538,9 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "GlobalPolicyCompliance", "global_policy_compliance", uuid.Nil, "global-policy-compliance", clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"apTrustProvider":            req.APTrustProvider,
 		"apAccessCondition":          req.APAccessCondition,
@@ -1559,6 +1655,9 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 		_ = h.tenants.Update(r.Context(), tenant)
 	}
 
+	if h.audit != nil {
+		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", apiToken.ID, name, clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"token":         token,
 		"id":            apiToken.ID.String(),
@@ -1613,6 +1712,9 @@ func (h *APIHandlers) DeleteAccessToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if h.audit != nil {
+		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", id, "", clientIP(r), userAgent(r))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1663,5 +1765,8 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.audit != nil {
+		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "password", uuid.Nil, "password-changed", clientIP(r), userAgent(r))
+	}
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully."})
 }
