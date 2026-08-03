@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud:
+    name: Cloud (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cloud/go.mod
+          cache-dependency-path: cloud/go.sum
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: gofmt -l . | tee /tmp/fmt.out && test ! -s /tmp/fmt.out
+      - run: go test ./... -short -timeout 60s
+
+  edge:
+    name: Edge (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: edge
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: edge/go.mod
+          cache-dependency-path: edge/go.sum
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: gofmt -l . | tee /tmp/fmt.out && test ! -s /tmp/fmt.out
+      - run: go test ./... -short -timeout 60s
+
+  web:
+    name: Web (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vite build
+
+  docs:
+    name: Docs (Astro)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - run: npm ci
+      - run: npx astro build
+
+  terraform:
+    name: Terraform Provider (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform/go.mod
+          cache-dependency-path: terraform/go.sum
+
+      - run: go build ./...
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [cloud, edge]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Cloud image
+        run: docker build --platform linux/amd64 --label org.opencontainers.image.revision=${{ github.sha }} -f cloud/Dockerfile -t dipole/cloud:ci .
+
+      - name: Smoke test Cloud image
+        run: |
+          set -euo pipefail
+
+          docker network create dipole-ci
+          docker run -d --name dipole-ci-db --network dipole-ci \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=dipole \
+            postgres:16-alpine
+
+          for _ in $(seq 1 30); do
+            if docker exec dipole-ci-db pg_isready -U postgres -d dipole >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec dipole-ci-db pg_isready -U postgres -d dipole
+
+          docker run -d --name dipole-ci-cloud --network dipole-ci -p 8080:8080 \
+            -e DIPOLE_DATABASE_URL='postgres://postgres:postgres@dipole-ci-db:5432/dipole?sslmode=disable' \
+            -e DIPOLE_ENCRYPTION_KEY=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
+            -e DIPOLE_HTTP_PORT=8080 \
+            dipole/cloud:ci
+
+          for _ in $(seq 1 45); do
+            if curl -fsS http://localhost:8080/api/v1/health >/dev/null 2>&1; then
+              echo "cloud image is healthy"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' dipole-ci-cloud)" != "true" ]; then
+              echo "::error::cloud container exited during startup"
+              docker logs dipole-ci-cloud
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "::error::cloud image never became healthy"
+          docker logs dipole-ci-cloud
+          exit 1
+
+      - name: Tear down smoke test
+        if: always()
+        run: |
+          docker rm -f dipole-ci-cloud dipole-ci-db >/dev/null 2>&1 || true
+          docker network rm dipole-ci >/dev/null 2>&1 || true
+
+      - name: Build Proxy image
+        run: docker build --platform linux/amd64 --label org.opencontainers.image.revision=${{ github.sha }} -f edge/Dockerfile.proxy -t dipole/proxy:ci .
+
+      - name: Build Controller image
+        run: docker build --platform linux/amd64 --label org.opencontainers.image.revision=${{ github.sha }} -f edge/Dockerfile.controller -t dipole/controller:ci .
+
+      - name: Build Injector image
+        run: docker build --platform linux/amd64 --label org.opencontainers.image.revision=${{ github.sha }} -f edge/Dockerfile.injector -t dipole/injector:ci .
+
+      - name: Build Init image
+        run: docker build --platform linux/amd64 --label org.opencontainers.image.revision=${{ github.sha }} -f edge/Dockerfile.init -t dipole/init:ci .
