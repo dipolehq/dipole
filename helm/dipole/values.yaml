@@ -4,7 +4,7 @@ agentController:
   deviceCode: ""
   id: ""
   image:
-    repository: dipole/controller
+    repository: ghcr.io/dipolehq/controller
     tag: latest
     pullPolicy: IfNotPresent
   resources:
@@ -20,7 +20,7 @@ agentController:
 
 agentInjector:
   image:
-    repository: dipole/injector
+    repository: ghcr.io/dipolehq/injector
     tag: latest
     pullPolicy: IfNotPresent
   resources:
@@ -38,7 +38,7 @@ agentInjector:
 
 agentProxy:
   image:
-    repository: dipole/proxy
+    repository: ghcr.io/dipolehq/proxy
     tag: latest
   env: {}
   trustedCertificates: ""
@@ -53,7 +53,7 @@ agentProxy:
 
 init:
   image:
-    repository: dipole/init
+    repository: ghcr.io/dipolehq/init
     tag: latest
 
 serviceAccount:

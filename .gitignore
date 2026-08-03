@@ -59,3 +59,6 @@ docker-compose.override.yml
 
 # GeoIP database (downloaded separately, ~70MB)
 data/*.mmdb
+
+# Helm chart build artifacts (published to helm-charts repo)
+.helm-releases/
