@@ -17,15 +17,15 @@ import (
 const maxTracingEntries = 200
 
 type TracingEntry struct {
-	ID              string        `json:"id"`
-	Timestamp       string        `json:"timestamp"`
-	ClientIP        string        `json:"clientIP"`
-	AccessPolicy    TracingPolicy `json:"accessPolicy"`
-	RedirectURI     string        `json:"redirectUri"`
-	ClientWorkload  TracingWL     `json:"clientWorkload"`
-	ResourceServer  string        `json:"resourceServer"`
-	ServerWorkload  TracingWL     `json:"serverWorkload"`
-	Severity        string        `json:"severity"`
+	ID             string        `json:"id"`
+	Timestamp      string        `json:"timestamp"`
+	ClientIP       string        `json:"clientIP"`
+	AccessPolicy   TracingPolicy `json:"accessPolicy"`
+	RedirectURI    string        `json:"redirectUri"`
+	ClientWorkload TracingWL     `json:"clientWorkload"`
+	ResourceServer string        `json:"resourceServer"`
+	ServerWorkload TracingWL     `json:"serverWorkload"`
+	Severity       string        `json:"severity"`
 }
 
 type TracingPolicy struct {
