@@ -135,7 +135,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages (staging)
         working-directory: web
-        run: npx wrangler pages deploy dist --project-name=dipole-console-staging
+        run: npx wrangler pages deploy dist --project-name=dipole-console-staging --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
