@@ -39,8 +39,9 @@ build/
 node_modules/
 web/dist/
 
-# Protobuf generated code (regenerated via buf generate)
-gen/
+# Protobuf generated code — committed because cloud/ and edge/ depend on it via replace directive
+# Regenerate with: buf generate (from repo root)
+# gen/
 
 # Terraform
 .terraform/
