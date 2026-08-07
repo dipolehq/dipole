@@ -49,9 +49,9 @@ func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, auth
 	}
 }
 
-// serverURL returns the MCP Authorization Server base URL (<tenant>.mcp.<region>.<domain>).
+// serverURL returns the MCP Authorization Server base URL (<tenant>.mcp.<domain>).
 func (s *MCPAuthServer) serverURL() string {
-	return "https://" + s.config.TenantSubdomain + ".mcp." + s.config.Region + "." + s.config.Domain
+	return "https://" + s.config.TenantSubdomain + ".mcp." + s.config.Domain
 }
 
 func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {

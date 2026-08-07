@@ -175,12 +175,12 @@ export function CreateIdentityProviderPage() {
                     {authMethod === 'public_private_keypair' && (
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">JWKS URL (configure in your IdP)</label>
-                        <div className="text-xs text-gray-700 font-mono">https://acme.dipolehq.com/.well-known/jwks.json</div>
+                        <div className="text-xs text-gray-700 font-mono">{import.meta.env.VITE_API_BASE_URL || 'https://api.dipolehq.com'}/.well-known/openid-configuration/jwks</div>
                       </div>
                     )}
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL (configure in your IdP)</label>
-                      <div className="text-xs text-gray-700 font-mono">https://acme.dipolehq.com/oidc/callback</div>
+                      <div className="text-xs text-gray-700 font-mono">{import.meta.env.VITE_API_BASE_URL || 'https://api.dipolehq.com'}/api/v1/auth/sso/callback</div>
                     </div>
                   </div>
                 </div>

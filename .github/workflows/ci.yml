@@ -129,6 +129,12 @@ jobs:
           done
           docker exec dipole-ci-db pg_isready -U postgres -d dipole
 
+          # Wait for Postgres to fully accept connections (pg_isready can pass before queries work)
+          for _ in $(seq 1 10); do
+            if docker exec dipole-ci-db psql -U postgres -d dipole -c "SELECT 1" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
           docker run -d --name dipole-ci-cloud --network dipole-ci -p 8080:8080 \
             -e DIPOLE_DATABASE_URL='postgres://postgres:postgres@dipole-ci-db:5432/dipole?sslmode=disable' \
             -e DIPOLE_ENCRYPTION_KEY=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
