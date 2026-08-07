@@ -104,7 +104,7 @@ func generateEdgeSDKClientID(region string, tenantSubdomain string, tp *domain.T
 }
 
 func generateEdgeSDKAudience(region string, tenantSubdomain string) string {
-	return "https://" + tenantSubdomain + ".id." + region + ".dipolehq.com"
+	return "https://" + tenantSubdomain + ".id.dipolehq.com"
 }
 
 func typeShortName(t string) string {
