@@ -109,13 +109,13 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 			tp := tp
 			switch tp.Type {
 			case domain.TrustProviderTypeOIDCIDToken:
-				result, err := s.idpService.BuildOIDCRedirect(req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				result, err := s.idpService.BuildOIDCRedirect(ctx, req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
 				if err != nil {
 					return nil, err
 				}
 				return &AuthorizeResult{IdPRedirect: result.RedirectURL}, nil
 			case domain.TrustProviderTypeSAMLv2Response:
-				result, err := s.idpService.BuildSAMLRedirect(req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				result, err := s.idpService.BuildSAMLRedirect(ctx, req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
 				if err != nil {
 					return nil, err
 				}

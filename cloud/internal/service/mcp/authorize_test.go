@@ -27,6 +27,26 @@ func (c *mockConditionChecker) EvaluateAll(_ context.Context, _ []domain.AccessC
 	return c.pass, c.reason, nil
 }
 
+type mockIdPResolver struct {
+	cfg     *ResolvedIdPConfig
+	samlCfg *ResolvedSAMLConfig
+	err     error
+}
+
+func (r *mockIdPResolver) ResolveOIDCProvider(_ context.Context, _ uuid.UUID) (*ResolvedIdPConfig, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.cfg, nil
+}
+
+func (r *mockIdPResolver) ResolveSAMLProvider(_ context.Context, _ uuid.UUID) (*ResolvedSAMLConfig, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.samlCfg, nil
+}
+
 func TestAuthorize_SSOOff_ReturnsCode(t *testing.T) {
 	repo := newMockClientRepo()
 	dcrSvc := NewDCRService(repo)
@@ -88,17 +108,23 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 	})
 
 	policyID := uuid.New()
-	tpConfig := []byte(`{"authorization_endpoint":"https://idp.example.com/authorize","token_endpoint":"https://idp.example.com/token","client_id":"our-client","client_secret":"secret"}`)
 	finder := &mockPolicyFinder{
 		policy: &domain.AccessPolicyWithRelations{
 			Policy:         domain.AccessPolicy{ID: policyID, IsActive: true},
 			ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "redirect_uri", Value: "http://localhost:7777/oauth/callback"}}},
 			ServerWorkload: domain.ServerWorkload{AppProtocol: "MCP"},
-			TrustProviders: []domain.TrustProvider{{Type: domain.TrustProviderTypeOIDCIDToken, Config: tpConfig}},
+			TrustProviders: []domain.TrustProvider{{Type: domain.TrustProviderTypeOIDCIDToken, Config: []byte(`{}`)}},
 		},
 	}
 
-	idpSvc := NewIdPService("https://test.mcp.ap-south-1.dipolehq.com")
+	idpResolver := &mockIdPResolver{cfg: &ResolvedIdPConfig{
+		ClientID:              "our-client",
+		ClientSecret:          "secret",
+		AuthorizationEndpoint: "https://idp.example.com/authorize",
+		TokenEndpoint:         "https://idp.example.com/token",
+		Scopes:                "openid profile email",
+	}}
+	idpSvc := NewIdPService("https://test.mcp.dipolehq.com", idpResolver)
 	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, idpSvc)
 
 	result, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{

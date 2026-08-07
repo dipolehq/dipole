@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react'
+import { mcpAuthServerUrl } from '@/shared/lib/platform-urls'
 import { TagsField } from '@/shared/components/TagsField'
 import {
   FloatingInput,
@@ -409,7 +410,7 @@ export function ServerWorkloadForm({
             {showMcpAuthUrl && (
               <FloatingInput
                 label="Dipole MCP Authorization Server URL"
-                value={`https://${values.host || '<tenant>'}.mcp.ap-south-1.dipolehq.com`}
+                value={mcpAuthServerUrl(values.host || '<tenant>')}
                 disabled
               />
             )}

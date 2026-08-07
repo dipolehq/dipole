@@ -165,7 +165,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		mcpCodeStore := mcpsvc.NewAuthCodeStore()
 		mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 		mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
-		mcpIdPService := mcpsvc.NewIdPService(mcpAuthServerURL)
+		mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: service.NewHTTPOIDCClient()})
+		mcpIdPService := mcpsvc.NewIdPService(mcpAuthServerURL, mcpIdPResolver)
 		mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
 		mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 		mcpTokenService := mcpsvc.NewTokenService(mcpCodeStore, issuer, mcpTokenConfigResolver)
@@ -478,6 +479,23 @@ func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("http graceful shutdown failed", "error", err)
 	}
+}
+
+type oidcDiscoveryAdapter struct {
+	client *service.HTTPOIDCClient
+}
+
+func (a *oidcDiscoveryAdapter) FetchDiscovery(ctx context.Context, discoveryURL string) (*mcpsvc.OIDCDiscovery, error) {
+	doc, err := a.client.FetchDiscovery(ctx, discoveryURL)
+	if err != nil {
+		return nil, err
+	}
+	return &mcpsvc.OIDCDiscovery{
+		AuthorizationEndpoint: doc.AuthorizationEndpoint,
+		TokenEndpoint:         doc.TokenEndpoint,
+		JWKSURI:               doc.JWKSURI,
+		Issuer:                doc.Issuer,
+	}, nil
 }
 
 func setupLogger() *slog.Logger {

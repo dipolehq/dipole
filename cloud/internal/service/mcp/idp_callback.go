@@ -57,12 +57,11 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		return nil, fmt.Errorf("invalid or expired session state")
 	}
 
-	var idpCfg OIDCIdPConfig
-	if err := json.Unmarshal(session.TrustProvider.Config, &idpCfg); err != nil {
-		return nil, err
+	if session.IdPConfig == nil {
+		return nil, fmt.Errorf("session missing identity provider configuration")
 	}
 
-	idToken, err := s.exchangeCodeForToken(ctx, code, idpCfg, s.idpService.callbackBaseURL+"/callback/oidc")
+	idToken, err := s.exchangeCodeForToken(ctx, code, session.IdPConfig, s.idpService.callbackBaseURL+"/callback/oidc")
 	if err != nil {
 		return &CallbackResult{
 			RedirectURL: buildErrorRedirect(session.OriginalRequest.RedirectURI, "access_denied", "IdP token exchange failed", session.OriginalRequest.State),
@@ -156,7 +155,7 @@ func (s *IdPCallbackService) issueCodeAfterAuth(ctx context.Context, session *Id
 	return &CallbackResult{RedirectURL: redirectURL}, nil
 }
 
-func (s *IdPCallbackService) exchangeCodeForToken(ctx context.Context, code string, cfg OIDCIdPConfig, redirectURI string) (string, error) {
+func (s *IdPCallbackService) exchangeCodeForToken(ctx context.Context, code string, cfg *ResolvedIdPConfig, redirectURI string) (string, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},

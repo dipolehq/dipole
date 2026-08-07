@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { identityIssuerUrl } from '@/shared/lib/platform-urls'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
@@ -141,7 +142,7 @@ export function CreateLogStreamPage() {
                   <div className="space-y-4">
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">OIDC Issuer URL</label>
-                      <div className="text-xs text-gray-700 font-mono">https://acme.id.ap-south-1.dipolehq.com/</div>
+                      <div className="text-xs text-gray-700 font-mono">{identityIssuerUrl('<tenant>')}</div>
                     </div>
                     <FloatingInput label="Bucket Name" value={gcsBucket} onChange={setGcsBucket} />
                     <FloatingInput label="Path Prefix" value={gcsPathPrefix} onChange={setGcsPathPrefix} />

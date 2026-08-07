@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiBaseUrl } from '@/shared/lib/platform-urls'
 import { Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
@@ -170,9 +171,9 @@ function ProfileContent({
                   <h4 className="text-sm font-semibold text-gray-800 mb-4">API Access</h4>
                   <div className="space-y-4">
                     <APITokensSection />
-                    <CopyField label="Cloud API Base URL" value="https://acme42.api.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
-                    <CopyField label="Edge API Base URL" value="https://acme42.ec.ap-south-1.dipolehq.com/" onCopy={copyToClipboard} />
-                    <CopyField label="MCP Service URL" value="https://acme42.mcp.ap-south-1.dipolehq.com/mcp" onCopy={copyToClipboard} />
+                    <CopyField label="Cloud API Base URL" value={apiBaseUrl() + '/'} onCopy={copyToClipboard} />
+                    <CopyField label="Edge API Base URL" value={apiBaseUrl() + '/'} onCopy={copyToClipboard} />
+                    <CopyField label="MCP Service URL" value={apiBaseUrl() + '/mcp'} onCopy={copyToClipboard} />
                   </div>
                 </div>
               </div>
