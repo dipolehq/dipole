@@ -6,7 +6,7 @@ serves discovery and JWKS endpoints, and supports dynamic claim resolution.
 Used by credential providers (AWS STS, Azure WIF, GCP WIF) that exchange
 our OIDC tokens for native cloud credentials.
 
-Issuer URL pattern: https://<tenantSubdomain>.id.<region>.dipolehq.com
+Issuer URL pattern: https://<tenantSubdomain>-id.dipolehq.com
 */
 package identity
 
@@ -55,7 +55,7 @@ func NewIdentityIssuer(tenantSubdomain, region string) (*IdentityIssuer, error) 
 	}
 
 	return &IdentityIssuer{
-		issuerURL: fmt.Sprintf("https://%s.id.dipolehq.com", tenantSubdomain),
+		issuerURL: fmt.Sprintf("https://%s-id.dipolehq.com", tenantSubdomain),
 		es256Key:  es256Key,
 		es256Kid:  uuid.New().String()[:8],
 		rs256Key:  rs256Key,

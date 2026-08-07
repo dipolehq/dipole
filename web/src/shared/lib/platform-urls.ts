@@ -3,7 +3,7 @@
  * in the admin console derive from these functions. No hardcoded URLs
  * anywhere else in the frontend.
  *
- * Pattern: tenant-specific subdomains use <tenant>.mcp.dipolehq.com (flattened,
+ * Pattern: tenant-specific subdomains use <tenant>-mcp.dipolehq.com (flattened,
  * no region in hostname). The API base URL is used for callback/redirect URLs.
  */
 
@@ -14,15 +14,15 @@ export function apiBaseUrl(): string {
 }
 
 export function mcpAuthServerUrl(tenantSubdomain: string): string {
-  return `https://${tenantSubdomain}.mcp.dipolehq.com`
+  return `https://${tenantSubdomain}-mcp.dipolehq.com`
 }
 
 export function identityIssuerUrl(tenantSubdomain: string): string {
-  return `https://${tenantSubdomain}.id.dipolehq.com`
+  return `https://${tenantSubdomain}-id.dipolehq.com`
 }
 
 export function mcpGatewayUrl(tenantSubdomain: string): string {
-  return `https://${tenantSubdomain}.mcpgateway.dipolehq.com`
+  return `https://${tenantSubdomain}-mcpgateway.dipolehq.com`
 }
 
 export function samlEntityId(): string {

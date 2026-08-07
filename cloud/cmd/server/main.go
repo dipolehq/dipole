@@ -159,8 +159,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	if cfg.TenantID != "" && cfg.TenantSubdomain != "" {
 		tenantUUID, _ := uuid.Parse(cfg.TenantID)
 
-		mcpAuthServerURL := "https://" + cfg.TenantSubdomain + ".mcp.dipolehq.com"
-		gatewayURL := "https://" + cfg.TenantSubdomain + ".mcpgateway.dipolehq.com/"
+		mcpAuthServerURL := "https://" + cfg.TenantSubdomain + "-mcp.dipolehq.com"
+		gatewayURL := "https://" + cfg.TenantSubdomain + "-mcpgateway.dipolehq.com/"
 
 		mcpCodeStore := mcpsvc.NewAuthCodeStore()
 		mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)

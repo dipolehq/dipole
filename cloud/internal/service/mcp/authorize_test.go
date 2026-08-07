@@ -124,7 +124,7 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 		TokenEndpoint:         "https://idp.example.com/token",
 		Scopes:                "openid profile email",
 	}}
-	idpSvc := NewIdPService("https://test.mcp.dipolehq.com", idpResolver)
+	idpSvc := NewIdPService("https://test-mcp.dipolehq.com", idpResolver)
 	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, idpSvc)
 
 	result, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{

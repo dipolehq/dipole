@@ -8,9 +8,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"regexp"
-	"strings"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +20,14 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
-var subdomainRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{1,30}[a-z0-9]$`)
+// subdomainMin/subdomainMax bound the random numeric tenant subdomain
+// (e.g. "64275"). Kept in a fixed 6-digit range so URLs like
+// https://64275-mcp.dipolehq.com are predictable in length and never
+// reveal the customer's company name.
+const (
+	subdomainMin = 100000
+	subdomainMax = 999999
+)
 
 type SignupService struct {
 	tenants      repository.TenantRepository
@@ -68,17 +75,9 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		return nil, fmt.Errorf("password must be at least 6 characters")
 	}
 
-	subdomain := slugify(req.CompanyName)
-	if !subdomainRegex.MatchString(subdomain) {
-		return nil, fmt.Errorf("company name produces an invalid subdomain — use letters, numbers, and hyphens")
-	}
-
-	existing, err := s.tenants.GetBySubdomain(ctx, subdomain)
+	subdomain, err := s.generateUniqueSubdomain(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("check subdomain availability: %w", err)
-	}
-	if existing != nil {
-		return nil, fmt.Errorf("a tenant with this name already exists — try a different company name")
+		return nil, fmt.Errorf("generate tenant subdomain: %w", err)
 	}
 
 	apiToken, err := GenerateAPIToken()
@@ -151,12 +150,29 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	}, nil
 }
 
-func slugify(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	s = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	if len(s) > 32 {
-		s = s[:32]
+// generateUniqueSubdomain picks a random 6-digit numeric subdomain (e.g.
+// "64275") and retries on the rare collision. The subdomain is opaque by
+// design — it never encodes the customer's company name, so tenant URLs
+// (https://<subdomain>-mcp.dipolehq.com, etc.) don't leak who the customer
+// is or let anyone probe for a specific company's tenant.
+func (s *SignupService) generateUniqueSubdomain(ctx context.Context) (string, error) {
+	const maxAttempts = 10
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(subdomainMax-subdomainMin+1))
+		if err != nil {
+			return "", fmt.Errorf("generate random subdomain: %w", err)
+		}
+		candidate := fmt.Sprintf("%d", subdomainMin+n.Int64())
+
+		existing, err := s.tenants.GetBySubdomain(ctx, candidate)
+		if err != nil {
+			return "", fmt.Errorf("check subdomain availability: %w", err)
+		}
+		if existing == nil {
+			return candidate, nil
+		}
 	}
-	return s
+
+	return "", fmt.Errorf("could not allocate a unique tenant subdomain after %d attempts", maxAttempts)
 }

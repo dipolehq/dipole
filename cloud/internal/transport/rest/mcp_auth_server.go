@@ -2,7 +2,7 @@
 Package rest provides HTTP transport handlers for the Cloud service.
 
 MCPAuthServer implements the OAuth 2.1 Authorization Server endpoints for
-MCP client authorization. Served on the <tenant>.mcp.<region>.dipolehq.com
+MCP client authorization. Served on the <tenant>-mcp.dipolehq.com
 subdomain. Handles: OAuth metadata discovery, OIDC discovery, JWKS, DCR,
 authorization, and token exchange.
 */
@@ -51,7 +51,7 @@ func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, auth
 
 // serverURL returns the MCP Authorization Server base URL (<tenant>.mcp.<domain>).
 func (s *MCPAuthServer) serverURL() string {
-	return "https://" + s.config.TenantSubdomain + ".mcp." + s.config.Domain
+	return "https://" + s.config.TenantSubdomain + "-mcp." + s.config.Domain
 }
 
 func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
