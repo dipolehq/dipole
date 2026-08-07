@@ -195,10 +195,25 @@ export function TrustProviderConfig({
                 <FloatingDropdown
                   label="Attribute"
                   options={rules}
-                  value={rule.attribute}
-                  onChange={(v) => updateMatchRule(idx, 'attribute', v)}
+                  value={rules.some((r) => r.value === rule.attribute) ? rule.attribute : 'custom_claim'}
+                  onChange={(v) => {
+                    if (v === 'custom_claim') {
+                      updateMatchRule(idx, 'attribute', '')
+                    } else {
+                      updateMatchRule(idx, 'attribute', v)
+                    }
+                  }}
                   className="w-48"
                 />
+                {(!rules.some((r) => r.value === rule.attribute) || rule.attribute === '') && (
+                  <div className="w-40">
+                    <FloatingInput
+                      label="Key"
+                      value={rule.attribute === 'custom_claim' ? '' : rule.attribute}
+                      onChange={(v) => updateMatchRule(idx, 'attribute', v)}
+                    />
+                  </div>
+                )}
                 <div className="flex-1">
                   <FloatingInput
                     label="Value"
