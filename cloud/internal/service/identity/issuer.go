@@ -55,7 +55,7 @@ func NewIdentityIssuer(tenantSubdomain, region string) (*IdentityIssuer, error) 
 	}
 
 	return &IdentityIssuer{
-		issuerURL: fmt.Sprintf("https://%s.id.%s.dipolehq.com", tenantSubdomain, region),
+		issuerURL: fmt.Sprintf("https://%s.id.dipolehq.com", tenantSubdomain),
 		es256Key:  es256Key,
 		es256Kid:  uuid.New().String()[:8],
 		rs256Key:  rs256Key,

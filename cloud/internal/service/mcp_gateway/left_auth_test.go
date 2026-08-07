@@ -13,7 +13,7 @@ func setupAuth(t *testing.T) (*LeftSideAuth, *identity.IdentityIssuer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auth := NewLeftSideAuth(issuer, "https://test.mcpgateway.ap-south-1.dipolehq.com/")
+	auth := NewLeftSideAuth(issuer, "https://test.mcpgateway.dipolehq.com/")
 	return auth, issuer
 }
 
@@ -37,7 +37,7 @@ func issueTestToken(t *testing.T, issuer *identity.IdentityIssuer, aud string, l
 
 func TestLeftAuth_ValidToken_ReturnsUser(t *testing.T) {
 	auth, issuer := setupAuth(t)
-	token := issueTestToken(t, issuer, "https://test.mcpgateway.ap-south-1.dipolehq.com/", 1*time.Hour, map[string]any{"email": "alice@corp.com"})
+	token := issueTestToken(t, issuer, "https://test.mcpgateway.dipolehq.com/", 1*time.Hour, map[string]any{"email": "alice@corp.com"})
 
 	result, err := auth.Authenticate(token)
 	if err != nil {
@@ -50,7 +50,7 @@ func TestLeftAuth_ValidToken_ReturnsUser(t *testing.T) {
 
 func TestLeftAuth_ValidToken_SubAsFallback(t *testing.T) {
 	auth, issuer := setupAuth(t)
-	token := issueTestToken(t, issuer, "https://test.mcpgateway.ap-south-1.dipolehq.com/", 1*time.Hour, nil)
+	token := issueTestToken(t, issuer, "https://test.mcpgateway.dipolehq.com/", 1*time.Hour, nil)
 
 	result, err := auth.Authenticate(token)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestLeftAuth_ValidToken_SubAsFallback(t *testing.T) {
 
 func TestLeftAuth_ExpiredToken_Returns401(t *testing.T) {
 	auth, issuer := setupAuth(t)
-	token := issueTestToken(t, issuer, "https://test.mcpgateway.ap-south-1.dipolehq.com/", -1*time.Hour, nil)
+	token := issueTestToken(t, issuer, "https://test.mcpgateway.dipolehq.com/", -1*time.Hour, nil)
 
 	_, err := auth.Authenticate(token)
 	if err != ErrTokenExpired {
@@ -102,7 +102,7 @@ func TestLeftAuth_EmptyToken_Returns401(t *testing.T) {
 func TestLeftAuth_AudienceWithoutTrailingSlash_Matches(t *testing.T) {
 	auth, issuer := setupAuth(t)
 	// Gateway URL has trailing slash, token aud without — should still match
-	token := issueTestToken(t, issuer, "https://test.mcpgateway.ap-south-1.dipolehq.com", 1*time.Hour, nil)
+	token := issueTestToken(t, issuer, "https://test.mcpgateway.dipolehq.com", 1*time.Hour, nil)
 
 	result, err := auth.Authenticate(token)
 	if err != nil {
