@@ -69,15 +69,25 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Logger) error {
-	if migrator, merr := postgres.NewMigrator(cfg.DatabaseURL); merr != nil {
-		logger.Warn("skip auto-migration", "error", merr)
-	} else {
+	var migrationDone bool
+	for attempt := 1; attempt <= 5; attempt++ {
+		migrator, merr := postgres.NewMigrator(cfg.DatabaseURL)
+		if merr != nil {
+			logger.Warn("migration connection failed, retrying", "attempt", attempt, "error", merr)
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
 		if merr = migrator.Up(); merr != nil {
-			logger.Warn("auto-migration issue", "error", merr)
-		} else {
-			logger.Info("schema up to date")
+			_ = migrator.Close()
+			return fmt.Errorf("migration failed: %w", merr)
 		}
 		_ = migrator.Close()
+		logger.Info("schema up to date")
+		migrationDone = true
+		break
+	}
+	if !migrationDone {
+		return fmt.Errorf("database migrations failed after 5 connection attempts")
 	}
 
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
