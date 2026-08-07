@@ -28,8 +28,9 @@ func (c *mockConditionChecker) EvaluateAll(_ context.Context, _ []domain.AccessC
 }
 
 type mockIdPResolver struct {
-	cfg *ResolvedIdPConfig
-	err error
+	cfg     *ResolvedIdPConfig
+	samlCfg *ResolvedSAMLConfig
+	err     error
 }
 
 func (r *mockIdPResolver) ResolveOIDCProvider(_ context.Context, _ uuid.UUID) (*ResolvedIdPConfig, error) {
@@ -37,6 +38,13 @@ func (r *mockIdPResolver) ResolveOIDCProvider(_ context.Context, _ uuid.UUID) (*
 		return nil, r.err
 	}
 	return r.cfg, nil
+}
+
+func (r *mockIdPResolver) ResolveSAMLProvider(_ context.Context, _ uuid.UUID) (*ResolvedSAMLConfig, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.samlCfg, nil
 }
 
 func TestAuthorize_SSOOff_ReturnsCode(t *testing.T) {

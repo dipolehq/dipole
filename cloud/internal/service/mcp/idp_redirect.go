@@ -15,7 +15,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -52,6 +51,7 @@ type ResolvedIdPConfig struct {
 
 type IdentityProviderResolver interface {
 	ResolveOIDCProvider(ctx context.Context, tenantID uuid.UUID) (*ResolvedIdPConfig, error)
+	ResolveSAMLProvider(ctx context.Context, tenantID uuid.UUID) (*ResolvedSAMLConfig, error)
 }
 
 type IdPService struct {
@@ -111,11 +111,9 @@ func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeReques
 }
 
 func (s *IdPService) BuildSAMLRedirect(ctx context.Context, req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
-	var samlCfg struct {
-		SSOUrl string `json:"sso_url"`
-	}
-	if err := json.Unmarshal(tp.Config, &samlCfg); err != nil {
-		return nil, err
+	samlCfg, err := s.idpResolver.ResolveSAMLProvider(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve SAML identity provider: %w", err)
 	}
 
 	state := generateState()
@@ -132,7 +130,7 @@ func (s *IdPService) BuildSAMLRedirect(ctx context.Context, req *AuthorizeReques
 	}
 	s.mu.Unlock()
 
-	redirectURL := samlCfg.SSOUrl + "?RelayState=" + state
+	redirectURL := samlCfg.SSOURL + "?RelayState=" + state
 
 	return &IdPRedirectResult{
 		RedirectURL: redirectURL,
