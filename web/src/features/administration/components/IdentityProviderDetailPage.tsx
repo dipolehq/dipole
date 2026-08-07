@@ -4,6 +4,7 @@ import { FileText, Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
+import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl } from '@/shared/lib/platform-urls'
 import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
@@ -200,11 +201,11 @@ export function IdentityProviderDetailPage() {
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
-                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/saml/metadata'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{samlEntityId()}</div>
                       </div>
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Single Sign On URL</label>
-                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/saml/acs'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{samlAcsUrl()}</div>
                       </div>
                       <FloatingInput label="Metadata URL" value={metadataUrl} onChange={setMetadataUrl} disabled={disabled} />
                     </div>
@@ -241,12 +242,12 @@ export function IdentityProviderDetailPage() {
                       {authMethod === 'public_private_keypair' && (
                         <div className="bg-gray-50 rounded-md p-4">
                           <label className="block text-[10px] text-gray-500 mb-0.5">JWKS URL</label>
-                          <div className="text-xs text-gray-700 font-mono">https://acme.dipolehq.com/.well-known/jwks.json</div>
+                          <div className="text-xs text-gray-700 font-mono">{jwksUrl()}</div>
                         </div>
                       )}
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL</label>
-                        <div className="text-xs text-gray-700 font-mono">{'https://acme.dipolehq.com/oidc/callback'}</div>
+                        <div className="text-xs text-gray-700 font-mono">{adminSsoCallbackUrl()}</div>
                       </div>
                     </div>
                   </div>

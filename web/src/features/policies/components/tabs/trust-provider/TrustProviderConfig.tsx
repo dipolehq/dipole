@@ -180,7 +180,7 @@ export function TrustProviderConfig({
       {showEdgeSdkAudience && (
         <FloatingInput
           label="Edge SDK Audience"
-          value="https://<tenant>.id.ap-south-1.dipolehq.com"
+          value="https://<tenant>.id.dipolehq.com"
           disabled
         />
       )}

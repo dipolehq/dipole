@@ -5,6 +5,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { useCreateIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
+import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, oidcCallbackUrl } from '@/shared/lib/platform-urls'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
 
@@ -133,11 +134,11 @@ export function CreateIdentityProviderPage() {
                   <div className="space-y-4">
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
-                      <div className="text-xs text-gray-700 font-mono">https://acme.dipolehq.com/saml/metadata</div>
+                      <div className="text-xs text-gray-700 font-mono">{samlEntityId()}</div>
                     </div>
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Single Sign On URL</label>
-                      <div className="text-xs text-gray-700 font-mono">https://acme.dipolehq.com/saml/acs</div>
+                      <div className="text-xs text-gray-700 font-mono">{samlAcsUrl()}</div>
                     </div>
                     <FloatingInput label="Metadata URL" value={metadataUrl} onChange={setMetadataUrl} />
                     <FloatingTextarea label="Metadata XML" value={metadataXml} onChange={setMetadataXml} rows={4} />
@@ -175,12 +176,16 @@ export function CreateIdentityProviderPage() {
                     {authMethod === 'public_private_keypair' && (
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">JWKS URL (configure in your IdP)</label>
-                        <div className="text-xs text-gray-700 font-mono">{import.meta.env.VITE_API_BASE_URL || 'https://api.dipolehq.com'}/.well-known/openid-configuration/jwks</div>
+                        <div className="text-xs text-gray-700 font-mono">{jwksUrl()}</div>
                       </div>
                     )}
                     <div className="bg-gray-50 rounded-md p-4">
-                      <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL (configure in your IdP)</label>
-                      <div className="text-xs text-gray-700 font-mono">{import.meta.env.VITE_API_BASE_URL || 'https://api.dipolehq.com'}/api/v1/auth/sso/callback</div>
+                      <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL — Admin SSO (configure in your IdP)</label>
+                      <div className="text-xs text-gray-700 font-mono">{adminSsoCallbackUrl()}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-md p-4">
+                      <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL — MCP Authorization (configure in your IdP)</label>
+                      <div className="text-xs text-gray-700 font-mono">{oidcCallbackUrl()}</div>
                     </div>
                   </div>
                 </div>

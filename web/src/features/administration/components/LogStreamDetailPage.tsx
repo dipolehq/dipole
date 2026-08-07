@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { identityIssuerUrl } from '@/shared/lib/platform-urls'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FileText } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
@@ -211,7 +212,7 @@ export function LogStreamDetailPage() {
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">OIDC Issuer URL</label>
-                        <div className="text-xs text-gray-700 font-mono">https://acme.id.ap-south-1.dipolehq.com/</div>
+                        <div className="text-xs text-gray-700 font-mono">{identityIssuerUrl('<tenant>')}</div>
                       </div>
                       <FloatingInput label="Bucket Name" value={gcsBucket} onChange={setGcsBucket} disabled={disabled} />
                       <FloatingInput label="Path Prefix" value={gcsPathPrefix} onChange={setGcsPathPrefix} disabled={disabled} />

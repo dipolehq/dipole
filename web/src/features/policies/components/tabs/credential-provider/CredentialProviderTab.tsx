@@ -122,7 +122,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
     case 'dipole_access_token':
       return (
         <div className="space-y-4">
-          <ReadOnlyFieldWithCopy label="Audience" value={`<tenant>.api.ap-south-1.dipolehq.com`} />
+          <ReadOnlyFieldWithCopy label="Audience" value={`<tenant>.api.dipolehq.com`} />
           <FloatingDropdown
             label="Role"
             options={[
@@ -152,7 +152,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <ReadOnlyFieldWithCopy
             label="OIDC Issuer URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            value="https://<tenant>.id.dipolehq.com"
           />
           <FloatingInput
             label="AWS IAM Role ARN"
@@ -239,7 +239,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <FloatingInput
             label="OIDC Issuer URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            value="https://<tenant>.id.dipolehq.com"
             disabled
           />
           <FloatingInput
@@ -328,7 +328,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <ReadOnlyFieldWithCopy
             label="OIDC Issuer URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            value="https://<tenant>.id.dipolehq.com"
           />
           <FloatingInput
             label="Federation Rule ID"
@@ -383,7 +383,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <FloatingInput
             label="OIDC Issuer URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            value="https://<tenant>.id.dipolehq.com"
             disabled
           />
           <FloatingInput
@@ -487,7 +487,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <ReadOnlyFieldWithCopy
               label="Issuer"
-              value="https://<tenant>.id.ap-south-1.dipolehq.com"
+              value="https://<tenant>.id.dipolehq.com"
             />
             <div>
               <label className="block text-[11px] text-gray-500 mb-1">Lifetime</label>
@@ -618,7 +618,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
           </div>
           <ReadOnlyFieldWithCopy
             label="Callback URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com/mcp-auth/userauth/<id>/callback"
+            value="https://<tenant>.id.dipolehq.com/mcp-auth/userauth/<id>/callback"
           />
           <FloatingInput
             label="Client ID"
@@ -694,7 +694,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <ReadOnlyFieldWithCopy
             label="Callback URL"
-            value="https://<tenant>.api.ap-south-1.dipolehq.com/api/v2/credential-providers/callback"
+            value="https://<tenant>.api.dipolehq.com/api/v2/credential-providers/callback"
           />
           <FloatingInput
             label="Client ID"
@@ -832,7 +832,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <ReadOnlyFieldWithCopy
               label="Issuer"
-              value="https://<tenant>.id.ap-south-1.dipolehq.com"
+              value="https://<tenant>.id.dipolehq.com"
             />
             <div>
               <label className="block text-[11px] text-gray-500 mb-1">Lifetime</label>
@@ -888,7 +888,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
               <div className="grid grid-cols-[1fr_auto] gap-3">
                 <ReadOnlyFieldWithCopy
                   label="Issuer"
-                  value="https://<tenant>.id.ap-south-1.dipolehq.com"
+                  value="https://<tenant>.id.dipolehq.com"
                 />
                 <div>
                   <label className="block text-[11px] text-gray-500 mb-1">Lifetime</label>
@@ -1041,7 +1041,7 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
         <div className="space-y-4">
           <ReadOnlyFieldWithCopy
             label="OIDC Issuer URL"
-            value="https://<tenant>.id.ap-south-1.dipolehq.com"
+            value="https://<tenant>.id.dipolehq.com"
           />
           <FloatingInput
             label="Identity Provider ID"
