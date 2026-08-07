@@ -34,17 +34,19 @@ const (
 	backupCodeLength = 8 // characters per code
 )
 
+// MFAService is stateless with respect to tenant — every method takes
+// tenantID as an explicit parameter, resolved per-request from the caller's
+// JWT (via TenantIDFromContext) rather than baked in at construction. This
+// lets a single MFAService instance serve every tenant correctly.
 type MFAService struct {
-	mfaRepo  repository.UserMFARepository
-	encKey   []byte
-	tenantID uuid.UUID
+	mfaRepo repository.UserMFARepository
+	encKey  []byte
 }
 
-func NewMFAService(mfaRepo repository.UserMFARepository, encKey []byte, tenantID uuid.UUID) *MFAService {
+func NewMFAService(mfaRepo repository.UserMFARepository, encKey []byte) *MFAService {
 	return &MFAService{
-		mfaRepo:  mfaRepo,
-		encKey:   encKey,
-		tenantID: tenantID,
+		mfaRepo: mfaRepo,
+		encKey:  encKey,
 	}
 }
 
@@ -56,8 +58,8 @@ type MFAStatus struct {
 	CreatedAt      time.Time `json:"createdAt,omitempty"`
 }
 
-func (s *MFAService) GetStatus(ctx context.Context, userID uuid.UUID) (*MFAStatus, error) {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) GetStatus(ctx context.Context, tenantID, userID uuid.UUID) (*MFAStatus, error) {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get mfa status: %w", err)
 	}
@@ -80,7 +82,7 @@ type SetupResponse struct {
 
 // Setup generates a new TOTP secret and stores it (not yet enabled).
 // If MFA is already configured, it replaces the existing secret (re-setup).
-func (s *MFAService) Setup(ctx context.Context, userID uuid.UUID, userEmail string) (*SetupResponse, error) {
+func (s *MFAService) Setup(ctx context.Context, tenantID, userID uuid.UUID, userEmail string) (*SetupResponse, error) {
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      mfaIssuerName,
 		AccountName: userEmail,
@@ -94,7 +96,7 @@ func (s *MFAService) Setup(ctx context.Context, userID uuid.UUID, userEmail stri
 		return nil, fmt.Errorf("encrypt totp secret: %w", err)
 	}
 
-	existing, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+	existing, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("check existing mfa: %w", err)
 	}
@@ -103,17 +105,17 @@ func (s *MFAService) Setup(ctx context.Context, userID uuid.UUID, userEmail stri
 		// Replace secret, reset enabled state (user must re-verify).
 		existing.TOTPSecretEncrypted = secretEncrypted
 		existing.IsEnabled = false
-		if err := s.mfaRepo.Update(ctx, s.tenantID, existing); err != nil {
+		if err := s.mfaRepo.Update(ctx, tenantID, existing); err != nil {
 			return nil, fmt.Errorf("update mfa: %w", err)
 		}
 	} else {
 		mfa := &domain.UserMFA{
-			TenantID:            s.tenantID,
+			TenantID:            tenantID,
 			UserID:              userID,
 			TOTPSecretEncrypted: secretEncrypted,
 			IsEnabled:           false,
 		}
-		if err := s.mfaRepo.Create(ctx, s.tenantID, mfa); err != nil {
+		if err := s.mfaRepo.Create(ctx, tenantID, mfa); err != nil {
 			return nil, fmt.Errorf("create mfa: %w", err)
 		}
 	}
@@ -125,8 +127,8 @@ func (s *MFAService) Setup(ctx context.Context, userID uuid.UUID, userEmail stri
 }
 
 // Verify validates a TOTP code and enables MFA if correct.
-func (s *MFAService) Verify(ctx context.Context, userID uuid.UUID, code string) error {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) Verify(ctx context.Context, tenantID, userID uuid.UUID, code string) error {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil || mfa == nil {
 		return fmt.Errorf("MFA not configured")
 	}
@@ -142,7 +144,7 @@ func (s *MFAService) Verify(ctx context.Context, userID uuid.UUID, code string) 
 
 	// Enable MFA.
 	mfa.IsEnabled = true
-	if err := s.mfaRepo.Update(ctx, s.tenantID, mfa); err != nil {
+	if err := s.mfaRepo.Update(ctx, tenantID, mfa); err != nil {
 		return fmt.Errorf("enable mfa: %w", err)
 	}
 
@@ -150,8 +152,8 @@ func (s *MFAService) Verify(ctx context.Context, userID uuid.UUID, code string) 
 }
 
 // ValidateCode checks a TOTP code without changing state (used during login).
-func (s *MFAService) ValidateCode(ctx context.Context, userID uuid.UUID, code string) error {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) ValidateCode(ctx context.Context, tenantID, userID uuid.UUID, code string) error {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil || mfa == nil {
 		return fmt.Errorf("MFA not configured")
 	}
@@ -172,8 +174,8 @@ func (s *MFAService) ValidateCode(ctx context.Context, userID uuid.UUID, code st
 }
 
 // GenerateBackupCodes creates 10 single-use recovery codes.
-func (s *MFAService) GenerateBackupCodes(ctx context.Context, userID uuid.UUID) ([]string, error) {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) GenerateBackupCodes(ctx context.Context, tenantID, userID uuid.UUID) ([]string, error) {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil || mfa == nil {
 		return nil, fmt.Errorf("MFA not configured — set up authenticator first")
 	}
@@ -195,7 +197,7 @@ func (s *MFAService) GenerateBackupCodes(ctx context.Context, userID uuid.UUID) 
 	}
 
 	mfa.BackupCodesEncrypted = encrypted
-	if err := s.mfaRepo.Update(ctx, s.tenantID, mfa); err != nil {
+	if err := s.mfaRepo.Update(ctx, tenantID, mfa); err != nil {
 		return nil, fmt.Errorf("store backup codes: %w", err)
 	}
 
@@ -203,8 +205,8 @@ func (s *MFAService) GenerateBackupCodes(ctx context.Context, userID uuid.UUID) 
 }
 
 // UseBackupCode validates and consumes a backup code (used during login).
-func (s *MFAService) UseBackupCode(ctx context.Context, userID uuid.UUID, code string) error {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) UseBackupCode(ctx context.Context, tenantID, userID uuid.UUID, code string) error {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil || mfa == nil {
 		return fmt.Errorf("MFA not configured")
 	}
@@ -249,7 +251,7 @@ func (s *MFAService) UseBackupCode(ctx context.Context, userID uuid.UUID, code s
 	}
 
 	mfa.BackupCodesEncrypted = encrypted
-	if err := s.mfaRepo.Update(ctx, s.tenantID, mfa); err != nil {
+	if err := s.mfaRepo.Update(ctx, tenantID, mfa); err != nil {
 		return fmt.Errorf("update backup codes: %w", err)
 	}
 
@@ -257,13 +259,13 @@ func (s *MFAService) UseBackupCode(ctx context.Context, userID uuid.UUID, code s
 }
 
 // Reset removes all MFA configuration for a user.
-func (s *MFAService) Reset(ctx context.Context, userID uuid.UUID) error {
-	return s.mfaRepo.Delete(ctx, s.tenantID, userID)
+func (s *MFAService) Reset(ctx context.Context, tenantID, userID uuid.UUID) error {
+	return s.mfaRepo.Delete(ctx, tenantID, userID)
 }
 
 // IsEnabled returns whether MFA is enabled for a user (used by login flow).
-func (s *MFAService) IsEnabled(ctx context.Context, userID uuid.UUID) (bool, error) {
-	mfa, err := s.mfaRepo.GetByUserID(ctx, s.tenantID, userID)
+func (s *MFAService) IsEnabled(ctx context.Context, tenantID, userID uuid.UUID) (bool, error) {
+	mfa, err := s.mfaRepo.GetByUserID(ctx, tenantID, userID)
 	if err != nil {
 		return false, err
 	}

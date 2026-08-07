@@ -6,7 +6,23 @@ serves discovery and JWKS endpoints, and supports dynamic claim resolution.
 Used by credential providers (AWS STS, Azure WIF, GCP WIF) that exchange
 our OIDC tokens for native cloud credentials.
 
-Issuer URL pattern: https://<tenantSubdomain>-id.dipolehq.com
+# Issuer URL is per tenant, the signing key is not
+
+The `iss` claim must be the REQUESTING TENANT's identity host
+(https://<tenantSubdomain>-id.<domain>), because OIDC requires `iss` to match
+the URL a relying party fetched discovery from, and AWS STS / Azure Entra /
+GCP WIF all enforce that. A wrong `iss` makes federation fail.
+
+The SIGNING KEY, by contrast, is deliberately shared across all tenants — the
+same way GitHub Actions signs OIDC tokens for every customer with one key set.
+Per-tenant `iss` is what scopes a token to a tenant, and `iss` is always
+server-derived (never caller-supplied), so a shared key cannot be used to forge
+another tenant's token.
+
+Callers set IssuanceRequest.IssuerURL for any token an external party will
+verify. Tokens we verify ourselves (admin sessions, MFA challenges, Edge API
+access tokens) may leave it empty and fall back to the platform issuer, since
+nothing fetches discovery for those.
 */
 package identity
 
@@ -27,11 +43,14 @@ import (
 )
 
 type IdentityIssuer struct {
-	issuerURL string
-	es256Key  *ecdsa.PrivateKey
-	es256Kid  string
-	rs256Key  *rsa.PrivateKey
-	rs256Kid  string
+	// platformIssuerURL is used for tokens that only we verify. It is NOT a
+	// per-tenant URL and nothing fetches OIDC discovery from it.
+	platformIssuerURL string
+
+	es256Key *ecdsa.PrivateKey
+	es256Kid string
+	rs256Key *rsa.PrivateKey
+	rs256Kid string
 }
 
 type IssuanceRequest struct {
@@ -41,9 +60,15 @@ type IssuanceRequest struct {
 	Algorithm    string
 	CustomClaims map[string]interface{}
 	TrustClaims  map[string]interface{}
+
+	// IssuerURL sets the `iss` claim. REQUIRED for any token an external system
+	// will verify (AWS STS, Azure Entra, GCP WIF, an MCP server), because those
+	// systems fetch discovery from this URL and reject a mismatch. Leave empty
+	// only for tokens we verify ourselves.
+	IssuerURL string
 }
 
-func NewIdentityIssuer(tenantSubdomain, region string) (*IdentityIssuer, error) {
+func NewIdentityIssuer(platformIssuerURL string) (*IdentityIssuer, error) {
 	es256Key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate ES256 key: %w", err)
@@ -55,16 +80,12 @@ func NewIdentityIssuer(tenantSubdomain, region string) (*IdentityIssuer, error) 
 	}
 
 	return &IdentityIssuer{
-		issuerURL: fmt.Sprintf("https://%s-id.dipolehq.com", tenantSubdomain),
-		es256Key:  es256Key,
-		es256Kid:  uuid.New().String()[:8],
-		rs256Key:  rs256Key,
-		rs256Kid:  uuid.New().String()[:8],
+		platformIssuerURL: platformIssuerURL,
+		es256Key:          es256Key,
+		es256Kid:          uuid.New().String()[:8],
+		rs256Key:          rs256Key,
+		rs256Kid:          uuid.New().String()[:8],
 	}, nil
-}
-
-func (i *IdentityIssuer) IssuerURL() string {
-	return i.issuerURL
 }
 
 // VerifyTokenSignature verifies a JWT was signed by this issuer's keys.
@@ -163,9 +184,14 @@ func (i *IdentityIssuer) IssueToken(req IssuanceRequest) (string, error) {
 		}
 	}
 
+	issuerURL := req.IssuerURL
+	if issuerURL == "" {
+		issuerURL = i.platformIssuerURL
+	}
+
 	now := time.Now()
 	payload := map[string]interface{}{
-		"iss": i.issuerURL,
+		"iss": issuerURL,
 		"sub": subject,
 		"aud": req.Audience,
 		"iat": now.Unix(),
@@ -198,11 +224,28 @@ func (i *IdentityIssuer) IssueToken(req IssuanceRequest) (string, error) {
 	return signJWT(payload, key, alg, kid)
 }
 
-func (i *IdentityIssuer) DiscoveryDocument() map[string]interface{} {
+// DiscoveryDocument builds the OIDC discovery document for a specific issuer
+// URL. The URL is a parameter rather than a field because one process serves
+// every tenant: the document returned from https://<tenant>-id.<domain> must
+// advertise that same URL as its issuer, or relying parties reject our tokens.
+func (i *IdentityIssuer) DiscoveryDocument(issuerURL string) map[string]interface{} {
+	if issuerURL == "" {
+		issuerURL = i.platformIssuerURL
+	}
+	// Deliberately advertises only what a relying party needs to VERIFY a token
+	// we signed: the issuer and the key set. There is no `token_endpoint`,
+	// because this issuer doesn't run an interactive OAuth flow — tokens are
+	// minted internally by the Credential Broker and handed straight to the
+	// relying party (AWS STS, Azure Entra, GCP WIF), which only ever fetches
+	// discovery + JWKS to check the signature.
+	//
+	// Previously a `token_endpoint` on this host was advertised but not served
+	// (that route only answers on the MCP Authorization Server host), so it
+	// pointed callers at an endpoint that rejects them. Advertising nothing is
+	// better than advertising something broken.
 	return map[string]interface{}{
-		"issuer":                                i.issuerURL,
-		"jwks_uri":                              i.issuerURL + "/.well-known/openid-configuration/jwks",
-		"token_endpoint":                        i.issuerURL + "/connect/token",
+		"issuer":                                issuerURL,
+		"jwks_uri":                              issuerURL + "/.well-known/openid-configuration/jwks",
 		"id_token_signing_alg_values_supported": []string{"ES256", "RS256"},
 		"response_types_supported":              []string{"id_token"},
 		"subject_types_supported":               []string{"public"},

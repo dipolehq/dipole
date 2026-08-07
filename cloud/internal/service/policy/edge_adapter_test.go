@@ -55,7 +55,7 @@ type mockBrokerForAdapter struct {
 	err  error
 }
 
-func (m *mockBrokerForAdapter) Retrieve(_ context.Context, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+func (m *mockBrokerForAdapter) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	return m.cred, m.err
 }
 

@@ -50,7 +50,7 @@ type mockBroker struct {
 	err  error
 }
 
-func (m *mockBroker) Retrieve(_ context.Context, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+func (m *mockBroker) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	return m.cred, m.err
 }
 

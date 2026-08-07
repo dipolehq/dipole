@@ -13,7 +13,7 @@ import (
 )
 
 func TestIssueToken_ES256_CorrectClaims(t *testing.T) {
-	issuer, err := NewIdentityIssuer("acme", "ap-south-1")
+	issuer, err := NewIdentityIssuer("https://acme-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestIssueToken_ES256_CorrectClaims(t *testing.T) {
 }
 
 func TestIssueToken_RS256(t *testing.T) {
-	issuer, err := NewIdentityIssuer("test", "us-east-1")
+	issuer, err := NewIdentityIssuer("https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestIssueToken_RS256(t *testing.T) {
 }
 
 func TestIssueToken_ES256_VerifySignature(t *testing.T) {
-	issuer, err := NewIdentityIssuer("sig-test", "ap-south-1")
+	issuer, err := NewIdentityIssuer("https://sig-test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestIssueToken_ES256_VerifySignature(t *testing.T) {
 }
 
 func TestIssueToken_DynamicClaims(t *testing.T) {
-	issuer, err := NewIdentityIssuer("dyn", "ap-south-1")
+	issuer, err := NewIdentityIssuer("https://dyn-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestIssueToken_DynamicClaims(t *testing.T) {
 }
 
 func TestIssueToken_DynamicClaim_Missing_Error(t *testing.T) {
-	issuer, err := NewIdentityIssuer("err", "ap-south-1")
+	issuer, err := NewIdentityIssuer("https://err-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,24 +171,68 @@ func TestIssueToken_DynamicClaim_Missing_Error(t *testing.T) {
 	}
 }
 
-func TestDiscoveryDocument(t *testing.T) {
-	issuer, err := NewIdentityIssuer("myco", "ap-south-1")
+// The discovery document must echo back the issuer URL it was asked for, not a
+// process-wide one — one process serves every tenant, and OIDC requires the
+// document's issuer to equal the URL the relying party fetched it from.
+func TestDiscoveryDocument_EchoesRequestedIssuer(t *testing.T) {
+	issuer, err := NewIdentityIssuer("https://platform-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	doc := issuer.DiscoveryDocument()
+	doc := issuer.DiscoveryDocument("https://myco-id.dipolehq.com")
 
 	if doc["issuer"] != "https://myco-id.dipolehq.com" {
-		t.Errorf("issuer = %v", doc["issuer"])
+		t.Errorf("issuer = %v, want https://myco-id.dipolehq.com", doc["issuer"])
 	}
 	if doc["jwks_uri"] != "https://myco-id.dipolehq.com/.well-known/openid-configuration/jwks" {
 		t.Errorf("jwks_uri = %v", doc["jwks_uri"])
 	}
+
+	// Deliberately absent: this issuer runs no interactive OAuth flow, and
+	// /connect/token is only served on the MCP Authorization Server host. A
+	// token_endpoint here would point relying parties at an endpoint that
+	// rejects them.
+	if _, present := doc["token_endpoint"]; present {
+		t.Error("discovery document advertises a token_endpoint that this host does not serve")
+	}
+}
+
+// Two tenants fetching discovery from their own hostnames must each see their
+// own issuer, from the same running process.
+func TestDiscoveryDocument_PerTenantIsolation(t *testing.T) {
+	issuer, err := NewIdentityIssuer("https://platform-id.dipolehq.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := issuer.DiscoveryDocument("https://111111-id.dipolehq.com")
+	b := issuer.DiscoveryDocument("https://222222-id.dipolehq.com")
+
+	if a["issuer"] == b["issuer"] {
+		t.Fatalf("both tenants got the same issuer %v", a["issuer"])
+	}
+	if a["issuer"] != "https://111111-id.dipolehq.com" {
+		t.Errorf("tenant A issuer = %v", a["issuer"])
+	}
+	if b["issuer"] != "https://222222-id.dipolehq.com" {
+		t.Errorf("tenant B issuer = %v", b["issuer"])
+	}
+}
+
+func TestDiscoveryDocument_FallsBackToPlatformIssuer(t *testing.T) {
+	issuer, err := NewIdentityIssuer("https://platform-id.dipolehq.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if doc := issuer.DiscoveryDocument(""); doc["issuer"] != "https://platform-id.dipolehq.com" {
+		t.Errorf("issuer = %v, want platform issuer", doc["issuer"])
+	}
 }
 
 func TestJWKS_ContainsBothKeys(t *testing.T) {
-	issuer, err := NewIdentityIssuer("jwks", "us-east-1")
+	issuer, err := NewIdentityIssuer("https://jwks-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}

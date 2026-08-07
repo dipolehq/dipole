@@ -46,7 +46,7 @@ func (h *MFAHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := h.mfaSvc.GetStatus(r.Context(), user.ID)
+	status, err := h.mfaSvc.GetStatus(r.Context(), tenantID, user.ID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to get MFA status")
 		return
@@ -65,7 +65,7 @@ func (h *MFAHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.mfaSvc.Setup(r.Context(), user.ID, email)
+	resp, err := h.mfaSvc.Setup(r.Context(), tenantID, user.ID, email)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to set up MFA")
 		return
@@ -96,7 +96,7 @@ func (h *MFAHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.mfaSvc.Verify(r.Context(), user.ID, req.Code); err != nil {
+	if err := h.mfaSvc.Verify(r.Context(), tenantID, user.ID, req.Code); err != nil {
 		respondBadRequest(w, err.Error())
 		return
 	}
@@ -117,7 +117,7 @@ func (h *MFAHandler) GenerateBackupCodes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	codes, err := h.mfaSvc.GenerateBackupCodes(r.Context(), user.ID)
+	codes, err := h.mfaSvc.GenerateBackupCodes(r.Context(), tenantID, user.ID)
 	if err != nil {
 		respondBadRequest(w, err.Error())
 		return
@@ -136,7 +136,7 @@ func (h *MFAHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.mfaSvc.Reset(r.Context(), user.ID); err != nil {
+	if err := h.mfaSvc.Reset(r.Context(), tenantID, user.ID); err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to reset MFA")
 		return
 	}

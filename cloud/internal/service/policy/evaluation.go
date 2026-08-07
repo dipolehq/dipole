@@ -31,7 +31,11 @@ type ConditionEvaluator interface {
 }
 
 type CredentialBroker interface {
-	Retrieve(ctx context.Context, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
+	// tenantID is required so that credential types which mint a token we sign
+	// use the requesting tenant's identity host as the `iss` claim. Cloud
+	// federation providers (AWS STS, Azure Entra, GCP WIF) fetch OIDC discovery
+	// from `iss` and reject a mismatch.
+	Retrieve(ctx context.Context, tenantID uuid.UUID, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
 type EventEmitter interface {
@@ -142,7 +146,7 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 		if len(p.CredentialProviders) > 0 {
 			cp := &p.CredentialProviders[0]
 			ec.credentialProvider = cp
-			cred, err := s.broker.Retrieve(ctx, cp, evidence, nil)
+			cred, err := s.broker.Retrieve(ctx, tenantID, cp, evidence, nil)
 			if err != nil {
 				ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "CredentialRetrievalFailed"}
 				return ec.result, nil

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
+import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
 
 export function SignupPage() {
   const navigate = useNavigate()
@@ -28,6 +29,7 @@ export function SignupPage() {
       )
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+      setCurrentTenantSubdomain(res.subdomain)
       navigate('/')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Signup failed. Please try again.'

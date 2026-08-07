@@ -39,7 +39,7 @@ func TestAWSSts_XMLParsing(t *testing.T) {
 
 func TestAWSSts_InvalidConfig_Error(t *testing.T) {
 	handler := NewAWSStsHandler(nil)
-	_, err := handler.Retrieve(nil, []byte("not json"), nil, nil)
+	_, err := handler.Retrieve(nil, []byte("not json"), "https://647251-id.dipolehq.com", nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid config")
 	}

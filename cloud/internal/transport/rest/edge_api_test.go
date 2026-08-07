@@ -52,7 +52,7 @@ func (m *mockEdgeTenant) GetBySubdomain(_ context.Context, _ string) (*domain.Te
 
 func newTestEdgeAPI(t *testing.T, trustResult *domain.TrustProviderResult, policyResult *domain.EvaluationResult, tenant *domain.Tenant) (*EdgeAPIHandler, *identity.IdentityIssuer) {
 	t.Helper()
-	issuer, err := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, err := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 
 func setupAuth(t *testing.T) (*LeftSideAuth, *identity.IdentityIssuer) {
 	t.Helper()
-	issuer, err := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, err := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}

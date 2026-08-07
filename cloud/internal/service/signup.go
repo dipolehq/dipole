@@ -127,10 +127,11 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		Lifetime:  24 * time.Hour,
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
-			"tenant_id": tenant.ID.String(),
-			"user_id":   user.ID.String(),
-			"email":     user.Email,
-			"name":      user.Name,
+			"tenant_id":        tenant.ID.String(),
+			"tenant_subdomain": tenant.Subdomain,
+			"user_id":          user.ID.String(),
+			"email":            user.Email,
+			"name":             user.Name,
 		},
 	})
 	if err != nil {

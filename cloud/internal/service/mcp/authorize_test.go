@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -124,7 +125,7 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 		TokenEndpoint:         "https://idp.example.com/token",
 		Scopes:                "openid profile email",
 	}}
-	idpSvc := NewIdPService("https://test-mcp.dipolehq.com", idpResolver)
+	idpSvc := NewIdPService(idpResolver)
 	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, idpSvc)
 
 	result, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{
@@ -134,6 +135,7 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 		CodeChallenge:       "challenge",
 		CodeChallengeMethod: "S256",
 		Resource:            "https://mcp.example.com",
+		ServerBaseURL:       "https://647251-mcp.dipolehq.com",
 	}, "1.2.3.4")
 
 	if err != nil {
@@ -147,6 +149,64 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 	}
 	if !strings.Contains(result.IdPRedirect, "state=") {
 		t.Error("IdP redirect should contain state param")
+	}
+
+	// The redirect_uri handed to the IdP must be built from the hostname this
+	// request arrived on — that's what the customer registered with the IdP.
+	// A mismatch surfaces as redirect_uri_mismatch.
+	parsed, perr := url.Parse(result.IdPRedirect)
+	if perr != nil {
+		t.Fatalf("IdP redirect is not a valid URL: %v", perr)
+	}
+	if got, want := parsed.Query().Get("redirect_uri"), "https://647251-mcp.dipolehq.com/callback/oidc"; got != want {
+		t.Errorf("redirect_uri = %q, want %q", got, want)
+	}
+	// Percent-encoded, not raw — providers treat raw "://" inconsistently.
+	if strings.Contains(parsed.RawQuery, "redirect_uri=https://") {
+		t.Error("redirect_uri is not percent-encoded in the query string")
+	}
+}
+
+// Without a resolved hostname we'd send the IdP a malformed redirect_uri and
+// fail opaquely at the provider, so this must fail loudly instead.
+func TestAuthorize_SSOOn_MissingServerBaseURL_Fails(t *testing.T) {
+	dcrSvc := NewDCRService(newMockClientRepo())
+	codeStore := NewAuthCodeStore()
+
+	tenantID := uuid.New()
+	resp, _ := dcrSvc.Register(context.Background(), tenantID, &DCRRequest{
+		RedirectURIs:  []string{"http://localhost:7777/oauth/callback"},
+		GrantTypes:    []string{"authorization_code"},
+		ResponseTypes: []string{"code"},
+	})
+
+	finder := &mockPolicyFinder{
+		policy: &domain.AccessPolicyWithRelations{
+			Policy:         domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+			ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "redirect_uri", Value: "http://localhost:7777/oauth/callback"}}},
+			ServerWorkload: domain.ServerWorkload{AppProtocol: "MCP"},
+			TrustProviders: []domain.TrustProvider{{Type: domain.TrustProviderTypeOIDCIDToken, Config: []byte(`{}`)}},
+		},
+	}
+	idpResolver := &mockIdPResolver{cfg: &ResolvedIdPConfig{
+		ClientID:              "our-client",
+		AuthorizationEndpoint: "https://idp.example.com/authorize",
+	}}
+
+	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, NewIdPService(idpResolver))
+
+	_, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{
+		ClientID:            resp.ClientID,
+		RedirectURI:         "http://localhost:8080/oauth/callback",
+		ResponseType:        "code",
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		Resource:            "https://mcp.example.com",
+		// ServerBaseURL deliberately omitted.
+	}, "1.2.3.4")
+
+	if err == nil {
+		t.Fatal("expected an error when the server base URL was not resolved")
 	}
 }
 

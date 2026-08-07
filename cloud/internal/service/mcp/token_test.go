@@ -22,7 +22,7 @@ func (r *mockTokenConfigResolver) ResolveTokenConfig(_ uuid.UUID, _ uuid.UUID) (
 func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 	t.Helper()
 
-	issuer, err := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, err := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 }
 
 func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{
@@ -109,7 +109,7 @@ func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
 }
 
 func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},
@@ -138,7 +138,7 @@ func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
 }
 
 func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},
@@ -159,7 +159,7 @@ func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
 }
 
 func TestRefreshToken_SingleUse(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{
@@ -227,7 +227,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 }
 
 func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},

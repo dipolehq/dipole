@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/platform"
 )
 
 type IdPSession struct {
@@ -54,22 +56,30 @@ type IdentityProviderResolver interface {
 	ResolveSAMLProvider(ctx context.Context, tenantID uuid.UUID) (*ResolvedSAMLConfig, error)
 }
 
+// IdPService is stateless with respect to tenant. The callback base URL comes
+// from each AuthorizeRequest (set by the transport layer from the request
+// hostname) rather than being fixed at construction, because one process serves
+// every tenant and each tenant has its own MCP Authorization Server hostname.
 type IdPService struct {
-	callbackBaseURL string
-	idpResolver     IdentityProviderResolver
-	sessions        map[string]*IdPSession
-	mu              sync.RWMutex
+	idpResolver IdentityProviderResolver
+	sessions    map[string]*IdPSession
+	mu          sync.RWMutex
 }
 
-func NewIdPService(callbackBaseURL string, idpResolver IdentityProviderResolver) *IdPService {
+func NewIdPService(idpResolver IdentityProviderResolver) *IdPService {
 	return &IdPService{
-		callbackBaseURL: callbackBaseURL,
-		idpResolver:     idpResolver,
-		sessions:        make(map[string]*IdPSession),
+		idpResolver: idpResolver,
+		sessions:    make(map[string]*IdPSession),
 	}
 }
 
 func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
+	if req.ServerBaseURL == "" {
+		// Without this we'd send the IdP a malformed redirect_uri and fail with
+		// an opaque error at the provider. Fail loudly here instead.
+		return nil, fmt.Errorf("cannot build IdP redirect: server base URL not resolved from request")
+	}
+
 	idpCfg, err := s.idpResolver.ResolveOIDCProvider(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve identity provider: %w", err)
@@ -96,16 +106,25 @@ func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeReques
 		scopes = "openid profile email"
 	}
 
-	redirectURL := idpCfg.AuthorizationEndpoint +
-		"?response_type=code" +
-		"&client_id=" + idpCfg.ClientID +
-		"&redirect_uri=" + s.callbackBaseURL + "/callback/oidc" +
-		"&scope=" + strings.ReplaceAll(scopes, " ", "+") +
-		"&state=" + state +
-		"&nonce=" + nonce
+	// Built with url.Values so every value is correctly percent-encoded. The
+	// previous string concatenation left "://" and spaces raw, which providers
+	// tolerate inconsistently.
+	params := url.Values{
+		"response_type": {"code"},
+		"client_id":     {idpCfg.ClientID},
+		"redirect_uri":  {req.ServerBaseURL + platform.OIDCCallbackPath},
+		"scope":         {scopes},
+		"state":         {state},
+		"nonce":         {nonce},
+	}
+
+	separator := "?"
+	if strings.Contains(idpCfg.AuthorizationEndpoint, "?") {
+		separator = "&"
+	}
 
 	return &IdPRedirectResult{
-		RedirectURL: redirectURL,
+		RedirectURL: idpCfg.AuthorizationEndpoint + separator + params.Encode(),
 		State:       state,
 	}, nil
 }
@@ -130,10 +149,14 @@ func (s *IdPService) BuildSAMLRedirect(ctx context.Context, req *AuthorizeReques
 	}
 	s.mu.Unlock()
 
-	redirectURL := samlCfg.SSOURL + "?RelayState=" + state
+	separator := "?"
+	if strings.Contains(samlCfg.SSOURL, "?") {
+		separator = "&"
+	}
+	params := url.Values{"RelayState": {state}}
 
 	return &IdPRedirectResult{
-		RedirectURL: redirectURL,
+		RedirectURL: samlCfg.SSOURL + separator + params.Encode(),
 		State:       state,
 	}, nil
 }

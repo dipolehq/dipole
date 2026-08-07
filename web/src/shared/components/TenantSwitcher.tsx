@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Building2, ChevronDown } from 'lucide-react'
 import { apiClient } from '@/shared/lib/api-client'
+import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
 
 interface TenantSummary {
   id: string
@@ -46,12 +47,16 @@ export function TenantSwitcher() {
     setOpen(false)
 
     try {
-      const res = await apiClient.post<{ token: string; user: { id: string; email: string; name: string } }>(
+      const res = await apiClient.post<{ token: string; tenantSubdomain?: string; user: { id: string; email: string; name: string } }>(
         '/auth/switch-tenant',
         { tenantId },
       )
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+      // Must be updated alongside the token: the per-tenant URLs shown in the
+      // console are derived from it, and a stale value would display the
+      // previous tenant's.
+      setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
       // Full reload to clear all cached data scoped to the old tenant.
       window.location.replace('/')
     } catch {

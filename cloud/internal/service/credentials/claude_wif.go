@@ -38,16 +38,19 @@ type claudeWIFConfig struct {
 	Scope            string `json:"scope"`
 }
 
-func (h *ClaudeWIFHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host, presented to Anthropic as
+// the assertion issuer.
+func (h *ClaudeWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg claudeWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse claude wif config: %w", err)
 	}
 
 	oidcToken, err := h.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:  evidence.DipoleClientID,
-		Audience: "api.anthropic.com",
-		Lifetime: 5 * time.Minute,
+		IssuerURL: issuerURL,
+		Subject:   evidence.DipoleClientID,
+		Audience:  "api.anthropic.com",
+		Lifetime:  5 * time.Minute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue oidc token for claude: %w", err)
