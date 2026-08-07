@@ -1,17 +1,23 @@
 /*
 idp_redirect.go handles Identity Provider integration for MCP Enforce SSO flows.
 
-IdPService builds redirect URLs for OIDC/SAML identity providers and manages
-session state that maps the OAuth state param back to the original MCP
-authorization request. After user authenticates at the IdP, the callback
-handler uses this state to resume the authorization flow.
+IdPService builds redirect URLs using the tenant's configured Identity Provider
+(from Administration → Identity Providers) and manages session state that maps
+the OAuth state param back to the original MCP authorization request.
+
+The Identity Provider provides OAuth credentials (client_id, secret, discovery URL).
+The Trust Provider provides token validation rules (match rules, attestation method).
+These are separate concerns following Aembit's architecture.
 */
 package mcp
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +31,7 @@ type IdPSession struct {
 	TenantID         uuid.UUID
 	PolicyID         uuid.UUID
 	TrustProvider    *domain.TrustProvider
+	IdPConfig        *ResolvedIdPConfig
 	AccessConditions []domain.AccessCondition
 	ClientIP         string
 	CreatedAt        time.Time
@@ -35,30 +42,37 @@ type IdPRedirectResult struct {
 	State       string
 }
 
-type OIDCIdPConfig struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	ClientID              string `json:"client_id"`
-	ClientSecret          string `json:"client_secret"`
+type ResolvedIdPConfig struct {
+	ClientID              string
+	ClientSecret          string
+	AuthorizationEndpoint string
+	TokenEndpoint         string
+	Scopes                string
+}
+
+type IdentityProviderResolver interface {
+	ResolveOIDCProvider(ctx context.Context, tenantID uuid.UUID) (*ResolvedIdPConfig, error)
 }
 
 type IdPService struct {
 	callbackBaseURL string
+	idpResolver     IdentityProviderResolver
 	sessions        map[string]*IdPSession
 	mu              sync.RWMutex
 }
 
-func NewIdPService(callbackBaseURL string) *IdPService {
+func NewIdPService(callbackBaseURL string, idpResolver IdentityProviderResolver) *IdPService {
 	return &IdPService{
 		callbackBaseURL: callbackBaseURL,
+		idpResolver:     idpResolver,
 		sessions:        make(map[string]*IdPSession),
 	}
 }
 
-func (s *IdPService) BuildOIDCRedirect(req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
-	var idpCfg OIDCIdPConfig
-	if err := json.Unmarshal(tp.Config, &idpCfg); err != nil {
-		return nil, err
+func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
+	idpCfg, err := s.idpResolver.ResolveOIDCProvider(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve identity provider: %w", err)
 	}
 
 	state := generateState()
@@ -70,17 +84,23 @@ func (s *IdPService) BuildOIDCRedirect(req *AuthorizeRequest, tenantID uuid.UUID
 		TenantID:         tenantID,
 		PolicyID:         policyID,
 		TrustProvider:    tp,
+		IdPConfig:        idpCfg,
 		AccessConditions: conditions,
 		ClientIP:         clientIP,
 		CreatedAt:        time.Now().UTC(),
 	}
 	s.mu.Unlock()
 
+	scopes := idpCfg.Scopes
+	if scopes == "" {
+		scopes = "openid profile email"
+	}
+
 	redirectURL := idpCfg.AuthorizationEndpoint +
 		"?response_type=code" +
 		"&client_id=" + idpCfg.ClientID +
 		"&redirect_uri=" + s.callbackBaseURL + "/callback/oidc" +
-		"&scope=openid+profile+email" +
+		"&scope=" + strings.ReplaceAll(scopes, " ", "+") +
 		"&state=" + state +
 		"&nonce=" + nonce
 
@@ -90,7 +110,7 @@ func (s *IdPService) BuildOIDCRedirect(req *AuthorizeRequest, tenantID uuid.UUID
 	}, nil
 }
 
-func (s *IdPService) BuildSAMLRedirect(req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
+func (s *IdPService) BuildSAMLRedirect(ctx context.Context, req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
 	var samlCfg struct {
 		SSOUrl string `json:"sso_url"`
 	}
@@ -112,7 +132,6 @@ func (s *IdPService) BuildSAMLRedirect(req *AuthorizeRequest, tenantID uuid.UUID
 	}
 	s.mu.Unlock()
 
-	// SAML AuthnRequest — simplified redirect binding
 	redirectURL := samlCfg.SSOUrl + "?RelayState=" + state
 
 	return &IdPRedirectResult{
