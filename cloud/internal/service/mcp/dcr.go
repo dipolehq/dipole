@@ -59,6 +59,17 @@ func NewDCRService(repo MCPClientRepository) *DCRService {
 }
 
 func (s *DCRService) Register(ctx context.Context, tenantID uuid.UUID, req *DCRRequest) (*DCRResponse, error) {
+	// RFC 7591 §2: when grant_types is omitted, the default is
+	// ["authorization_code"]; when response_types is omitted, the default is
+	// ["code"]. Claude.ai omits both, so we must apply defaults before
+	// validating rather than rejecting.
+	if len(req.GrantTypes) == 0 {
+		req.GrantTypes = []string{"authorization_code"}
+	}
+	if len(req.ResponseTypes) == 0 {
+		req.ResponseTypes = []string{"code"}
+	}
+
 	if err := validateDCRRequest(req); err != nil {
 		return nil, err
 	}
