@@ -52,8 +52,15 @@ type EventMCP struct {
 	HTTPResponseCode int    `json:"httpResponseCode,omitempty"`
 }
 
+// EventSink persists a Gateway workload event for one tenant.
+//
+// The tenant is a parameter rather than a field on the event document: the event
+// body mirrors the published workload-event schema, which carries no tenant
+// identifier because the tenant is implied by the account the events are read
+// from. Passing it separately also matches the repository's
+// InsertWorkloadEvent(ctx, tenantID, event) shape.
 type EventSink interface {
-	Emit(event *MCPWorkloadEvent)
+	Emit(tenantID uuid.UUID, event *MCPWorkloadEvent)
 }
 
 type GatewayEventEmitter struct {
@@ -64,11 +71,11 @@ func NewGatewayEventEmitter(sink EventSink) *GatewayEventEmitter {
 	return &GatewayEventEmitter{sink: sink}
 }
 
-func (e *GatewayEventEmitter) EmitRequest(userID string, clientName string, serverName string, serverID uuid.UUID) {
+func (e *GatewayEventEmitter) EmitRequest(tenantID uuid.UUID, userID string, clientName string, serverName string, serverID uuid.UUID) {
 	if e.sink == nil {
 		return
 	}
-	e.sink.Emit(&MCPWorkloadEvent{
+	e.sink.Emit(tenantID, &MCPWorkloadEvent{
 		Meta: EventMeta{
 			EventType:    "mcp.request",
 			ConnectionID: uuid.New().String(),
@@ -90,11 +97,11 @@ func (e *GatewayEventEmitter) EmitRequest(userID string, clientName string, serv
 	})
 }
 
-func (e *GatewayEventEmitter) EmitResponse(userID string, clientName string, serverName string, serverID uuid.UUID, httpResponseCode int) {
+func (e *GatewayEventEmitter) EmitResponse(tenantID uuid.UUID, userID string, clientName string, serverName string, serverID uuid.UUID, httpResponseCode int) {
 	if e.sink == nil {
 		return
 	}
-	e.sink.Emit(&MCPWorkloadEvent{
+	e.sink.Emit(tenantID, &MCPWorkloadEvent{
 		Meta: EventMeta{
 			EventType:    "mcp.response",
 			ConnectionID: uuid.New().String(),

@@ -10,6 +10,7 @@ package mcp_gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,13 +37,31 @@ func NewConsentCallbackService(tokenStore UserTokenStore, configResolver Consent
 	}
 }
 
-func (s *ConsentCallbackService) HandleCallback(ctx context.Context, code string, state string) error {
+// ErrConsentTenantMismatch means the tenant encoded in the OAuth state does not
+// match the tenant that owns the hostname the callback arrived on.
+var ErrConsentTenantMismatch = errors.New("consent state tenant does not match the request hostname")
+
+// HandleCallback completes the per-user OAuth consent flow.
+//
+// scope is the tenant resolved from the hostname the callback arrived on. The
+// tenant encoded in state must match it: state is attacker-visible (it travels
+// through the user's browser), so accepting a state naming a different tenant
+// would let a token be stored against a tenant that never initiated the consent.
+func (s *ConsentCallbackService) HandleCallback(ctx context.Context, code string, state string, scope TenantScope) error {
+	if !scope.Valid() {
+		return ErrInvalidTenantScope
+	}
+
 	tenantID, userID, serverWorkloadID, err := parseConsentState(state)
 	if err != nil {
 		return fmt.Errorf("parse consent state: %w", err)
 	}
 
-	cfg, err := s.configResolver.GetConsentConfig(ctx, tenantID, serverWorkloadID)
+	if tenantID != scope.TenantID {
+		return ErrConsentTenantMismatch
+	}
+
+	cfg, err := s.configResolver.GetConsentConfig(ctx, tenantID, serverWorkloadID, scope.GatewayURL)
 	if err != nil {
 		return fmt.Errorf("get consent config: %w", err)
 	}

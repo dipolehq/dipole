@@ -34,17 +34,21 @@ type Config struct {
 	// the MCP/OAuth routes are unauthenticated by design.
 	DevBootstrap bool
 
-	// DEPRECATED — remove once the MCP Identity Gateway resolves its tenant
-	// per request (progress.md Fix 11). These are the last consumers.
+	// AdminSSOTenantID binds admin-console SSO login to one tenant. It is the
+	// LAST startup-bound tenant in the process — every other component now
+	// resolves its tenant from the request hostname.
 	//
-	// Everything else now resolves the tenant from the request hostname. The
-	// Gateway still binds one tenant at construction (its downstream MCP client
-	// map, event sink, and token audience are all built once at startup), so it
-	// cannot be wired up without a tenant to bind to. Do NOT add new readers of
-	// these fields — a startup-bound tenant means every request is served as
-	// that tenant regardless of which hostname it arrived on.
-	GatewayTenantID        string
-	GatewayTenantSubdomain string
+	// It survives because admin SSO genuinely cannot use either mechanism: the
+	// SSO routes run BEFORE authentication so there is no JWT to read a tenant
+	// from, and the console is served from one shared hostname rather than a
+	// per-tenant subdomain, so the hostname cannot supply one either. Resolving
+	// that needs a product decision (identifier-first login, or a per-tenant
+	// console hostname) — see the admin-console SSO entry in later.md.
+	//
+	// Do NOT add new readers. A startup-bound tenant means every request is
+	// served as that tenant regardless of which hostname it arrived on. Admin SSO
+	// is not currently offered to customers; the console uses email + password.
+	AdminSSOTenantID string
 
 	GRPCTLSCert        string
 	GRPCTLSKey         string
@@ -66,15 +70,17 @@ func LoadFromEnv() (*Config, error) {
 		ConsoleURL:     envStr("DIPOLE_CONSOLE_URL", "https://console.dipolehq.com"),
 		DevBootstrap:   envBool("DIPOLE_DEV_BOOTSTRAP", false),
 
-		// DEPRECATED — see struct comment. Pending Fix 11.
-		GatewayTenantID:        os.Getenv("DIPOLE_TENANT_ID"),
-		GatewayTenantSubdomain: envStr("DIPOLE_TENANT_SUBDOMAIN", ""),
-		GRPCTLSCert:            os.Getenv("DIPOLE_GRPC_TLS_CERT"),
-		GRPCTLSKey:             os.Getenv("DIPOLE_GRPC_TLS_KEY"),
-		GeoIPDBPath:            os.Getenv("DIPOLE_GEOIP_DB_PATH"),
-		ResendAPIKey:           os.Getenv("DIPOLE_RESEND_API_KEY"),
-		EmailFrom:              envStr("DIPOLE_EMAIL_FROM", "Dipole <noreply@dipolehq.com>"),
-		CORSAllowedOrigins:     os.Getenv("DIPOLE_CORS_ALLOWED_ORIGINS"),
+		// Admin SSO only — see struct comment. The env var name is unchanged so
+		// deployments don't need editing, but it no longer affects anything
+		// except whether admin-console SSO routes are registered.
+		// DIPOLE_TENANT_SUBDOMAIN is no longer read by anything.
+		AdminSSOTenantID:   os.Getenv("DIPOLE_TENANT_ID"),
+		GRPCTLSCert:        os.Getenv("DIPOLE_GRPC_TLS_CERT"),
+		GRPCTLSKey:         os.Getenv("DIPOLE_GRPC_TLS_KEY"),
+		GeoIPDBPath:        os.Getenv("DIPOLE_GEOIP_DB_PATH"),
+		ResendAPIKey:       os.Getenv("DIPOLE_RESEND_API_KEY"),
+		EmailFrom:          envStr("DIPOLE_EMAIL_FROM", "Dipole <noreply@dipolehq.com>"),
+		CORSAllowedOrigins: os.Getenv("DIPOLE_CORS_ALLOWED_ORIGINS"),
 	}
 
 	if err := cfg.validate(); err != nil {

@@ -51,19 +51,34 @@ func (h *recordingMethodHandler) HandleMethod(_ context.Context, rCtx *gw.Reques
 	return map[string]any{}, nil
 }
 
+// recordingConsentHandler captures the scope the consent callback resolved.
+type recordingConsentHandler struct {
+	called   bool
+	gotState string
+	gotScope gw.TenantScope
+	err      error
+}
+
+func (h *recordingConsentHandler) HandleCallback(_ context.Context, _ string, state string, scope gw.TenantScope) error {
+	h.called = true
+	h.gotState = state
+	h.gotScope = scope
+	return h.err
+}
+
 const (
-	gwBoundSubdomain = "647251"
-	gwOtherSubdomain = "889900"
+	gwTenantASubdomain = "647251"
+	gwTenantBSubdomain = "889900"
 )
 
 // newGatewayTestServer builds a Gateway wired to a resolver that knows two
 // tenants, so cross-tenant behaviour can be asserted.
-func newGatewayTestServer(t *testing.T, boundTenantID uuid.UUID) (*MCPGatewayServer, *recordingGatewayAuth, *recordingMethodHandler, map[string]*domain.Tenant) {
+func newGatewayTestServer(t *testing.T) (*MCPGatewayServer, *recordingGatewayAuth, *recordingMethodHandler, map[string]*domain.Tenant) {
 	t.Helper()
 
 	tenants := map[string]*domain.Tenant{
-		gwBoundSubdomain: {ID: uuid.New(), Name: "Bound", Subdomain: gwBoundSubdomain},
-		gwOtherSubdomain: {ID: uuid.New(), Name: "Other", Subdomain: gwOtherSubdomain},
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+		gwTenantBSubdomain: {ID: uuid.New(), Name: "Tenant B", Subdomain: gwTenantBSubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
@@ -71,7 +86,7 @@ func newGatewayTestServer(t *testing.T, boundTenantID uuid.UUID) (*MCPGatewaySer
 	auth := &recordingGatewayAuth{resultUserID: "alice@corp.com"}
 	handler := &recordingMethodHandler{}
 
-	srv := NewMCPGatewayServer(auth, handler, nil, nil, nil, resolver, boundTenantID)
+	srv := NewMCPGatewayServer(auth, handler, nil, nil, nil, resolver)
 	return srv, auth, handler, tenants
 }
 
@@ -87,24 +102,24 @@ func gatewayRequest(forwardedHost string, token string) *http.Request {
 }
 
 func TestGatewayHandleMCP_ResolvesTenantFromHostname(t *testing.T) {
-	srv, auth, handler, tenants := newGatewayTestServer(t, uuid.Nil)
+	srv, auth, handler, tenants := newGatewayTestServer(t)
 
 	rec := httptest.NewRecorder()
-	srv.HandleMCP(rec, gatewayRequest(gwBoundSubdomain+"-mcpgateway.dipolehq.com", "tok"))
+	srv.HandleMCP(rec, gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
 	}
 
-	wantAudience := "https://" + gwBoundSubdomain + "-mcpgateway.dipolehq.com"
+	wantAudience := "https://" + gwTenantASubdomain + "-mcpgateway.dipolehq.com"
 	if auth.gotAudience != wantAudience {
 		t.Errorf("expected audience %q, got %q", wantAudience, auth.gotAudience)
 	}
 	if !handler.called {
 		t.Fatal("expected method handler to be invoked")
 	}
-	if got := handler.gotCtx.Scope.TenantID; got != tenants[gwBoundSubdomain].ID {
-		t.Errorf("expected scope tenant %s, got %s", tenants[gwBoundSubdomain].ID, got)
+	if got := handler.gotCtx.Scope.TenantID; got != tenants[gwTenantASubdomain].ID {
+		t.Errorf("expected scope tenant %s, got %s", tenants[gwTenantASubdomain].ID, got)
 	}
 	if got := handler.gotCtx.Scope.GatewayURL; got != wantAudience {
 		t.Errorf("expected scope gateway URL %q, got %q", wantAudience, got)
@@ -114,12 +129,12 @@ func TestGatewayHandleMCP_ResolvesTenantFromHostname(t *testing.T) {
 	}
 }
 
-// Each tenant's hostname must produce that tenant's scope — the whole point of
-// per-request resolution.
-func TestGatewayHandleMCP_DifferentHostnamesProduceDifferentTenants(t *testing.T) {
-	srv, _, handler, tenants := newGatewayTestServer(t, uuid.Nil)
+// The Gateway now serves every tenant, and each tenant's hostname must produce
+// that tenant's scope and that tenant's expected audience.
+func TestGatewayHandleMCP_ServesEveryTenantWithItsOwnScope(t *testing.T) {
+	srv, auth, handler, tenants := newGatewayTestServer(t)
 
-	for _, sub := range []string{gwBoundSubdomain, gwOtherSubdomain} {
+	for _, sub := range []string{gwTenantASubdomain, gwTenantBSubdomain} {
 		rec := httptest.NewRecorder()
 		srv.HandleMCP(rec, gatewayRequest(sub+"-mcpgateway.dipolehq.com", "tok"))
 
@@ -129,6 +144,10 @@ func TestGatewayHandleMCP_DifferentHostnamesProduceDifferentTenants(t *testing.T
 		if got := handler.gotCtx.Scope.TenantID; got != tenants[sub].ID {
 			t.Errorf("subdomain %s: expected tenant %s, got %s", sub, tenants[sub].ID, got)
 		}
+		wantAudience := "https://" + sub + "-mcpgateway.dipolehq.com"
+		if auth.gotAudience != wantAudience {
+			t.Errorf("subdomain %s: expected audience %q, got %q", sub, wantAudience, auth.gotAudience)
+		}
 	}
 }
 
@@ -136,11 +155,11 @@ func TestGatewayHandleMCP_DifferentHostnamesProduceDifferentTenants(t *testing.T
 // Server hostname too. Without a service check the Auth Server's base URL would
 // be passed to left-side auth as the expected token audience.
 func TestGatewayHandleMCP_RejectsNonGatewayServiceHost(t *testing.T) {
-	srv, auth, handler, _ := newGatewayTestServer(t, uuid.Nil)
+	srv, auth, handler, _ := newGatewayTestServer(t)
 
 	for _, host := range []string{
-		gwBoundSubdomain + "-mcp.dipolehq.com",
-		gwBoundSubdomain + "-id.dipolehq.com",
+		gwTenantASubdomain + "-mcp.dipolehq.com",
+		gwTenantASubdomain + "-id.dipolehq.com",
 	} {
 		rec := httptest.NewRecorder()
 		req := gatewayRequest(host, "tok")
@@ -175,7 +194,7 @@ func TestGatewayHandleMCP_UnresolvableHostsFailClosed(t *testing.T) {
 
 	for name, host := range cases {
 		t.Run(name, func(t *testing.T) {
-			srv, auth, handler, _ := newGatewayTestServer(t, uuid.Nil)
+			srv, auth, handler, _ := newGatewayTestServer(t)
 
 			rec := httptest.NewRecorder()
 			srv.HandleMCP(rec, gatewayRequest(host, "tok"))
@@ -190,42 +209,14 @@ func TestGatewayHandleMCP_UnresolvableHostsFailClosed(t *testing.T) {
 	}
 }
 
-// While the client map, event sink, and consent URL are still per-startup
-// (Fix 11 steps 5-7), the Gateway serves exactly the tenant it was provisioned
-// for and refuses every other, mirroring Aembit's per-tenant provisioning.
-func TestGatewayHandleMCP_BoundTenantRefusesOtherTenants(t *testing.T) {
-	srv, auth, handler, tenants := newGatewayTestServer(t, uuid.Nil)
-	boundID := tenants[gwBoundSubdomain].ID
-	srv.boundTenantID = boundID
-
-	rec := httptest.NewRecorder()
-	srv.HandleMCP(rec, gatewayRequest(gwOtherSubdomain+"-mcpgateway.dipolehq.com", "tok"))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for a non-provisioned tenant, got %d", rec.Code)
-	}
-	if auth.called || handler.called {
-		t.Error("nothing downstream may run for a non-provisioned tenant")
-	}
-
-	// The provisioned tenant still works.
-	rec = httptest.NewRecorder()
-	srv.HandleMCP(rec, gatewayRequest(gwBoundSubdomain+"-mcpgateway.dipolehq.com", "tok"))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for the provisioned tenant, got %d (%s)", rec.Code, rec.Body.String())
-	}
-	if handler.gotCtx.Scope.TenantID != boundID {
-		t.Errorf("expected scope tenant %s, got %s", boundID, handler.gotCtx.Scope.TenantID)
-	}
-}
-
 // A missing token on a valid Gateway hostname must still produce the 401 +
 // WWW-Authenticate that makes an MCP client begin OAuth discovery. Resolving the
 // tenant first must not turn that into a 404.
 func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
-	srv, auth, _, _ := newGatewayTestServer(t, uuid.Nil)
+	srv, auth, _, _ := newGatewayTestServer(t)
 
 	rec := httptest.NewRecorder()
-	srv.HandleMCP(rec, gatewayRequest(gwBoundSubdomain+"-mcpgateway.dipolehq.com", ""))
+	srv.HandleMCP(rec, gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", ""))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
@@ -239,16 +230,110 @@ func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
 }
 
 func TestGatewayHandleMCP_InvalidTokenReturns401(t *testing.T) {
-	srv, auth, handler, _ := newGatewayTestServer(t, uuid.Nil)
+	srv, auth, handler, _ := newGatewayTestServer(t)
 	auth.errToReturn = gw.ErrAudienceMismatch
 
 	rec := httptest.NewRecorder()
-	srv.HandleMCP(rec, gatewayRequest(gwBoundSubdomain+"-mcpgateway.dipolehq.com", "tok"))
+	srv.HandleMCP(rec, gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 	if handler.called {
 		t.Error("method handler must not run when authentication fails")
+	}
+}
+
+// Tracing entries carry the end user's identity, so they must be attributed to
+// the tenant that served the request and never emitted unattributed.
+func TestGatewayHandleMCP_TracingEntriesAreTenantScoped(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+		gwTenantBSubdomain: {ID: uuid.New(), Name: "Tenant B", Subdomain: gwTenantBSubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	bus := gw.NewTracingBus()
+
+	srv := NewMCPGatewayServer(
+		&recordingGatewayAuth{resultUserID: "alice@corp.com"},
+		&recordingMethodHandler{}, nil, nil, bus, resolver,
+	)
+
+	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
+	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest(gwTenantBSubdomain+"-mcpgateway.dipolehq.com", "tok"))
+	// Unattributable: must produce no entry for anyone.
+	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest("api.dipolehq.com", "tok"))
+
+	aEntries := bus.Recent(tenants[gwTenantASubdomain].ID)
+	bEntries := bus.Recent(tenants[gwTenantBSubdomain].ID)
+
+	if len(aEntries) != 1 {
+		t.Fatalf("expected 1 entry for tenant A, got %d", len(aEntries))
+	}
+	if len(bEntries) != 1 {
+		t.Fatalf("expected 1 entry for tenant B, got %d", len(bEntries))
+	}
+	if aEntries[0].TenantID != tenants[gwTenantASubdomain].ID {
+		t.Error("tenant A's entry is attributed to the wrong tenant")
+	}
+	if len(bus.Recent(uuid.New())) != 0 {
+		t.Error("an unrelated tenant must see no entries")
+	}
+}
+
+func TestGatewayConsentCallback_ResolvesTenantFromHostname(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	consent := &recordingConsentHandler{}
+
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp/consent/callback?code=abc&state=xyz", nil)
+	req.Host = "internal.run.app"
+	req.Header.Set("X-Forwarded-Host", gwTenantASubdomain+"-mcpgateway.dipolehq.com")
+
+	rec := httptest.NewRecorder()
+	srv.HandleConsentCallback(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	if !consent.called {
+		t.Fatal("expected consent handler to be invoked")
+	}
+	if consent.gotScope.TenantID != tenants[gwTenantASubdomain].ID {
+		t.Errorf("expected scope tenant %s, got %s", tenants[gwTenantASubdomain].ID, consent.gotScope.TenantID)
+	}
+	if want := "https://" + gwTenantASubdomain + "-mcpgateway.dipolehq.com"; consent.gotScope.GatewayURL != want {
+		t.Errorf("expected gateway URL %q, got %q", want, consent.gotScope.GatewayURL)
+	}
+}
+
+func TestGatewayConsentCallback_UnresolvableHostFailsClosed(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	consent := &recordingConsentHandler{}
+
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/mcp/consent/callback?code=abc&state=xyz", nil)
+	req.Host = "internal.run.app"
+	req.Header.Set("X-Forwarded-Host", "api.dipolehq.com")
+
+	rec := httptest.NewRecorder()
+	srv.HandleConsentCallback(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	if consent.called {
+		t.Error("consent handler must not run for an unattributable request")
 	}
 }

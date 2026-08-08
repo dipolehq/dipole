@@ -103,6 +103,19 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID) (*Tok
 		return nil, ErrInvalidGrant
 	}
 
+	// The code was issued for one tenant; this exchange arrived on some tenant's
+	// hostname. They must agree.
+	//
+	// Redeeming another tenant's code already failed downstream, because the
+	// policy referenced by the code isn't found under the redeeming tenant. That
+	// protection was incidental — it depended on the policy lookup staying
+	// tenant-scoped, and would disappear if that lookup were ever cached or
+	// relaxed. Checked explicitly here, and reported as invalid_grant so nothing
+	// is revealed about codes belonging to other tenants.
+	if pending.TenantID != tenantID {
+		return nil, ErrInvalidGrant
+	}
+
 	clientUUID, err := uuid.Parse(req.ClientID)
 	if err != nil || clientUUID != pending.ClientID {
 		return nil, ErrClientIDMismatchT
@@ -163,6 +176,13 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID) (*
 	}
 	entry.Used = true
 	s.mu.Unlock()
+
+	// Same reasoning as the authorization-code path: the refresh token belongs to
+	// one tenant, and this request arrived on some tenant's hostname. Checked
+	// explicitly rather than relying on the downstream policy lookup to fail.
+	if entry.TenantID != tenantID {
+		return nil, ErrRefreshTokenInvalid
+	}
 
 	clientUUID, err := uuid.Parse(req.ClientID)
 	if err != nil || clientUUID != entry.ClientID {

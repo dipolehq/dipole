@@ -79,6 +79,7 @@ func mapToRightSidePolicy(p *domain.AccessPolicyWithRelations) RightSidePolicy {
 			Host: p.ServerWorkload.Host,
 			Port: p.ServerWorkload.Port,
 			Path: p.ServerWorkload.URLPath,
+			TLS:  p.ServerWorkload.TLS,
 		},
 	}
 

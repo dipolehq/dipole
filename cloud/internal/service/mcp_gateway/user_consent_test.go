@@ -17,7 +17,7 @@ type mockConsentResolver struct {
 	config *ConsentConfig
 }
 
-func (m *mockConsentResolver) GetConsentConfig(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*ConsentConfig, error) {
+func (m *mockConsentResolver) GetConsentConfig(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string) (*ConsentConfig, error) {
 	return m.config, nil
 }
 
@@ -37,9 +37,9 @@ func TestBuildConsentURL_CorrectFormat(t *testing.T) {
 		},
 	}
 
-	svc := NewUserConsentService(newMockTokenStore(), resolver, "https://gw.example.com/")
+	svc := NewUserConsentService(newMockTokenStore(), resolver)
 
-	result, err := svc.BuildConsentURL(context.Background(), tenantID, userID, serverWorkloadID)
+	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,9 +98,9 @@ func TestBuildConsentURL_StateFormat(t *testing.T) {
 		},
 	}
 
-	svc := NewUserConsentService(newMockTokenStore(), resolver, "https://gw.example.com/")
+	svc := NewUserConsentService(newMockTokenStore(), resolver)
 
-	result, err := svc.BuildConsentURL(context.Background(), tenantID, userID, serverWorkloadID)
+	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

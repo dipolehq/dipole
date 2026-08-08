@@ -117,9 +117,9 @@ func TestCPConsentConfigResolver_GetConsentConfig_Success(t *testing.T) {
 		},
 	}
 
-	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey, "https://gw.example.com/")
+	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey)
 
-	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID)
+	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com/")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -169,9 +169,9 @@ func TestCPConsentConfigResolver_GetConsentConfig_NoMatchingPolicy(t *testing.T)
 
 	cpRepo := &mockCPRepo{}
 	encKey := make([]byte, 32)
-	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey, "https://gw.example.com/")
+	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey)
 
-	_, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID)
+	_, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com/")
 	if err == nil {
 		t.Fatal("expected error for non-matching server workload")
 	}
@@ -207,9 +207,9 @@ func TestCPConsentConfigResolver_GetConsentConfig_CallbackURLWithoutTrailingSlas
 	cpRepo := &mockCPRepo{cp: &domain.CredentialProvider{ID: cpID, ConfigEncrypted: encrypted}}
 
 	// Gateway URL WITHOUT trailing slash
-	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey, "https://gw.example.com")
+	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey)
 
-	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID)
+	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -246,9 +246,9 @@ func TestCPConsentConfigResolver_GetConsentConfig_UnencryptedConfig(t *testing.T
 	cpRepo := &mockCPRepo{cp: &domain.CredentialProvider{ID: cpID, ConfigEncrypted: plaintext}}
 
 	// Pass nil encKey — should use config as-is without decryption
-	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, nil, "https://gw.example.com/")
+	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, nil)
 
-	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID)
+	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com/")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

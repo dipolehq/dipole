@@ -19,34 +19,78 @@ import (
 	"time"
 )
 
+const mcpUpstreamTimeout = 30 * time.Second
+
+// MCPClientFactory builds a client for one downstream MCP server.
+//
+// Implementations must always return a usable client, never nil: callers treat
+// the result as ready to use, and an unreachable server is expected to surface as
+// an error from a call rather than as a missing client.
+//
+// The Gateway resolves which servers a request may reach from that tenant's
+// Access Policies on every request, then asks the factory for a client per
+// server. Clients are therefore not held anywhere: there is no per-tenant
+// registry to keep in sync, no cache to expire, and no map that could be keyed
+// by one tenant and read by another.
+type MCPClientFactory interface {
+	ClientFor(server ServerInfo) MCPServerClient
+}
+
+// HTTPMCPClientFactory produces JSON-RPC-over-HTTP clients that share one
+// http.Client, so connection pooling and keep-alive still apply even though a
+// client value is constructed per request. Pooling lives in the shared
+// Transport and is keyed by target host, so per-request client values cost
+// nothing.
+type HTTPMCPClientFactory struct {
+	httpClient *http.Client
+}
+
+func NewHTTPMCPClientFactory() *HTTPMCPClientFactory {
+	return &HTTPMCPClientFactory{
+		httpClient: &http.Client{Timeout: mcpUpstreamTimeout},
+	}
+}
+
+func (f *HTTPMCPClientFactory) ClientFor(server ServerInfo) MCPServerClient {
+	return &HTTPMCPClient{
+		baseURL:    mcpBaseURL(server),
+		httpClient: f.httpClient,
+	}
+}
+
 type HTTPMCPClient struct {
 	baseURL    string
 	httpClient *http.Client
 	reqID      atomic.Int64
 }
 
+// NewHTTPMCPClient builds a standalone client with its own connection pool.
+// Production goes through HTTPMCPClientFactory so the pool is shared.
 func NewHTTPMCPClient(host string, port int, path string, tls bool) *HTTPMCPClient {
+	return &HTTPMCPClient{
+		baseURL:    mcpBaseURL(ServerInfo{Host: host, Port: port, Path: path, TLS: tls}),
+		httpClient: &http.Client{Timeout: mcpUpstreamTimeout},
+	}
+}
+
+// mcpBaseURL renders a server's endpoint, omitting the port when it is the
+// default for the scheme.
+func mcpBaseURL(server ServerInfo) string {
 	scheme := "http"
-	if tls {
+	if server.TLS {
 		scheme = "https"
 	}
 
 	portStr := ""
-	if (tls && port != 443) || (!tls && port != 80) {
-		portStr = ":" + strconv.Itoa(port)
+	if (server.TLS && server.Port != 443) || (!server.TLS && server.Port != 80) {
+		portStr = ":" + strconv.Itoa(server.Port)
 	}
 
-	baseURL := scheme + "://" + host + portStr
-	if path != "" {
-		baseURL += path
+	baseURL := scheme + "://" + server.Host + portStr
+	if server.Path != "" {
+		baseURL += server.Path
 	}
-
-	return &HTTPMCPClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-	}
+	return baseURL
 }
 
 func (c *HTTPMCPClient) ListTools(ctx context.Context, token string) ([]MCPTool, error) {

@@ -37,12 +37,19 @@ type ServerCredential struct {
 	ServerWorkload ServerInfo
 }
 
+// ServerInfo describes a downstream MCP server, carrying everything needed both
+// to identify it in a policy and to open a connection to it. The connection
+// details travel with the policy result on purpose: the Gateway must only ever
+// talk to a server that an Access Policy authorised for this tenant, so deriving
+// the endpoint from the policy makes reaching an unauthorised server impossible
+// by construction.
 type ServerInfo struct {
 	ID   uuid.UUID
 	Name string
 	Host string
 	Port int
 	Path string
+	TLS  bool
 }
 
 type UserTokenEntry struct {

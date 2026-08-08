@@ -14,6 +14,7 @@ import (
 	"crypto/cipher"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -21,23 +22,29 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
+// CPConsentConfigResolver holds no Gateway URL. The callback URL it produces must
+// belong to the tenant handling the request, so the URL is supplied per call from
+// that request's TenantScope — a captured URL sent every tenant's users to one
+// tenant's callback.
 type CPConsentConfigResolver struct {
 	policyRepo repository.AccessPolicyRepository
 	cpRepo     repository.CredentialProviderRepository
 	encKey     []byte
-	gatewayURL string
 }
 
-func NewCPConsentConfigResolver(policyRepo repository.AccessPolicyRepository, cpRepo repository.CredentialProviderRepository, encKey []byte, gatewayURL string) *CPConsentConfigResolver {
+func NewCPConsentConfigResolver(policyRepo repository.AccessPolicyRepository, cpRepo repository.CredentialProviderRepository, encKey []byte) *CPConsentConfigResolver {
 	return &CPConsentConfigResolver{
 		policyRepo: policyRepo,
 		cpRepo:     cpRepo,
 		encKey:     encKey,
-		gatewayURL: gatewayURL,
 	}
 }
 
-func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID uuid.UUID, serverWorkloadID uuid.UUID) (*ConsentConfig, error) {
+func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID uuid.UUID, serverWorkloadID uuid.UUID, gatewayURL string) (*ConsentConfig, error) {
+	if gatewayURL == "" {
+		return nil, ErrNoGatewayURL
+	}
+
 	policies, err := r.policyRepo.FindByAppProtocol(ctx, tenantID, domain.AppProtocolMCP)
 	if err != nil {
 		return nil, fmt.Errorf("find MCP policies: %w", err)
@@ -81,10 +88,10 @@ func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID
 		return nil, fmt.Errorf("parse credential provider config: %w", err)
 	}
 
-	callbackURL := r.gatewayURL + "mcp/consent/callback"
-	if r.gatewayURL != "" && r.gatewayURL[len(r.gatewayURL)-1] != '/' {
-		callbackURL = r.gatewayURL + "/mcp/consent/callback"
-	}
+	// Tolerates either form of the supplied URL: this value is also what the
+	// customer registers as the redirect URI with the downstream provider, and
+	// the token exchange must send back a byte-identical string.
+	callbackURL := strings.TrimSuffix(gatewayURL, "/") + ConsentCallbackPath
 
 	return &ConsentConfig{
 		AuthorizationEndpoint: oauthCfg.AuthorizationEndpoint,

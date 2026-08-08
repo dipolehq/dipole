@@ -192,40 +192,26 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpResourceService := mcpserver.NewResourceService()
 	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
-	// MCP Identity Gateway — left-side auth and right-side policy lookup now
-	// resolve their tenant per request from the hostname. Three pieces are still
-	// built once at startup for one tenant (the downstream MCP client map, the
-	// event sink, and the consent callback URL — Fix 11 steps 5-7), so the
-	// Gateway stays provisioned for a single tenant and refuses requests from
-	// any other. That mirrors Aembit, which provisions Gateway endpoints per
-	// tenant on request rather than enabling them for everyone.
-	var mcpGatewayServer *rest.MCPGatewayServer
-	if gatewayTenantID, err := uuid.Parse(cfg.GatewayTenantID); err == nil && platform.IsValidSubdomain(cfg.GatewayTenantSubdomain) {
-		// Guarded above: an invalid subdomain would make MCPGatewayURL return
-		// "", and the consent callback URL below would silently become a bare
-		// path with no host.
-		gatewayURL := platformHosts.MCPGatewayURL(cfg.GatewayTenantSubdomain)
+	// MCP Identity Gateway — tenant-agnostic, serves every tenant. Each request
+	// resolves its own tenant from the hostname it arrived on, and the tenant's
+	// Gateway URL, downstream server endpoints, event attribution, and consent
+	// callback URL all derive from that.
+	gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
+	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
+	gwTokenStore := repos.MCPUserCredentials
+	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil)
+	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
+	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
+	// Downstream MCP servers are derived per request from the tenant's Access
+	// Policies, so the factory shares one connection pool instead of holding a
+	// startup-built map of clients.
+	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter)
 
-		gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
-		gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
-		gwTokenStore := repos.MCPUserCredentials
-		gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil)
-		gwEventSink := mcpgw.NewDBEventSink(repos.Events, gatewayTenantID, logger)
-		gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
-		gwClients := buildMCPServerClients(ctx, repos, gatewayTenantID, logger)
-		gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClients, gwEventEmitter)
+	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
+	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-		// Canonical no-trailing-slash form; the resolver inserts the separator.
-		consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey, gatewayURL)
-		consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
-
-		mcpGatewayServer = rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver, gatewayTenantID)
-		logger.Warn("MCP Identity Gateway is provisioned for a single tenant (pending Fix 11 steps 5-7) — requests from any other tenant are refused",
-			"tenant_id", gatewayTenantID, "gateway_url", gatewayURL)
-	} else {
-		logger.Info("MCP Identity Gateway not configured (requires DIPOLE_TENANT_ID + a DNS-valid DIPOLE_TENANT_SUBDOMAIN, until Fix 11 makes it multi-tenant)",
-			"tenant_id", cfg.GatewayTenantID, "tenant_subdomain", cfg.GatewayTenantSubdomain)
-	}
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver)
 
 	// Built as literal patterns rather than via platformHosts: the URL builders
 	// validate their input and would (correctly) return "" for a placeholder
@@ -234,6 +220,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"platform_domain", platformHosts.Domain(),
 		"auth_server_pattern", "https://<tenant>-mcp."+platformHosts.Domain(),
 		"identity_issuer_pattern", "https://<tenant>-id."+platformHosts.Domain(),
+		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
 	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus)
@@ -386,15 +373,15 @@ func buildHTTPServer(
 	authHandler.RegisterRoutes(mux)
 
 	// Admin SSO login is still bound to a single tenant at construction
-	// (progress.md Fix 10/B7, not yet fixed — it needs a design decision).
+	// (see the admin-console SSO entry in later.md — it needs a design decision).
 	//
 	// It can't use either mechanism the rest of the codebase now uses: it runs
 	// BEFORE authentication so there's no JWT to read a tenant from, and the
 	// admin console is served from one shared hostname rather than a per-tenant
 	// subdomain, so the hostname can't supply it either. Listing a tenant's SSO
 	// providers on the login page has the same problem. Left exactly as it was
-	// (single-tenant) rather than papered over — see Fix 10/B7 for the options.
-	if ssoTenantID, err := uuid.Parse(cfg.GatewayTenantID); err == nil && ssoTenantID != uuid.Nil {
+	// (single-tenant) rather than papered over; later.md records the options.
+	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
 		oidcClient := service.NewHTTPOIDCClient()
 		ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
 		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID).RegisterRoutes(mux)
@@ -408,9 +395,7 @@ func buildHTTPServer(
 	wellKnown.RegisterRoutes(mux)
 	mcpAuth.RegisterRoutes(mux)
 
-	if mcpGateway != nil {
-		mcpGateway.RegisterGatewayRoutes(mux)
-	}
+	mcpGateway.RegisterGatewayRoutes(mux)
 	if mcpDipole != nil {
 		mcpDipole.RegisterMCPServerRoutes(mux)
 	}
@@ -487,29 +472,6 @@ func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, l
 			svc.ExportCycle(ctx)
 		}
 	}
-}
-
-func buildMCPServerClients(ctx context.Context, repos *postgres.Repositories, tenantID uuid.UUID, logger *slog.Logger) map[string]mcpgw.MCPServerClient {
-	clients := make(map[string]mcpgw.MCPServerClient)
-
-	workloads, _, err := repos.ServerWorkloads.List(ctx, tenantID, domain.ListOptions{Page: 1, PerPage: 100})
-	if err != nil {
-		logger.Warn("failed to load MCP server workloads", "error", err)
-		return clients
-	}
-
-	for _, sw := range workloads {
-		if sw.AppProtocol != domain.AppProtocolMCP {
-			continue
-		}
-		clients[sw.Name] = mcpgw.NewHTTPMCPClient(sw.Host, sw.Port, sw.URLPath, sw.TLS)
-	}
-
-	if len(clients) > 0 {
-		logger.Info("loaded MCP server clients", "count", len(clients))
-	}
-
-	return clients
 }
 
 func shutdownHTTP(srv *http.Server, logger *slog.Logger) {

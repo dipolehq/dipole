@@ -19,25 +19,34 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
+// DBEventSink holds no tenant. It is shared by every tenant's Gateway traffic,
+// and each event is attributed to the tenant supplied by the caller — previously
+// one tenant was captured at construction, so every tenant's MCP events were
+// written under it.
 type DBEventSink struct {
-	events   repository.EventRepository
-	tenantID uuid.UUID
-	logger   *slog.Logger
+	events repository.EventRepository
+	logger *slog.Logger
 }
 
-func NewDBEventSink(events repository.EventRepository, tenantID uuid.UUID, logger *slog.Logger) *DBEventSink {
+func NewDBEventSink(events repository.EventRepository, logger *slog.Logger) *DBEventSink {
 	return &DBEventSink{
-		events:   events,
-		tenantID: tenantID,
-		logger:   logger,
+		events: events,
+		logger: logger,
 	}
 }
 
-func (s *DBEventSink) Emit(event *MCPWorkloadEvent) {
-	go s.persist(event)
+func (s *DBEventSink) Emit(tenantID uuid.UUID, event *MCPWorkloadEvent) {
+	// Dropped rather than written to an arbitrary tenant: an unattributed event
+	// is worse than a missing one, because it corrupts another tenant's audit
+	// trail.
+	if tenantID == uuid.Nil {
+		s.logger.Warn("dropping MCP workload event with no tenant", "event_type", event.Meta.EventType)
+		return
+	}
+	go s.persist(tenantID, event)
 }
 
-func (s *DBEventSink) persist(event *MCPWorkloadEvent) {
+func (s *DBEventSink) persist(tenantID uuid.UUID, event *MCPWorkloadEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -57,7 +66,7 @@ func (s *DBEventSink) persist(event *MCPWorkloadEvent) {
 
 	we := &domain.WorkloadEvent{
 		ID:               uuid.New(),
-		TenantID:         s.tenantID,
+		TenantID:         tenantID,
 		ConnectionID:     connID,
 		EventType:        event.Meta.EventType,
 		ServerWorkloadID: uuidPtr(serverID),
@@ -67,7 +76,7 @@ func (s *DBEventSink) persist(event *MCPWorkloadEvent) {
 		Payload:          payload,
 	}
 
-	if err := s.events.InsertWorkloadEvent(ctx, s.tenantID, we); err != nil {
+	if err := s.events.InsertWorkloadEvent(ctx, tenantID, we); err != nil {
 		s.logger.Debug("failed to persist MCP workload event", "error", err)
 	}
 }

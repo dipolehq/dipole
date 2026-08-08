@@ -3,6 +3,7 @@ package mcp_gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,6 +14,37 @@ import (
 // right-side auth path fails closed without it.
 func testScope(tenantID uuid.UUID) TenantScope {
 	return TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}
+}
+
+// mapClientFactory resolves a client by server name, standing in for the real
+// factory which derives the endpoint from the policy's ServerInfo. Unknown names
+// yield a client that errors rather than nil, matching the factory contract and
+// the production behaviour of an unreachable server.
+type mapClientFactory map[string]MCPServerClient
+
+func (f mapClientFactory) ClientFor(server ServerInfo) MCPServerClient {
+	if client, ok := f[server.Name]; ok {
+		return client
+	}
+	return unreachableMCPClient{}
+}
+
+type unreachableMCPClient struct{}
+
+func (unreachableMCPClient) ListTools(context.Context, string) ([]MCPTool, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) CallTool(context.Context, string, string, json.RawMessage) (any, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) ListResources(context.Context, string) ([]MCPResource, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) ReadResource(context.Context, string, string) (*MCPResourceContent, error) {
+	return nil, errors.New("unreachable MCP server")
 }
 
 type mockMCPClient struct {
@@ -115,7 +147,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 	}
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
+	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/list", nil)
@@ -178,7 +210,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 	}
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	clients := map[string]MCPServerClient{"jira": jiraClient, "github": githubClient}
+	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	// Call jira tool
@@ -212,7 +244,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -225,7 +257,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -238,7 +270,7 @@ func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
 	if err != nil {
@@ -253,7 +285,7 @@ func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
 	if err != nil {
@@ -316,7 +348,7 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 	}
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
+	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/list", nil)
@@ -366,7 +398,7 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 	}
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	clients := map[string]MCPServerClient{"jira": jiraClient}
+	clients := mapClientFactory{"jira": jiraClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
@@ -402,7 +434,7 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 	}
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
-	clients := map[string]MCPServerClient{"jira": jiraClient}
+	clients := mapClientFactory{"jira": jiraClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
