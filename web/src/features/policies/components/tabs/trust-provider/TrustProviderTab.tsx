@@ -58,6 +58,7 @@ export function TrustProviderTab({
       const matchRules = (tp.matchRules ?? []).length > 0
         ? tp.matchRules
         : [{ attribute: '', value: '' }]
+      const cfg = (tp.config ?? {}) as Record<string, string>
       onChange([
         ...values,
         {
@@ -65,18 +66,18 @@ export function TrustProviderTab({
           description: tp.description,
           trustProviderType: tp.type,
           matchRules,
-          certificate: '',
-          thumbprint: '',
-          subject: '',
-          expiresAt: '',
-          oidcEndpoint: '',
-          attestationMethod: 'oidc_discovery',
-          samlMetadataUrl: '',
-          samlMetadataXml: '',
-          symmetricKey: '',
-          jwks: '',
-          publicKey: '',
-          tags: [],
+          certificate: cfg.certificate ?? '',
+          thumbprint: cfg.thumbprint ?? '',
+          subject: cfg.subject ?? '',
+          expiresAt: cfg.expiresAt ?? '',
+          oidcEndpoint: cfg.oidcEndpoint ?? '',
+          attestationMethod: cfg.attestationMethod ?? 'oidc_discovery',
+          samlMetadataUrl: cfg.samlMetadataUrl ?? '',
+          samlMetadataXml: cfg.samlMetadataXml ?? '',
+          symmetricKey: cfg.symmetricKey ?? '',
+          jwks: cfg.jwks ?? '',
+          publicKey: cfg.publicKey ?? '',
+          tags: tp.tags ?? [],
         },
       ])
     } catch {

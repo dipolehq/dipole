@@ -41,7 +41,7 @@ export function ServerWorkloadTab({
         headerName: sw.authConfig?.headerName ?? '',
         urlPath: sw.urlPath,
         staticHeaders: [],
-        tags: [],
+        tags: sw.tags ?? [],
       })
     } catch {
       // If fetch fails, just set the ID without populating form

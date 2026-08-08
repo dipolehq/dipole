@@ -126,6 +126,8 @@ function toFormValues(dto: CredentialProviderDetailDTO): CredentialProviderFormV
     spiffeTrustDomain: (cfg.spiffeTrustDomain as string) ?? '',
     signingAlgorithm: (cfg.signingAlgorithm as string) ?? 'ES256',
     subject: (cfg.subject as string) ?? '',
+    subjectValueType: (cfg.subjectValueType as string) ?? 'literal',
+    audienceValueType: (cfg.audienceValueType as string) ?? 'literal',
     customClaims: (cfg.customClaims as { name: string; value: string; valueType: string }[]) ?? [],
     vaultHost: (cfg.vaultHost as string) ?? '',
     vaultPort: (cfg.vaultPort as string) ?? '8200',

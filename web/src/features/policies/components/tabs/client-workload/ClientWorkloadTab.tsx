@@ -25,14 +25,22 @@ export function ClientWorkloadTab({
     onSelect(id)
     try {
       const cw = await fetchClientWorkload(id)
+      // Group identifiers by type (the form uses one row per type with multiple
+      // values = OR logic within a type, AND logic across types).
+      const grouped = new Map<string, string[]>()
+      for (const ident of cw.identifiers ?? []) {
+        const existing = grouped.get(ident.type)
+        if (existing) {
+          existing.push(ident.value || '')
+        } else {
+          grouped.set(ident.type, [ident.value || ''])
+        }
+      }
       onChange({
         name: cw.name,
         description: cw.description,
-        identifiers: (cw.identifiers ?? []).map((ident) => ({
-          type: ident.type,
-          values: [ident.value || ''],
-        })),
-        tags: [],
+        identifiers: Array.from(grouped.entries()).map(([type, values]) => ({ type, values })),
+        tags: cw.tags ?? [],
       })
     } catch {
       // If fetch fails, just set the ID without populating form

@@ -63,7 +63,7 @@ export function AccessConditionTab({
           timezone: (config?.timezone as string) ?? '',
           days: (config?.days as AccessConditionFormValues['days']) ?? [],
           countries: (config?.countries as AccessConditionFormValues['countries']) ?? [],
-          tags: [],
+          tags: ac.tags ?? [],
         },
       ])
     } catch {

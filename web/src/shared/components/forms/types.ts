@@ -159,6 +159,8 @@ export interface CredentialProviderFormValues {
 
   // OIDC ID Token
   subject: string
+  subjectValueType: string
+  audienceValueType: string
   customClaims: { name: string; value: string; valueType: string }[]
 
   // Vault Client Token
@@ -306,6 +308,8 @@ export const EMPTY_CREDENTIAL_PROVIDER: CredentialProviderFormValues = {
   spiffeTrustDomain: '',
   signingAlgorithm: 'ES256',
   subject: '',
+  subjectValueType: 'literal',
+  audienceValueType: 'literal',
   customClaims: [],
   vaultHost: '',
   vaultPort: '8200',
