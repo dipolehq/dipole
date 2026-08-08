@@ -92,3 +92,24 @@ func TestDCR_MissingResponseType_Error(t *testing.T) {
 		t.Fatalf("expected ErrMissingResponseType, got %v", err)
 	}
 }
+
+// RFC 7591 §2: when grant_types and response_types are omitted, defaults are
+// authorization_code and code respectively. Claude.ai sends neither.
+func TestDCR_OmittedGrantAndResponseTypes_DefaultsApplied(t *testing.T) {
+	repo := newMockClientRepo()
+	svc := NewDCRService(repo)
+
+	resp, err := svc.Register(context.Background(), uuid.New(), &DCRRequest{
+		RedirectURIs: []string{"https://claude.ai/api/mcp/auth_callback"},
+		ClientName:   "Claude",
+	})
+	if err != nil {
+		t.Fatalf("expected success with omitted grant/response types, got: %v", err)
+	}
+	if resp.ClientID == "" {
+		t.Error("expected a client ID")
+	}
+	if len(resp.GrantTypes) != 1 || resp.GrantTypes[0] != "authorization_code" {
+		t.Errorf("expected default grant_types=[authorization_code], got %v", resp.GrantTypes)
+	}
+}
