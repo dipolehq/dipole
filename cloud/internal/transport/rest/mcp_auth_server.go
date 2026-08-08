@@ -2,9 +2,15 @@
 Package rest provides HTTP transport handlers for the Cloud service.
 
 MCPAuthServer implements the OAuth 2.1 Authorization Server endpoints for
-MCP client authorization. Served on the <tenant>.mcp.<region>.dipolehq.com
-subdomain. Handles: OAuth metadata discovery, OIDC discovery, JWKS, DCR,
-authorization, and token exchange.
+MCP client authorization. Served on the <tenant>-mcp.<domain> subdomain.
+Handles: DCR, authorization, token exchange, and IdP callbacks.
+
+Every request resolves its own tenant from the hostname (see tenant_host.go).
+There is no ambient/default tenant: one process serves all tenants, so a
+startup-bound tenant would silently serve every request as that one tenant.
+
+Discovery endpoints (/.well-known/*) are NOT owned here — they're shared with
+the identity issuer host and live in wellknown_handler.go.
 */
 package rest
 
@@ -15,94 +21,71 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/dipolehq/dipole/cloud/internal/service/identity"
+	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/service/mcp"
-	"github.com/google/uuid"
 )
 
 type MCPAuthServer struct {
-	issuer      *identity.IdentityIssuer
 	dcr         *mcp.DCRService
 	authorize   *mcp.AuthorizeService
 	tokens      *mcp.TokenService
 	idpCallback *mcp.IdPCallbackService
-	config      MCPAuthConfig
+	resolver    *TenantHostResolver
 	logger      *slog.Logger
 }
 
-type MCPAuthConfig struct {
-	TenantID        uuid.UUID
-	TenantSubdomain string
-	Region          string
-	Domain          string
-}
-
-func NewMCPAuthServer(issuer *identity.IdentityIssuer, dcr *mcp.DCRService, authz *mcp.AuthorizeService, tokens *mcp.TokenService, idpCallback *mcp.IdPCallbackService, cfg MCPAuthConfig, logger *slog.Logger) *MCPAuthServer {
+func NewMCPAuthServer(dcr *mcp.DCRService, authz *mcp.AuthorizeService, tokens *mcp.TokenService, idpCallback *mcp.IdPCallbackService, resolver *TenantHostResolver, logger *slog.Logger) *MCPAuthServer {
 	return &MCPAuthServer{
-		issuer:      issuer,
 		dcr:         dcr,
 		authorize:   authz,
 		tokens:      tokens,
 		idpCallback: idpCallback,
-		config:      cfg,
+		resolver:    resolver,
 		logger:      logger,
 	}
 }
 
-// serverURL returns the MCP Authorization Server base URL (<tenant>.mcp.<domain>).
-func (s *MCPAuthServer) serverURL() string {
-	return "https://" + s.config.TenantSubdomain + ".mcp." + s.config.Domain
-}
-
 func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /.well-known/oauth-authorization-server", s.HandleMetadata)
-	mux.HandleFunc("GET /.well-known/openid-configuration", s.HandleMetadata)
-	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", s.HandleJWKS)
 	mux.HandleFunc("POST /register", s.HandleRegister)
 	mux.HandleFunc("GET /connect/authorize", s.HandleAuthorize)
 	mux.HandleFunc("POST /connect/token", s.HandleToken)
-	mux.HandleFunc("GET /callback/oidc", s.HandleOIDCCallback)
-	mux.HandleFunc("POST /callback/saml", s.HandleSAMLCallback)
+	// Registered from the same constants used to build the redirect_uri we send
+	// the IdP, so the route we serve and the URL we advertise can't drift apart.
+	mux.HandleFunc("GET "+platform.OIDCCallbackPath, s.HandleOIDCCallback)
+	mux.HandleFunc("POST "+platform.SAMLCallbackPath, s.HandleSAMLCallback)
 }
 
-// HandleMetadata serves OAuth 2.1 metadata and OIDC discovery.
-// Both /.well-known/oauth-authorization-server and /.well-known/openid-configuration
-// return the same response per the MCP specification.
-func (s *MCPAuthServer) HandleMetadata(w http.ResponseWriter, r *http.Request) {
-	serverURL := s.serverURL()
-
-	metadata := map[string]any{
-		"issuer":                                serverURL,
-		"authorization_endpoint":                serverURL + "/connect/authorize",
-		"token_endpoint":                        serverURL + "/connect/token",
-		"jwks_uri":                              serverURL + "/.well-known/openid-configuration/jwks",
-		"registration_endpoint":                 serverURL + "/register",
-		"scopes_supported":                      []string{"openid", "profile", "email"},
-		"response_types_supported":              []string{"code"},
-		"response_modes_supported":              []string{"query"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token"},
-		"code_challenge_methods_supported":      []string{"S256"},
-		"token_endpoint_auth_methods_supported": []string{"none"},
+// resolveMCPHost resolves the tenant and requires that the request arrived on
+// the MCP Authorization Server host. Fails closed on anything else.
+func (s *MCPAuthServer) resolveMCPHost(r *http.Request) (*ResolvedTenantHost, error) {
+	resolved, err := s.resolver.Resolve(r.Context(), r)
+	if err != nil {
+		return nil, err
 	}
-
-	writeJSON(w, http.StatusOK, metadata)
+	if resolved.Service != platform.ServiceMCPAuth {
+		return nil, ErrTenantHostUnresolved
+	}
+	return resolved, nil
 }
 
-// HandleJWKS returns the public signing keys used to verify tokens issued by
-// this authorization server. MCP servers fetch these to validate access tokens.
-func (s *MCPAuthServer) HandleJWKS(w http.ResponseWriter, r *http.Request) {
-	jwks := s.issuer.JWKS()
-	writeJSON(w, http.StatusOK, jwks)
+func (s *MCPAuthServer) respondUnresolvedTenant(w http.ResponseWriter, r *http.Request, err error) {
+	if s.logger != nil {
+		s.logger.Warn("MCP auth request could not be attributed to a tenant",
+			"host", PublicHost(r), "path", r.URL.Path, "error", err)
+	}
+	writeJSONError(w, http.StatusBadRequest, "invalid_request",
+		"this hostname does not identify a Dipole tenant")
 }
 
 // HandleRegister implements Dynamic Client Registration (RFC 7591).
 // MCP clients POST their metadata to receive a unique client_id.
 func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
-	tenantID, err := s.extractTenantID(r)
+	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		s.respondUnresolvedTenant(w, r, err)
 		return
 	}
+	tenantID := resolved.TenantID()
 
 	var req mcp.DCRRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -123,11 +106,12 @@ func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 // Validates the request, finds the matching Access Policy, evaluates conditions,
 // and redirects with an authorization code.
 func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
-	tenantID, err := s.extractTenantID(r)
+	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		s.respondUnresolvedTenant(w, r, err)
 		return
 	}
+	tenantID := resolved.TenantID()
 
 	q := r.URL.Query()
 	req := &mcp.AuthorizeRequest{
@@ -139,6 +123,10 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		Scope:               q.Get("scope"),
 		State:               q.Get("state"),
 		Resource:            q.Get("resource"),
+		// The IdP redirect_uri is built from this, so it must be the host this
+		// request actually arrived on — that's the value the customer registered
+		// with their IdP. A mismatch produces redirect_uri_mismatch.
+		ServerBaseURL: resolved.BaseURL,
 	}
 
 	if req.ResponseType != "code" {
@@ -176,11 +164,12 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 // HandleToken implements the OAuth 2.1 token endpoint.
 // Supports authorization_code (with PKCE) and refresh_token grant types.
 func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
-	tenantID, err := s.extractTenantID(r)
+	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_request", "missing or invalid tenant")
+		s.respondUnresolvedTenant(w, r, err)
 		return
 	}
+	tenantID := resolved.TenantID()
 
 	if err := r.ParseForm(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
@@ -254,18 +243,6 @@ func (s *MCPAuthServer) HandleSAMLCallback(w http.ResponseWriter, r *http.Reques
 	}
 
 	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
-}
-
-// extractTenantID resolves the tenant from the request context or header.
-// In production this comes from subdomain routing; in dev from X-Tenant-ID header.
-func (s *MCPAuthServer) extractTenantID(r *http.Request) (uuid.UUID, error) {
-	if h := r.Header.Get("X-Tenant-ID"); h != "" {
-		return uuid.Parse(h)
-	}
-	if s.config.TenantID != uuid.Nil {
-		return s.config.TenantID, nil
-	}
-	return uuid.Nil, errors.New("tenant not resolved")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

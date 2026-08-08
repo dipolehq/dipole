@@ -3,10 +3,49 @@ package mcp_gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 )
+
+// testScope builds the per-request tenant scope that the transport layer
+// resolves from the request hostname. Tests must supply a valid one — the
+// right-side auth path fails closed without it.
+func testScope(tenantID uuid.UUID) TenantScope {
+	return TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}
+}
+
+// mapClientFactory resolves a client by server name, standing in for the real
+// factory which derives the endpoint from the policy's ServerInfo. Unknown names
+// yield a client that errors rather than nil, matching the factory contract and
+// the production behaviour of an unreachable server.
+type mapClientFactory map[string]MCPServerClient
+
+func (f mapClientFactory) ClientFor(server ServerInfo) MCPServerClient {
+	if client, ok := f[server.Name]; ok {
+		return client
+	}
+	return unreachableMCPClient{}
+}
+
+type unreachableMCPClient struct{}
+
+func (unreachableMCPClient) ListTools(context.Context, string) ([]MCPTool, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) CallTool(context.Context, string, string, json.RawMessage) (any, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) ListResources(context.Context, string) ([]MCPResource, error) {
+	return nil, errors.New("unreachable MCP server")
+}
+
+func (unreachableMCPClient) ReadResource(context.Context, string, string) (*MCPResourceContent, error) {
+	return nil, errors.New("unreachable MCP server")
+}
 
 type mockMCPClient struct {
 	tools      []MCPTool
@@ -107,11 +146,11 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
+	handler := NewMethodHandler(rightAuth, clients, nil)
 
-	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/list", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,13 +209,13 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	clients := map[string]MCPServerClient{"jira": jiraClient, "github": githubClient}
-	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
+	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	// Call jira tool
 	params := json.RawMessage(`{"name": "jira__create_issue", "arguments": {"project": "PROJ"}}`)
-	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -189,7 +228,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	// Call github tool
 	params = json.RawMessage(`{"name": "github__create_pr", "arguments": {"title": "fix"}}`)
-	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -204,11 +243,11 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
-	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err == nil {
 		t.Fatal("expected error for unknown server prefix")
 	}
@@ -217,11 +256,11 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
-	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "tools/call", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err == nil {
 		t.Fatal("expected error for tool name without prefix")
 	}
@@ -230,10 +269,10 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
-	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "ping", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -245,10 +284,10 @@ func TestPing_RespondsDirect(t *testing.T) {
 func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	handler := NewMethodHandler(rightAuth, map[string]MCPServerClient{}, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
-	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "initialize", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -308,11 +347,11 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	clients := map[string]MCPServerClient{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
+	handler := NewMethodHandler(rightAuth, clients, nil)
 
-	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/list", nil)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,12 +397,12 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	clients := map[string]MCPServerClient{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	clients := mapClientFactory{"jira": jiraClient}
+	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
-	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/read", params)
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -394,12 +433,12 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
-	clients := map[string]MCPServerClient{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, tenantID, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	clients := mapClientFactory{"jira": jiraClient}
+	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
-	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com"}, "resources/read", params)
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
 	if err == nil {
 		t.Fatal("expected error for resource not found")
 	}

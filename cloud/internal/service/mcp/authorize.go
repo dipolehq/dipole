@@ -38,6 +38,13 @@ type AuthorizeRequest struct {
 	Scope               string
 	State               string
 	Resource            string
+
+	// ServerBaseURL is the MCP Authorization Server base URL this request
+	// arrived on (e.g. https://647251-mcp.dipolehq.com). Set by the transport
+	// layer from the request hostname, and used to build the redirect_uri we
+	// hand the customer's IdP. It is per-request rather than per-process
+	// because one process serves every tenant, each on its own hostname.
+	ServerBaseURL string
 }
 
 type AuthorizeResult struct {

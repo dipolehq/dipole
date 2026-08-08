@@ -14,8 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 const toolPrefixSeparator = "__"
@@ -49,23 +47,36 @@ type MCPServerClient interface {
 	ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, error)
 }
 
+// RequestContext carries everything resolved about a single Gateway request:
+// who is calling (UserID, Claims, from the left-side token) and which tenant
+// they are calling as (Scope, from the request hostname). It is already threaded
+// through every method handler, so the tenant travels with it rather than being
+// held on MethodHandler.
 type RequestContext struct {
 	UserID string
 	Claims map[string]any
+	Scope  TenantScope
 }
 
+// MethodHandler holds no tenant state; each request supplies its own via
+// RequestContext.Scope.
+//
+// Downstream servers are not held either. Which servers a request may reach is
+// answered per request by that tenant's Access Policies, and a client is built
+// from the policy's ServerInfo. Previously a name-keyed client map was built once
+// at startup from one tenant's Server Workloads, which meant new servers needed a
+// restart to appear and a server name shared across tenants resolved to the
+// wrong endpoint.
 type MethodHandler struct {
 	rightAuth *RightSideAuth
-	clients   map[string]MCPServerClient
-	tenantID  uuid.UUID
+	clients   MCPClientFactory
 	emitter   *GatewayEventEmitter
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClient, tenantID uuid.UUID, emitter *GatewayEventEmitter) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter) *MethodHandler {
 	return &MethodHandler{
 		rightAuth: rightAuth,
 		clients:   clients,
-		tenantID:  tenantID,
 		emitter:   emitter,
 	}
 }
@@ -108,17 +119,14 @@ func (h *MethodHandler) handleInitialize() (any, error) {
 }
 
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}
 
 	var allTools []MCPTool
 	for _, cred := range creds {
-		client, ok := h.clients[cred.ServerWorkload.Name]
-		if !ok {
-			continue
-		}
+		client := h.clients.ClientFor(cred.ServerWorkload)
 
 		tools, err := client.ListTools(ctx, cred.AccessToken)
 		if err != nil {
@@ -148,44 +156,41 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 		return nil, err
 	}
 
-	client, ok := h.clients[serverName]
-	if !ok {
-		return nil, fmt.Errorf("unknown MCP server: %s", serverName)
-	}
-
-	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, h.tenantID, serverName)
+	// Authorisation first, endpoint second. The credential lookup is what proves
+	// this tenant has a policy for that server name; the endpoint then comes from
+	// that policy, so an unauthorised name can never yield a client.
+	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
 		return nil, err
 	}
 
+	client := h.clients.ClientFor(cred.ServerWorkload)
+
 	result, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
 	if err != nil {
 		if h.emitter != nil {
-			h.emitter.EmitResponse(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 500)
+			h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 500)
 		}
 		return nil, err
 	}
 
 	if h.emitter != nil {
-		h.emitter.EmitRequest(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID)
-		h.emitter.EmitResponse(rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 200)
+		h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID)
+		h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 200)
 	}
 
 	return result, nil
 }
 
 func (h *MethodHandler) handleResourcesList(ctx context.Context, rCtx *RequestContext) (any, error) {
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}
 
 	var allResources []MCPResource
 	for _, cred := range creds {
-		client, ok := h.clients[cred.ServerWorkload.Name]
-		if !ok {
-			continue
-		}
+		client := h.clients.ClientFor(cred.ServerWorkload)
 
 		resources, err := client.ListResources(ctx, cred.AccessToken)
 		if err != nil {
@@ -206,22 +211,19 @@ func (h *MethodHandler) handleResourcesRead(ctx context.Context, rCtx *RequestCo
 		return nil, fmt.Errorf("invalid resources/read params")
 	}
 
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, cred := range creds {
-		client, ok := h.clients[cred.ServerWorkload.Name]
-		if !ok {
-			continue
-		}
+		client := h.clients.ClientFor(cred.ServerWorkload)
 
 		content, err := client.ReadResource(ctx, cred.AccessToken, req.URI)
 		if err == nil && content != nil {
 			if h.emitter != nil {
-				h.emitter.EmitRequest(rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
-				h.emitter.EmitResponse(rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
+				h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
+				h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
 			}
 			return content, nil
 		}

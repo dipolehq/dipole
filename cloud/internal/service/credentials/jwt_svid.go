@@ -29,7 +29,8 @@ type jwtSVIDConfig struct {
 	LifetimeSeconds int      `json:"lifetime_seconds"`
 }
 
-func (h *JWTSVIDHandler) Retrieve(_ context.Context, configJSON []byte, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host, used as the SVID's `iss`.
+func (h *JWTSVIDHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg jwtSVIDConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse jwt-svid config: %w", err)
@@ -46,9 +47,10 @@ func (h *JWTSVIDHandler) Retrieve(_ context.Context, configJSON []byte, _ *domai
 	}
 
 	token, err := h.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:  cfg.SpiffeID,
-		Audience: audience,
-		Lifetime: lifetime,
+		IssuerURL: issuerURL,
+		Subject:   cfg.SpiffeID,
+		Audience:  audience,
+		Lifetime:  lifetime,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue jwt-svid: %w", err)

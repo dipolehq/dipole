@@ -40,7 +40,10 @@ type awsStsConfig struct {
 	Region          string `json:"region"`
 }
 
-func (h *AWSStsHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. AWS fetches OIDC
+// discovery from the token's `iss`, so this must match the OIDC provider the
+// customer registered in their AWS IAM configuration.
+func (h *AWSStsHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg awsStsConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse aws sts config: %w", err)
@@ -57,9 +60,10 @@ func (h *AWSStsHandler) Retrieve(ctx context.Context, configJSON []byte, evidenc
 	}
 
 	oidcToken, err := h.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:  evidence.DipoleClientID,
-		Audience: "sts.amazonaws.com",
-		Lifetime: 5 * time.Minute,
+		IssuerURL: issuerURL,
+		Subject:   evidence.DipoleClientID,
+		Audience:  "sts.amazonaws.com",
+		Lifetime:  5 * time.Minute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue oidc token for sts: %w", err)

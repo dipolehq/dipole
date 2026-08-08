@@ -4,7 +4,7 @@ import { FileText, Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
-import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl } from '@/shared/lib/platform-urls'
+import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
@@ -25,6 +25,10 @@ type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 export function IdentityProviderDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+
+  // Per-tenant values the customer registers in their IdP — see the note in
+  // CreateIdentityProviderPage.
+  const tenantSubdomain = currentTenantSubdomain()
 
   const { data: idp, isLoading } = useIdentityProvider(id)
   const saveMutation = useSaveIdentityProvider(id ?? '')
@@ -201,11 +205,11 @@ export function IdentityProviderDetailPage() {
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
-                        <div className="text-xs text-gray-700 font-mono">{samlEntityId()}</div>
+                        <div className="text-xs text-gray-700 font-mono">{displayUrl(samlEntityId(tenantSubdomain))}</div>
                       </div>
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Single Sign On URL</label>
-                        <div className="text-xs text-gray-700 font-mono">{samlAcsUrl()}</div>
+                        <div className="text-xs text-gray-700 font-mono">{displayUrl(samlAcsUrl(tenantSubdomain))}</div>
                       </div>
                       <FloatingInput label="Metadata URL" value={metadataUrl} onChange={setMetadataUrl} disabled={disabled} />
                     </div>
@@ -242,7 +246,7 @@ export function IdentityProviderDetailPage() {
                       {authMethod === 'public_private_keypair' && (
                         <div className="bg-gray-50 rounded-md p-4">
                           <label className="block text-[10px] text-gray-500 mb-0.5">JWKS URL</label>
-                          <div className="text-xs text-gray-700 font-mono">{jwksUrl()}</div>
+                          <div className="text-xs text-gray-700 font-mono">{displayUrl(jwksUrl(tenantSubdomain))}</div>
                         </div>
                       )}
                       <div className="bg-gray-50 rounded-md p-4">

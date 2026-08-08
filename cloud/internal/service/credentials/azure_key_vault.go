@@ -36,7 +36,9 @@ type azureKeyVaultConfig struct {
 	ClientID   string `json:"client_id"`
 }
 
-func (h *AzureKeyVaultHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. It is forwarded to the
+// Azure WIF handler, which uses it as the `iss` Entra verifies.
+func (h *AzureKeyVaultHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg azureKeyVaultConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse azure key vault config: %w", err)
@@ -49,7 +51,7 @@ func (h *AzureKeyVaultHandler) Retrieve(ctx context.Context, configJSON []byte, 
 		Scope:    "https://vault.azure.net/.default",
 	})
 
-	azureCred, err := h.wifHandler.Retrieve(ctx, wifConfig, evidence, nil)
+	azureCred, err := h.wifHandler.Retrieve(ctx, wifConfig, issuerURL, evidence, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get azure token for key vault: %w", err)
 	}

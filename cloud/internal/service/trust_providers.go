@@ -4,23 +4,37 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 )
 
+// TrustProviderService is stateless with respect to tenant. The Edge SDK Client
+// ID and Audience it generates embed the OWNING tenant's subdomain — these are
+// the values a customer copies into their GitHub Actions workflow or CLI config
+// — so the subdomain is looked up per call from the tenant that's creating the
+// provider, not captured once at startup.
 type TrustProviderService struct {
-	repo            repository.TrustProviderRepository
-	region          string
-	tenantSubdomain string
-	limiter         *PlanLimiter
+	repo    repository.TrustProviderRepository
+	tenants repository.TenantRepository
+	region  string
+	hosts   *platform.Hosts
+	limiter *PlanLimiter
 }
 
-func NewTrustProviderService(repo repository.TrustProviderRepository, region string, tenantSubdomain string) *TrustProviderService {
-	return &TrustProviderService{repo: repo, region: region, tenantSubdomain: tenantSubdomain}
+func NewTrustProviderService(
+	repo repository.TrustProviderRepository,
+	tenants repository.TenantRepository,
+	region string,
+	hosts *platform.Hosts,
+) *TrustProviderService {
+	return &TrustProviderService{repo: repo, tenants: tenants, region: region, hosts: hosts}
 }
 
 func (s *TrustProviderService) SetLimiter(l *PlanLimiter) { s.limiter = l }
@@ -50,9 +64,27 @@ func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, t
 	if err := validateTrustProvider(tp); err != nil {
 		return err
 	}
+
+	tenant, err := s.tenants.GetByID(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("resolve tenant for edge sdk identifiers: %w", err)
+	}
+	if tenant == nil {
+		return domain.ErrNotFound
+	}
+
+	// These two values are immutable after creation and get copied by the
+	// customer into their CI/CD config, so refuse to persist a malformed one.
+	audience := s.hosts.IdentityIssuerURL(tenant.Subdomain)
+	if audience == "" {
+		return fmt.Errorf(
+			"cannot generate Edge SDK audience: tenant subdomain %q is not a valid hostname label",
+			tenant.Subdomain)
+	}
+
 	tp.ID = uuid.New()
-	tp.EdgeSDKClientID = generateEdgeSDKClientID(s.region, s.tenantSubdomain, tp)
-	tp.EdgeSDKAudience = generateEdgeSDKAudience(s.region, s.tenantSubdomain)
+	tp.EdgeSDKClientID = trust.GenerateEdgeSDKClientID(s.region, tenant.Subdomain, tp.Type, tp.ID)
+	tp.EdgeSDKAudience = audience
 	return s.repo.Create(ctx, tenantID, tp)
 }
 
@@ -99,27 +131,6 @@ func validateTrustProvider(tp *domain.TrustProvider) error {
 	return nil
 }
 
-func generateEdgeSDKClientID(region string, tenantSubdomain string, tp *domain.TrustProvider) string {
-	return "dipole:" + region + ":" + tenantSubdomain + ":identity:" + typeShortName(tp.Type) + ":" + tp.ID.String()
-}
-
-func generateEdgeSDKAudience(region string, tenantSubdomain string) string {
-	return "https://" + tenantSubdomain + ".id.dipolehq.com"
-}
-
-func typeShortName(t string) string {
-	switch t {
-	case "kubernetes_service_account":
-		return "kubernetes_serviceaccount_token"
-	case "github_action":
-		return "github_idtoken"
-	case "gitlab_job":
-		return "gitlab_idtoken"
-	case "terraform_cloud":
-		return "terraform_cloud_idtoken"
-	case "oidc_id_token":
-		return "oidc_id_token"
-	default:
-		return t
-	}
-}
+// Edge SDK identifier generation lives in service/trust/edge_sdk.go. It used to
+// be duplicated here (with a second, unused exported copy in that package),
+// which is how the two drifted apart during the subdomain pattern change.

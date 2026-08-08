@@ -3,6 +3,7 @@ package mcp_gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -30,7 +31,7 @@ type mockConsentConfigResolver struct {
 	config *ConsentConfig
 }
 
-func (m *mockConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID uuid.UUID, serverWorkloadID uuid.UUID) (*ConsentConfig, error) {
+func (m *mockConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID uuid.UUID, serverWorkloadID uuid.UUID, gatewayURL string) (*ConsentConfig, error) {
 	return m.config, nil
 }
 
@@ -81,7 +82,7 @@ func TestConsentCallback_ExchangesCodeAndStoresToken(t *testing.T) {
 
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "test-auth-code", state)
+	err := svc.HandleCallback(context.Background(), "test-auth-code", state, TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL})
 	if err != nil {
 		t.Fatalf("HandleCallback failed: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestConsentCallback_InvalidState_ReturnsError(t *testing.T) {
 	resolver := &mockConsentConfigResolver{}
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "code", "invalid-state")
+	err := svc.HandleCallback(context.Background(), "code", "invalid-state", TenantScope{TenantID: uuid.New(), GatewayURL: testGatewayURL})
 	if err == nil {
 		t.Fatal("expected error for invalid state")
 	}
@@ -137,7 +138,7 @@ func TestConsentCallback_TokenEndpointError_ReturnsError(t *testing.T) {
 	}
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "bad-code", state)
+	err := svc.HandleCallback(context.Background(), "bad-code", state, TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL})
 	if err == nil {
 		t.Fatal("expected error for token endpoint failure")
 	}
@@ -188,5 +189,51 @@ func TestParseConsentState_InvalidServerUUID(t *testing.T) {
 	_, _, _, err := parseConsentState(uuid.New().String() + ":user:not-a-uuid")
 	if err == nil {
 		t.Error("expected error for invalid server workload UUID")
+	}
+}
+
+// state travels through the user's browser and is therefore attacker-visible. A
+// state naming a different tenant than the hostname the callback arrived on must
+// be refused, or a token could be stored against a tenant that never initiated
+// the consent flow.
+func TestConsentCallback_StateTenantMismatch_Rejected(t *testing.T) {
+	store := &mockConsentTokenStore{}
+	resolver := &mockConsentConfigResolver{
+		config: &ConsentConfig{
+			TokenEndpoint:      "https://should-not-be-called.example.com",
+			ClientID:           "client",
+			GatewayCallbackURL: testGatewayURL + ConsentCallbackPath,
+		},
+	}
+	svc := NewConsentCallbackService(store, resolver)
+
+	stateTenant := uuid.New()
+	hostTenant := uuid.New()
+	state := stateTenant.String() + ":user@example.com:" + uuid.New().String()
+
+	err := svc.HandleCallback(context.Background(), "code", state,
+		TenantScope{TenantID: hostTenant, GatewayURL: testGatewayURL})
+
+	if !errors.Is(err, ErrConsentTenantMismatch) {
+		t.Fatalf("expected ErrConsentTenantMismatch, got %v", err)
+	}
+	if store.stored != nil {
+		t.Error("no token may be stored when the tenants disagree")
+	}
+}
+
+func TestConsentCallback_InvalidScope_Rejected(t *testing.T) {
+	store := &mockConsentTokenStore{}
+	svc := NewConsentCallbackService(store, &mockConsentConfigResolver{})
+
+	tenantID := uuid.New()
+	state := tenantID.String() + ":user@example.com:" + uuid.New().String()
+
+	err := svc.HandleCallback(context.Background(), "code", state, TenantScope{})
+	if !errors.Is(err, ErrInvalidTenantScope) {
+		t.Fatalf("expected ErrInvalidTenantScope, got %v", err)
+	}
+	if store.stored != nil {
+		t.Error("no token may be stored without a valid tenant scope")
 	}
 }

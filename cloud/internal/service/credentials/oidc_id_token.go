@@ -31,7 +31,9 @@ type oidcIDTokenConfig struct {
 	CustomClaims     map[string]string `json:"custom_claims"`
 }
 
-func (h *OIDCIDTokenHandler) Retrieve(_ context.Context, configJSON []byte, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. It becomes the token's
+// `iss`, which the Server Workload validates against its configured issuer.
+func (h *OIDCIDTokenHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
 	var cfg oidcIDTokenConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse oidc id token config: %w", err)
@@ -48,6 +50,7 @@ func (h *OIDCIDTokenHandler) Retrieve(_ context.Context, configJSON []byte, evid
 	}
 
 	token, err := h.issuer.IssueToken(identity.IssuanceRequest{
+		IssuerURL:    issuerURL,
 		Subject:      cfg.Subject,
 		Audience:     cfg.Audience,
 		Lifetime:     lifetime,

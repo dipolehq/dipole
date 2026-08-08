@@ -23,21 +23,24 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
+// LoginService is stateless with respect to tenant: Login resolves the
+// target tenant per-call (via the caller-supplied tenantId, or by looking
+// up all tenants for the given email), and every other method receives the
+// tenant it should act on as an explicit parameter. This lets a single
+// instance correctly serve every tenant.
 type LoginService struct {
-	users    repository.UserRepository
-	tenants  repository.TenantRepository
-	mfaRepo  repository.UserMFARepository
-	issuer   *identity.IdentityIssuer
-	encKey   []byte
-	tenantID uuid.UUID
+	users   repository.UserRepository
+	tenants repository.TenantRepository
+	mfaRepo repository.UserMFARepository
+	issuer  *identity.IdentityIssuer
+	encKey  []byte
 }
 
-func NewLoginService(users repository.UserRepository, tenants repository.TenantRepository, issuer *identity.IdentityIssuer, tenantID uuid.UUID) *LoginService {
+func NewLoginService(users repository.UserRepository, tenants repository.TenantRepository, issuer *identity.IdentityIssuer) *LoginService {
 	return &LoginService{
-		users:    users,
-		tenants:  tenants,
-		issuer:   issuer,
-		tenantID: tenantID,
+		users:   users,
+		tenants: tenants,
+		issuer:  issuer,
 	}
 }
 
@@ -54,12 +57,18 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token       string                 `json:"token,omitempty"`
-	ExpiresAt   time.Time              `json:"expiresAt,omitempty"`
-	User        LoginUser              `json:"user,omitempty"`
-	MFARequired bool                   `json:"mfaRequired,omitempty"`
-	MFAToken    string                 `json:"mfaToken,omitempty"`
-	Tenants     []domain.TenantSummary `json:"tenants,omitempty"` // Returned when user must pick a tenant
+	Token     string    `json:"token,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
+	User      LoginUser `json:"user,omitempty"`
+	// TenantSubdomain is the authenticated tenant's subdomain. The admin console
+	// needs it to display this tenant's per-tenant service URLs (MCP
+	// Authorization Server, identity issuer, IdP callback) — those are values
+	// the customer copies into their IdP, so showing another tenant's would
+	// produce a redirect_uri mismatch.
+	TenantSubdomain string                 `json:"tenantSubdomain,omitempty"`
+	MFARequired     bool                   `json:"mfaRequired,omitempty"`
+	MFAToken        string                 `json:"mfaToken,omitempty"`
+	Tenants         []domain.TenantSummary `json:"tenants,omitempty"` // Returned when user must pick a tenant
 }
 
 type LoginUser struct {
@@ -73,8 +82,11 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		return nil, fmt.Errorf("email and password are required")
 	}
 
-	// Determine which tenant to authenticate against.
-	targetTenantID := s.tenantID
+	// Determine which tenant to authenticate against. There is no
+	// service-level default — every login must resolve a real tenant
+	// either from the caller's explicit selection or by looking up which
+	// tenant(s) the email belongs to.
+	var targetTenantID uuid.UUID
 
 	if req.TenantID != "" {
 		// User explicitly selected a tenant (from the picker).
@@ -85,14 +97,19 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		targetTenantID = parsed
 	} else {
 		tenants, err := s.users.GetTenantsByEmail(ctx, req.Email)
-		if err == nil && len(tenants) > 1 {
-			user, _ := s.users.GetByEmail(ctx, s.tenantID, req.Email)
-			if user == nil {
-				for _, t := range tenants {
-					user, _ = s.users.GetByEmail(ctx, t.ID, req.Email)
-					if user != nil {
-						break
-					}
+		if err != nil || len(tenants) == 0 {
+			return nil, fmt.Errorf("invalid email or password")
+		}
+		if len(tenants) > 1 {
+			// Email has an active account in multiple tenants — verify the
+			// password against whichever tenant's account matches before
+			// revealing the tenant list (avoids leaking tenant membership
+			// to someone who doesn't actually know the password).
+			var user *domain.User
+			for _, t := range tenants {
+				user, _ = s.users.GetByEmail(ctx, t.ID, req.Email)
+				if user != nil {
+					break
 				}
 			}
 			if user == nil {
@@ -102,9 +119,8 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 				return nil, fmt.Errorf("invalid email or password")
 			}
 			return &LoginResponse{Tenants: tenants}, nil
-		} else if err == nil && len(tenants) == 1 {
-			targetTenantID = tenants[0].ID
 		}
+		targetTenantID = tenants[0].ID
 	}
 
 	user, err := s.users.GetByEmail(ctx, targetTenantID, req.Email)
@@ -146,7 +162,7 @@ func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResp
 		}
 	}
 
-	return s.issueSessionTokenForTenant(user, targetTenantID)
+	return s.issueSessionTokenForTenant(ctx, user, targetTenantID)
 }
 
 // VerifyMFA validates a TOTP code (or backup code) and issues the session JWT.
@@ -178,29 +194,40 @@ func (s *LoginService) VerifyMFA(ctx context.Context, mfaToken string, code stri
 		return nil, fmt.Errorf("invalid mfa token")
 	}
 
+	// The MFA challenge token carries the tenant the user is logging into
+	// (set in Login when the token was issued) — use that, not the
+	// service's construction-time default, so this works for any tenant.
+	mfaTenantID, err := uuid.Parse(claims.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mfa token")
+	}
+
 	// Try TOTP code first.
-	mfaSvc := NewMFAService(s.mfaRepo, s.encKey, s.tenantID)
-	if err := mfaSvc.ValidateCode(ctx, userID, code); err != nil {
+	mfaSvc := NewMFAService(s.mfaRepo, s.encKey)
+	if err := mfaSvc.ValidateCode(ctx, mfaTenantID, userID, code); err != nil {
 		// Try backup code.
-		if bcErr := mfaSvc.UseBackupCode(ctx, userID, code); bcErr != nil {
+		if bcErr := mfaSvc.UseBackupCode(ctx, mfaTenantID, userID, code); bcErr != nil {
 			return nil, fmt.Errorf("invalid verification code")
 		}
 	}
 
 	// MFA passed — issue full session token.
-	user, err := s.users.GetByID(ctx, s.tenantID, userID)
+	user, err := s.users.GetByID(ctx, mfaTenantID, userID)
 	if err != nil || user == nil {
 		return nil, fmt.Errorf("user not found")
 	}
 
-	return s.issueSessionToken(user)
+	return s.issueSessionTokenForTenant(ctx, user, mfaTenantID)
 }
 
-func (s *LoginService) issueSessionToken(user *domain.User) (*LoginResponse, error) {
-	return s.issueSessionTokenForTenant(user, s.tenantID)
-}
+func (s *LoginService) issueSessionTokenForTenant(ctx context.Context, user *domain.User, tenantID uuid.UUID) (*LoginResponse, error) {
+	// Best-effort: the console degrades to hiding per-tenant URLs rather than
+	// failing login if this lookup doesn't succeed.
+	var tenantSubdomain string
+	if tenant, err := s.tenants.GetByID(ctx, tenantID); err == nil && tenant != nil {
+		tenantSubdomain = tenant.Subdomain
+	}
 
-func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uuid.UUID) (*LoginResponse, error) {
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
 		Audience:  "dipole-admin",
@@ -208,9 +235,13 @@ func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uu
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
 			"tenant_id": tenantID.String(),
-			"user_id":   user.ID.String(),
-			"email":     user.Email,
-			"name":      user.Name,
+			// Carried in the token so the console can derive this tenant's
+			// per-tenant service URLs from the session itself, rather than from
+			// separately-synced client state that can go stale or be missing.
+			"tenant_subdomain": tenantSubdomain,
+			"user_id":          user.ID.String(),
+			"email":            user.Email,
+			"name":             user.Name,
 		},
 	})
 	if err != nil {
@@ -218,8 +249,9 @@ func (s *LoginService) issueSessionTokenForTenant(user *domain.User, tenantID uu
 	}
 
 	return &LoginResponse{
-		Token:     token,
-		ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
+		Token:           token,
+		ExpiresAt:       time.Now().UTC().Add(30 * time.Minute),
+		TenantSubdomain: tenantSubdomain,
 		User: LoginUser{
 			ID:    user.ID.String(),
 			Email: user.Email,
@@ -273,8 +305,8 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-func (s *LoginService) SetPassword(ctx context.Context, userID uuid.UUID, password string) error {
-	user, err := s.users.GetByID(ctx, s.tenantID, userID)
+func (s *LoginService) SetPassword(ctx context.Context, tenantID, userID uuid.UUID, password string) error {
+	user, err := s.users.GetByID(ctx, tenantID, userID)
 	if err != nil || user == nil {
 		return fmt.Errorf("user not found")
 	}
@@ -285,7 +317,7 @@ func (s *LoginService) SetPassword(ctx context.Context, userID uuid.UUID, passwo
 	}
 
 	user.PasswordHash = hash
-	return s.users.Update(ctx, s.tenantID, user)
+	return s.users.Update(ctx, tenantID, user)
 }
 
 // SwitchTenant issues a new session JWT scoped to a different tenant.
@@ -308,32 +340,9 @@ func (s *LoginService) SwitchTenant(ctx context.Context, email string, targetTen
 		return nil, fmt.Errorf("access denied: account is disabled in target tenant")
 	}
 
-	// Issue a new session token scoped to the target tenant.
-	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:   user.Email,
-		Audience:  "dipole-admin",
-		Lifetime:  30 * time.Minute,
-		Algorithm: "ES256",
-		CustomClaims: map[string]interface{}{
-			"tenant_id": targetTenantID.String(),
-			"user_id":   user.ID.String(),
-			"email":     user.Email,
-			"name":      user.Name,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("issue session token: %w", err)
-	}
-
-	return &LoginResponse{
-		Token:     token,
-		ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
-		User: LoginUser{
-			ID:    user.ID.String(),
-			Email: user.Email,
-			Name:  user.Name,
-		},
-	}, nil
+	// Reuse the shared issuance path so the response (including the tenant
+	// subdomain the console needs) is identical to a fresh login.
+	return s.issueSessionTokenForTenant(ctx, user, targetTenantID)
 }
 
 // RefreshSession issues a fresh session token for an already-authenticated user.
@@ -351,7 +360,7 @@ func (s *LoginService) RefreshSession(ctx context.Context, email string, tenantI
 		return nil, fmt.Errorf("account is disabled")
 	}
 
-	return s.issueSessionTokenForTenant(user, tenantID)
+	return s.issueSessionTokenForTenant(ctx, user, tenantID)
 }
 
 // ListTenantsForUser returns all tenants where the given email has an active account.

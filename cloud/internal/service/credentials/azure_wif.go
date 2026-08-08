@@ -37,16 +37,20 @@ type azureWIFConfig struct {
 	Scope    string `json:"scope"`
 }
 
-func (h *AzureWIFHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. Azure Entra fetches OIDC
+// discovery from the token's `iss` and rejects a mismatch with the federated
+// credential the customer configured.
+func (h *AzureWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg azureWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse azure wif config: %w", err)
 	}
 
 	oidcToken, err := h.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:  evidence.DipoleClientID,
-		Audience: cfg.ClientID,
-		Lifetime: 5 * time.Minute,
+		IssuerURL: issuerURL,
+		Subject:   evidence.DipoleClientID,
+		Audience:  cfg.ClientID,
+		Lifetime:  5 * time.Minute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue oidc token for azure: %w", err)

@@ -40,7 +40,9 @@ type gcpWIFConfig struct {
 	Scopes              string `json:"scopes"`
 }
 
-func (h *GCPWIFHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. GCP's Workload Identity
+// Pool provider is configured with this exact issuer URI and validates it.
+func (h *GCPWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg gcpWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse gcp wif config: %w", err)
@@ -50,9 +52,10 @@ func (h *GCPWIFHandler) Retrieve(ctx context.Context, configJSON []byte, evidenc
 		cfg.ProjectNumber, cfg.PoolID, cfg.ProviderID)
 
 	oidcToken, err := h.issuer.IssueToken(identity.IssuanceRequest{
-		Subject:  evidence.DipoleClientID,
-		Audience: audience,
-		Lifetime: 5 * time.Minute,
+		IssuerURL: issuerURL,
+		Subject:   evidence.DipoleClientID,
+		Audience:  audience,
+		Lifetime:  5 * time.Minute,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue oidc token for gcp: %w", err)

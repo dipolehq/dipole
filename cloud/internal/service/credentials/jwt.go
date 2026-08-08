@@ -28,7 +28,8 @@ type jwtConfig struct {
 	SigningAlgorithm string            `json:"signing_algorithm"`
 }
 
-func (h *JWTHandler) Retrieve(_ context.Context, configJSON []byte, _ *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host, used as the token's `iss`.
+func (h *JWTHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, _ *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
 	var cfg jwtConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse jwt config: %w", err)
@@ -57,6 +58,7 @@ func (h *JWTHandler) Retrieve(_ context.Context, configJSON []byte, _ *domain.Cl
 	}
 
 	token, err := h.issuer.IssueToken(identity.IssuanceRequest{
+		IssuerURL:    issuerURL,
 		Subject:      subject,
 		Audience:     audience,
 		Lifetime:     lifetime,

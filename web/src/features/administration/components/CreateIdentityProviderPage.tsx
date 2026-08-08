@@ -5,7 +5,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { useCreateIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
-import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, oidcCallbackUrl } from '@/shared/lib/platform-urls'
+import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, oidcCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
 
@@ -18,6 +18,11 @@ export function CreateIdentityProviderPage() {
   const navigate = useNavigate()
   const createMutation = useCreateIdentityProvider()
   const [error, setError] = useState<string | null>(null)
+
+  // The redirect/ACS/JWKS URLs below are per tenant, and the customer must
+  // register them verbatim in their IdP — the backend sends exactly these
+  // values, so a mismatch shows up as redirect_uri_mismatch.
+  const tenantSubdomain = currentTenantSubdomain()
 
   // Details state
   const [name, setName] = useState('')
@@ -134,11 +139,11 @@ export function CreateIdentityProviderPage() {
                   <div className="space-y-4">
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
-                      <div className="text-xs text-gray-700 font-mono">{samlEntityId()}</div>
+                      <div className="text-xs text-gray-700 font-mono">{displayUrl(samlEntityId(tenantSubdomain))}</div>
                     </div>
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Single Sign On URL</label>
-                      <div className="text-xs text-gray-700 font-mono">{samlAcsUrl()}</div>
+                      <div className="text-xs text-gray-700 font-mono">{displayUrl(samlAcsUrl(tenantSubdomain))}</div>
                     </div>
                     <FloatingInput label="Metadata URL" value={metadataUrl} onChange={setMetadataUrl} />
                     <FloatingTextarea label="Metadata XML" value={metadataXml} onChange={setMetadataXml} rows={4} />
@@ -176,7 +181,7 @@ export function CreateIdentityProviderPage() {
                     {authMethod === 'public_private_keypair' && (
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">JWKS URL (configure in your IdP)</label>
-                        <div className="text-xs text-gray-700 font-mono">{jwksUrl()}</div>
+                        <div className="text-xs text-gray-700 font-mono">{displayUrl(jwksUrl(tenantSubdomain))}</div>
                       </div>
                     )}
                     <div className="bg-gray-50 rounded-md p-4">
@@ -185,7 +190,7 @@ export function CreateIdentityProviderPage() {
                     </div>
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Redirect URL — MCP Authorization (configure in your IdP)</label>
-                      <div className="text-xs text-gray-700 font-mono">{oidcCallbackUrl()}</div>
+                      <div className="text-xs text-gray-700 font-mono">{displayUrl(oidcCallbackUrl(tenantSubdomain))}</div>
                     </div>
                   </div>
                 </div>

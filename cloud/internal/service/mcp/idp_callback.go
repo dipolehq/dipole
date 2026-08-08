@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/google/uuid"
 )
 
@@ -61,7 +62,12 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		return nil, fmt.Errorf("session missing identity provider configuration")
 	}
 
-	idToken, err := s.exchangeCodeForToken(ctx, code, session.IdPConfig, s.idpService.callbackBaseURL+"/callback/oidc")
+	// OAuth requires the token exchange to present the SAME redirect_uri that
+	// was sent in the authorize step. Taking it from the stored original
+	// request guarantees they match, rather than re-deriving it here.
+	redirectURI := session.OriginalRequest.ServerBaseURL + platform.OIDCCallbackPath
+
+	idToken, err := s.exchangeCodeForToken(ctx, code, session.IdPConfig, redirectURI)
 	if err != nil {
 		return &CallbackResult{
 			RedirectURL: buildErrorRedirect(session.OriginalRequest.RedirectURI, "access_denied", "IdP token exchange failed", session.OriginalRequest.State),

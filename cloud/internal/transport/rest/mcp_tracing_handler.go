@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
+	"github.com/google/uuid"
 )
 
 type MCPTracingHandler struct {
@@ -26,7 +27,16 @@ func (h *MCPTracingHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *MCPTracingHandler) HandleGet(w http.ResponseWriter, r *http.Request) {
-	entries := h.bus.Recent()
+	// Scoped to the authenticated caller's tenant. The buffer is process-wide and
+	// shared by every tenant, and entries carry end-user identities, so an
+	// unscoped read would disclose one tenant's users to another's administrators.
+	tenantID := TenantIDFromContext(r.Context())
+	if tenantID == uuid.Nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+
+	entries := h.bus.Recent(tenantID)
 	if entries == nil {
 		entries = []gw.TracingEntry{}
 	}

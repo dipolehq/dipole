@@ -3,6 +3,7 @@ package mcp
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func (r *mockTokenConfigResolver) ResolveTokenConfig(_ uuid.UUID, _ uuid.UUID) (
 func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 	t.Helper()
 
-	issuer, err := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, err := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 }
 
 func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{
@@ -109,7 +110,7 @@ func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
 }
 
 func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},
@@ -138,7 +139,7 @@ func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
 }
 
 func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},
@@ -159,7 +160,7 @@ func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
 }
 
 func TestRefreshToken_SingleUse(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{
@@ -227,7 +228,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 }
 
 func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
-	issuer, _ := identity.NewIdentityIssuer("test", "ap-south-1")
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
 		config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"},
@@ -240,5 +241,95 @@ func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
 
 	if err == nil || err.Error() != "unsupported_grant_type" {
 		t.Fatalf("expected unsupported_grant_type error, got %v", err)
+	}
+}
+
+// An authorization code belongs to the tenant that issued it. Redeeming it
+// against another tenant's hostname must fail here, explicitly, rather than
+// downstream when the code's policy happens not to be found under the redeeming
+// tenant — that protection is incidental and would vanish if the policy lookup
+// were ever cached or relaxed.
+func TestTokenExchange_CodeFromAnotherTenant_Rejected(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:  "https://mcp.example.com",
+			Subject:   "user@example.com",
+			Lifetime:  1 * time.Hour,
+			Algorithm: "ES256",
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	issuingTenant := uuid.New()
+	redeemingTenant := uuid.New()
+	code := codeStore.Create(clientID, issuingTenant, "http://localhost:7777/cb", challenge, "openid", nil, uuid.New())
+
+	_, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost:7777/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, redeemingTenant)
+
+	if !errors.Is(err, ErrInvalidGrant) {
+		t.Fatalf("expected ErrInvalidGrant for a cross-tenant code, got %v", err)
+	}
+}
+
+// Same for refresh tokens: the entry records its tenant, and a refresh presented
+// on another tenant's hostname must be refused.
+func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:         "https://mcp.example.com",
+			Subject:          "user@example.com",
+			Lifetime:         1 * time.Hour,
+			Algorithm:        "ES256",
+			RefreshEnabled:   true,
+			RefreshAbsExpiry: 24 * time.Hour,
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	issuingTenant := uuid.New()
+	code := codeStore.Create(clientID, issuingTenant, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	issued, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, issuingTenant)
+	if err != nil {
+		t.Fatalf("initial exchange failed: %v", err)
+	}
+	if issued.RefreshToken == "" {
+		t.Fatal("expected a refresh token")
+	}
+
+	_, err = svc.Exchange(&TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: issued.RefreshToken,
+		ClientID:     clientID.String(),
+	}, uuid.New())
+
+	if !errors.Is(err, ErrRefreshTokenInvalid) {
+		t.Fatalf("expected ErrRefreshTokenInvalid for a cross-tenant refresh, got %v", err)
 	}
 }

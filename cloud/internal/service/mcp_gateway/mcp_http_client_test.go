@@ -261,3 +261,57 @@ func containsSubstring(s, sub string) bool {
 	}
 	return false
 }
+
+// The endpoint is derived from the policy's ServerInfo on every request, so the
+// factory must honour every field — a dropped TLS flag or path would silently
+// send a credential to the wrong scheme or route.
+func TestHTTPMCPClientFactory_DerivesEndpointFromServerInfo(t *testing.T) {
+	cases := []struct {
+		name   string
+		server ServerInfo
+		want   string
+	}{
+		{"https default port", ServerInfo{Host: "mcp.example.com", Port: 443, TLS: true}, "https://mcp.example.com"},
+		{"https custom port", ServerInfo{Host: "mcp.example.com", Port: 8443, TLS: true}, "https://mcp.example.com:8443"},
+		{"http default port", ServerInfo{Host: "mcp.example.com", Port: 80}, "http://mcp.example.com"},
+		{"http custom port", ServerInfo{Host: "localhost", Port: 8000}, "http://localhost:8000"},
+		{"with path", ServerInfo{Host: "mcp.example.com", Port: 443, TLS: true, Path: "/mcp"}, "https://mcp.example.com/mcp"},
+	}
+
+	factory := NewHTTPMCPClientFactory()
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := factory.ClientFor(tc.server)
+			httpClient, ok := client.(*HTTPMCPClient)
+			if !ok {
+				t.Fatalf("expected *HTTPMCPClient, got %T", client)
+			}
+			if httpClient.baseURL != tc.want {
+				t.Errorf("expected baseURL %q, got %q", tc.want, httpClient.baseURL)
+			}
+		})
+	}
+}
+
+// Clients are built per request, so they must share one connection pool —
+// otherwise every tool call would open a fresh TCP connection to the upstream.
+func TestHTTPMCPClientFactory_SharesOneHTTPClient(t *testing.T) {
+	factory := NewHTTPMCPClientFactory()
+
+	first := factory.ClientFor(ServerInfo{Host: "a.example.com", Port: 443, TLS: true}).(*HTTPMCPClient)
+	second := factory.ClientFor(ServerInfo{Host: "b.example.com", Port: 443, TLS: true}).(*HTTPMCPClient)
+
+	if first.httpClient != second.httpClient {
+		t.Error("expected both clients to share the factory's http.Client")
+	}
+}
+
+// The factory contract is that a client is always returned, never nil — callers
+// use the result directly and expect failures to surface from the call.
+func TestHTTPMCPClientFactory_NeverReturnsNil(t *testing.T) {
+	factory := NewHTTPMCPClientFactory()
+	if client := factory.ClientFor(ServerInfo{}); client == nil {
+		t.Fatal("factory returned nil for a zero ServerInfo")
+	}
+}

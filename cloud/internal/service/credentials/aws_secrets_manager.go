@@ -41,7 +41,9 @@ type awsSecretsManagerConfig struct {
 	RoleARN   string `json:"role_arn"`
 }
 
-func (h *AWSSecretsManagerHandler) Retrieve(ctx context.Context, configJSON []byte, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+// issuerURL is the requesting tenant's identity host. It is forwarded to the STS
+// handler, which uses it as the `iss` of the token AWS verifies.
+func (h *AWSSecretsManagerHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg awsSecretsManagerConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse aws secrets manager config: %w", err)
@@ -59,7 +61,7 @@ func (h *AWSSecretsManagerHandler) Retrieve(ctx context.Context, configJSON []by
 		Region:          cfg.Region,
 	})
 
-	stsCred, err := h.stsHandler.Retrieve(ctx, stsConfig, evidence, nil)
+	stsCred, err := h.stsHandler.Retrieve(ctx, stsConfig, issuerURL, evidence, nil)
 	if err != nil {
 		return nil, fmt.Errorf("assume role for secrets manager: %w", err)
 	}

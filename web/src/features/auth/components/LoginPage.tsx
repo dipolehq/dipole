@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
+import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
 
 interface SSOProvider {
   id: string
@@ -51,7 +52,7 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; user?: { id: string; email: string; name: string }; tenants?: { id: string; name: string; subdomain: string }[] }>(
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string }; tenants?: { id: string; name: string; subdomain: string }[] }>(
         '/auth/login',
         { email, password, tenantId },
       )
@@ -63,6 +64,7 @@ export function LoginPage() {
       } else if (res.token && res.user) {
         sessionStorage.setItem('dipole_token', res.token)
         sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
         navigate('/')
       }
     } catch {
@@ -76,7 +78,7 @@ export function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; user?: { id: string; email: string; name: string } }>(
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string } }>(
         '/auth/login',
         { email, password, tenantId },
       )
@@ -87,6 +89,7 @@ export function LoginPage() {
       } else if (res.token && res.user) {
         sessionStorage.setItem('dipole_token', res.token)
         sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
         navigate('/')
       }
     } catch {
@@ -102,12 +105,13 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const res = await apiClient.post<{ token: string; user: { id: string; email: string; name: string } }>(
+      const res = await apiClient.post<{ token: string; tenantSubdomain?: string; user: { id: string; email: string; name: string } }>(
         '/auth/mfa-verify',
         { mfaToken, code: mfaCode },
       )
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+      setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
       navigate('/')
     } catch {
       setError('Invalid verification code')
