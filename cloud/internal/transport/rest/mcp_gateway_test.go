@@ -221,8 +221,16 @@ func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
-	if got := rec.Header().Get("WWW-Authenticate"); got == "" {
-		t.Error("expected a WWW-Authenticate challenge")
+	wwwAuth := rec.Header().Get("WWW-Authenticate")
+	if wwwAuth == "" {
+		t.Fatal("expected a WWW-Authenticate challenge")
+	}
+	// RFC 9728: the challenge must contain resource_metadata pointing at the
+	// Gateway host's protected-resource document so the MCP client knows where
+	// to discover the Authorization Server.
+	wantMetadata := `resource_metadata="https://` + gwTenantASubdomain + `-mcpgateway.dipolehq.com/.well-known/oauth-protected-resource"`
+	if !strings.Contains(wwwAuth, wantMetadata) {
+		t.Errorf("WWW-Authenticate missing resource_metadata:\n  got:  %s\n  want substring: %s", wwwAuth, wantMetadata)
 	}
 	if auth.called {
 		t.Error("authenticator should not be called without a token")
@@ -335,5 +343,91 @@ func TestGatewayConsentCallback_UnresolvableHostFailsClosed(t *testing.T) {
 	}
 	if consent.called {
 		t.Error("consent handler must not run for an unattributable request")
+	}
+}
+
+// RFC 9728: the Gateway host must serve Protected Resource Metadata so MCP
+// clients can discover which Authorization Server protects this resource.
+func TestGatewayProtectedResourceMetadata_ReturnsCorrectAuthServer(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	req.Host = "internal.run.app"
+	req.Header.Set("X-Forwarded-Host", gwTenantASubdomain+"-mcpgateway.dipolehq.com")
+
+	rec := httptest.NewRecorder()
+	srv.HandleProtectedResourceMetadata(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	var meta map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &meta); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	wantResource := "https://" + gwTenantASubdomain + "-mcpgateway.dipolehq.com/mcp"
+	if got := meta["resource"]; got != wantResource {
+		t.Errorf("expected resource %q, got %v", wantResource, got)
+	}
+
+	servers, ok := meta["authorization_servers"].([]interface{})
+	if !ok || len(servers) != 1 {
+		t.Fatalf("expected exactly 1 authorization_server, got %v", meta["authorization_servers"])
+	}
+	wantAS := "https://" + gwTenantASubdomain + "-mcp.dipolehq.com"
+	if got := servers[0]; got != wantAS {
+		t.Errorf("expected authorization_server %q, got %v", wantAS, got)
+	}
+}
+
+// The endpoint must only be served on the Gateway host, not on -mcp or -id.
+func TestGatewayProtectedResourceMetadata_RejectsNonGatewayHost(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	req.Host = "internal.run.app"
+	req.Header.Set("X-Forwarded-Host", gwTenantASubdomain+"-mcp.dipolehq.com")
+
+	rec := httptest.NewRecorder()
+	srv.HandleProtectedResourceMetadata(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-gateway host, got %d", rec.Code)
+	}
+}
+
+// The endpoint must fail closed for unknown tenants.
+func TestGatewayProtectedResourceMetadata_UnknownTenantFailsClosed(t *testing.T) {
+	tenants := map[string]*domain.Tenant{
+		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
+	}
+	lookup := &fakeTenantLookup{bySubdomain: tenants}
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	req.Host = "internal.run.app"
+	req.Header.Set("X-Forwarded-Host", "999999-mcpgateway.dipolehq.com")
+
+	rec := httptest.NewRecorder()
+	srv.HandleProtectedResourceMetadata(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown tenant, got %d", rec.Code)
 	}
 }

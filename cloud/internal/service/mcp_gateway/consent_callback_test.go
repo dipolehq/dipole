@@ -82,7 +82,7 @@ func TestConsentCallback_ExchangesCodeAndStoresToken(t *testing.T) {
 
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "test-auth-code", state, TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL})
+	err := svc.HandleCallback(context.Background(), "test-auth-code", state, TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL})
 	if err != nil {
 		t.Fatalf("HandleCallback failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestConsentCallback_InvalidState_ReturnsError(t *testing.T) {
 	resolver := &mockConsentConfigResolver{}
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "code", "invalid-state", TenantScope{TenantID: uuid.New(), GatewayURL: testGatewayURL})
+	err := svc.HandleCallback(context.Background(), "code", "invalid-state", TenantScope{TenantID: uuid.New(), TenantSubdomain: "other", GatewayURL: testGatewayURL})
 	if err == nil {
 		t.Fatal("expected error for invalid state")
 	}
@@ -138,7 +138,7 @@ func TestConsentCallback_TokenEndpointError_ReturnsError(t *testing.T) {
 	}
 	svc := NewConsentCallbackService(store, resolver)
 
-	err := svc.HandleCallback(context.Background(), "bad-code", state, TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL})
+	err := svc.HandleCallback(context.Background(), "bad-code", state, TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL})
 	if err == nil {
 		t.Fatal("expected error for token endpoint failure")
 	}
@@ -212,7 +212,7 @@ func TestConsentCallback_StateTenantMismatch_Rejected(t *testing.T) {
 	state := stateTenant.String() + ":user@example.com:" + uuid.New().String()
 
 	err := svc.HandleCallback(context.Background(), "code", state,
-		TenantScope{TenantID: hostTenant, GatewayURL: testGatewayURL})
+		TenantScope{TenantID: hostTenant, TenantSubdomain: "host", GatewayURL: testGatewayURL})
 
 	if !errors.Is(err, ErrConsentTenantMismatch) {
 		t.Fatalf("expected ErrConsentTenantMismatch, got %v", err)

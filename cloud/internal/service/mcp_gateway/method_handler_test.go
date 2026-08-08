@@ -13,7 +13,7 @@ import (
 // resolves from the request hostname. Tests must supply a valid one — the
 // right-side auth path fails closed without it.
 func testScope(tenantID uuid.UUID) TenantScope {
-	return TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}
+	return TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}
 }
 
 // mapClientFactory resolves a client by server name, standing in for the real
