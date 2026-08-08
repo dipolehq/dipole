@@ -192,33 +192,35 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpResourceService := mcpserver.NewResourceService()
 	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
-	// MCP Identity Gateway — still binds ONE tenant at construction, so it is
-	// only wired up when that tenant is supplied explicitly. Its downstream MCP
-	// client map, event sink, and token audience are all built once at startup;
-	// making them per-request is progress.md Fix 11. Until then the Gateway is
-	// unavailable rather than silently serving every tenant as one tenant.
+	// MCP Identity Gateway — left-side auth and right-side policy lookup now
+	// resolve their tenant per request from the hostname. Three pieces are still
+	// built once at startup for one tenant (the downstream MCP client map, the
+	// event sink, and the consent callback URL — Fix 11 steps 5-7), so the
+	// Gateway stays provisioned for a single tenant and refuses requests from
+	// any other. That mirrors Aembit, which provisions Gateway endpoints per
+	// tenant on request rather than enabling them for everyone.
 	var mcpGatewayServer *rest.MCPGatewayServer
 	if gatewayTenantID, err := uuid.Parse(cfg.GatewayTenantID); err == nil && platform.IsValidSubdomain(cfg.GatewayTenantSubdomain) {
 		// Guarded above: an invalid subdomain would make MCPGatewayURL return
-		// "", leaving gatewayURL as bare "/" — which LeftSideAuth would then use
-		// as the expected token audience, silently accepting or rejecting the
-		// wrong tokens.
-		gatewayURL := platformHosts.MCPGatewayURL(cfg.GatewayTenantSubdomain) + "/"
+		// "", and the consent callback URL below would silently become a bare
+		// path with no host.
+		gatewayURL := platformHosts.MCPGatewayURL(cfg.GatewayTenantSubdomain)
 
-		gwLeftAuth := mcpgw.NewLeftSideAuth(issuer, gatewayURL)
+		gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
 		gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 		gwTokenStore := repos.MCPUserCredentials
-		gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gatewayURL)
+		gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil)
 		gwEventSink := mcpgw.NewDBEventSink(repos.Events, gatewayTenantID, logger)
 		gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
 		gwClients := buildMCPServerClients(ctx, repos, gatewayTenantID, logger)
-		gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClients, gatewayTenantID, gwEventEmitter)
+		gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClients, gwEventEmitter)
 
+		// Canonical no-trailing-slash form; the resolver inserts the separator.
 		consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey, gatewayURL)
 		consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-		mcpGatewayServer = rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus)
-		logger.Warn("MCP Identity Gateway is bound to a single tenant at startup (pending Fix 11) — it will serve ALL gateway requests as this tenant",
+		mcpGatewayServer = rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver, gatewayTenantID)
+		logger.Warn("MCP Identity Gateway is provisioned for a single tenant (pending Fix 11 steps 5-7) — requests from any other tenant are refused",
 			"tenant_id", gatewayTenantID, "gateway_url", gatewayURL)
 	} else {
 		logger.Info("MCP Identity Gateway not configured (requires DIPOLE_TENANT_ID + a DNS-valid DIPOLE_TENANT_SUBDOMAIN, until Fix 11 makes it multi-tenant)",

@@ -14,8 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 const toolPrefixSeparator = "__"
@@ -49,23 +47,29 @@ type MCPServerClient interface {
 	ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, error)
 }
 
+// RequestContext carries everything resolved about a single Gateway request:
+// who is calling (UserID, Claims, from the left-side token) and which tenant
+// they are calling as (Scope, from the request hostname). It is already threaded
+// through every method handler, so the tenant travels with it rather than being
+// held on MethodHandler.
 type RequestContext struct {
 	UserID string
 	Claims map[string]any
+	Scope  TenantScope
 }
 
+// MethodHandler holds no tenant state; each request supplies its own via
+// RequestContext.Scope.
 type MethodHandler struct {
 	rightAuth *RightSideAuth
 	clients   map[string]MCPServerClient
-	tenantID  uuid.UUID
 	emitter   *GatewayEventEmitter
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClient, tenantID uuid.UUID, emitter *GatewayEventEmitter) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients map[string]MCPServerClient, emitter *GatewayEventEmitter) *MethodHandler {
 	return &MethodHandler{
 		rightAuth: rightAuth,
 		clients:   clients,
-		tenantID:  tenantID,
 		emitter:   emitter,
 	}
 }
@@ -108,7 +112,7 @@ func (h *MethodHandler) handleInitialize() (any, error) {
 }
 
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +157,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 		return nil, fmt.Errorf("unknown MCP server: %s", serverName)
 	}
 
-	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, h.tenantID, serverName)
+	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +179,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 }
 
 func (h *MethodHandler) handleResourcesList(ctx context.Context, rCtx *RequestContext) (any, error) {
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +210,7 @@ func (h *MethodHandler) handleResourcesRead(ctx context.Context, rCtx *RequestCo
 		return nil, fmt.Errorf("invalid resources/read params")
 	}
 
-	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, h.tenantID)
+	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
 		return nil, err
 	}

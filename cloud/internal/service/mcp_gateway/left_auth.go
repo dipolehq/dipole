@@ -2,9 +2,16 @@
 Package mcp_gateway implements the MCP Identity Gateway business logic.
 
 left_auth.go validates inbound Bearer tokens from AI agents (left-side auth).
-It verifies the JWT signature against our JWKS, checks audience matches the
-Gateway URL, checks expiration, and extracts user identity from claims.
-Unauthenticated requests are rejected immediately with no downstream processing.
+It verifies the JWT signature against our JWKS, checks the audience, checks
+expiration, and extracts user identity from claims. Unauthenticated requests are
+rejected immediately with no downstream processing.
+
+The expected audience is supplied PER CALL, not held on the struct. It is the
+Gateway URL of the tenant whose hostname the request arrived on, and it is what
+binds a token to one tenant: the signing key is shared platform-wide, so a token
+minted for tenant A's Gateway is distinguishable from tenant B's only by its
+`aud` claim. Holding one audience on the struct made every tenant's tokens get
+checked against whichever tenant was configured at startup.
 */
 package mcp_gateway
 
@@ -25,11 +32,15 @@ var (
 	ErrTokenExpired     = errors.New("token expired")
 	ErrAudienceMismatch = errors.New("token audience does not match gateway")
 	ErrNoUserIdentity   = errors.New("no user identity in token claims")
+	// ErrNoExpectedAudience means the caller did not say which Gateway URL the
+	// token must be addressed to. Treated as a failure rather than "accept any
+	// audience", because accepting any audience would accept every other
+	// tenant's tokens.
+	ErrNoExpectedAudience = errors.New("expected gateway audience not supplied")
 )
 
 type LeftSideAuth struct {
-	issuer     *identity.IdentityIssuer
-	gatewayURL string
+	issuer *identity.IdentityIssuer
 }
 
 type AuthResult struct {
@@ -37,16 +48,20 @@ type AuthResult struct {
 	Claims map[string]any
 }
 
-func NewLeftSideAuth(issuer *identity.IdentityIssuer, gatewayURL string) *LeftSideAuth {
-	return &LeftSideAuth{
-		issuer:     issuer,
-		gatewayURL: gatewayURL,
-	}
+func NewLeftSideAuth(issuer *identity.IdentityIssuer) *LeftSideAuth {
+	return &LeftSideAuth{issuer: issuer}
 }
 
-func (a *LeftSideAuth) Authenticate(token string) (*AuthResult, error) {
+// Authenticate validates an inbound Bearer token from an AI agent.
+//
+// expectedAudience must be the Gateway URL of the tenant that owns the hostname
+// this request arrived on. It is required: see ErrNoExpectedAudience.
+func (a *LeftSideAuth) Authenticate(token string, expectedAudience string) (*AuthResult, error) {
 	if token == "" {
 		return nil, ErrMissingToken
+	}
+	if expectedAudience == "" {
+		return nil, ErrNoExpectedAudience
 	}
 
 	claims, err := a.verifyAndDecode(token)
@@ -54,7 +69,7 @@ func (a *LeftSideAuth) Authenticate(token string) (*AuthResult, error) {
 		return nil, err
 	}
 
-	if err := a.validateAudience(claims); err != nil {
+	if err := validateAudience(claims, expectedAudience); err != nil {
 		return nil, err
 	}
 
@@ -133,7 +148,10 @@ func (a *LeftSideAuth) verifyAndDecode(token string) (map[string]any, error) {
 	return claims, nil
 }
 
-func (a *LeftSideAuth) validateAudience(claims map[string]any) error {
+// validateAudience checks the token's `aud` claim against the Gateway URL of
+// the tenant handling this request. `aud` may be a single string or an array
+// (RFC 7519 §4.1.3); the array form matches if any element matches.
+func validateAudience(claims map[string]any, expectedAudience string) error {
 	aud, ok := claims["aud"]
 	if !ok {
 		return ErrAudienceMismatch
@@ -141,26 +159,32 @@ func (a *LeftSideAuth) validateAudience(claims map[string]any) error {
 
 	switch v := aud.(type) {
 	case string:
-		if v != a.gatewayURL && v != strings.TrimSuffix(a.gatewayURL, "/") {
+		if !audienceMatches(v, expectedAudience) {
 			return ErrAudienceMismatch
 		}
 	case []interface{}:
-		found := false
-		for _, a2 := range v {
-			s, _ := a2.(string)
-			if s == a.gatewayURL || s == strings.TrimSuffix(a.gatewayURL, "/") {
-				found = true
-				break
+		for _, entry := range v {
+			s, isString := entry.(string)
+			if isString && audienceMatches(s, expectedAudience) {
+				return nil
 			}
 		}
-		if !found {
-			return ErrAudienceMismatch
-		}
+		return ErrAudienceMismatch
 	default:
 		return ErrAudienceMismatch
 	}
 
 	return nil
+}
+
+// audienceMatches compares two audience values, normalising a trailing slash on
+// BOTH sides. The customer types the audience into their Credential Provider
+// config by hand, so "https://x-mcpgateway.example.com" and the same value with
+// a trailing slash have to be treated as the same audience. Normalising only the
+// expected side (as this previously did) rejected tokens whose own `aud` carried
+// the slash.
+func audienceMatches(got, expected string) bool {
+	return strings.TrimSuffix(got, "/") == strings.TrimSuffix(expected, "/")
 }
 
 func (a *LeftSideAuth) validateExpiry(claims map[string]any) error {

@@ -32,10 +32,10 @@ func TestRightAuth_PerUserIsolation(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, nil)
 
 	// Alice gets Alice's token
-	cred, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
+	cred, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestRightAuth_PerUserIsolation(t *testing.T) {
 	}
 
 	// Bob gets Bob's token
-	cred, err = rightAuth.GetCredential(context.Background(), "bob@corp.com", tenantID, "jira.example.com", 443)
+	cred, err = rightAuth.GetCredential(context.Background(), "bob@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,9 +66,9 @@ func TestRightAuth_FirstTimeAccess_ConsentRequired(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
 
-	_, err := rightAuth.GetCredential(context.Background(), "newuser@corp.com", tenantID, "jira.example.com", 443)
+	_, err := rightAuth.GetCredential(context.Background(), "newuser@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != ErrConsentRequired {
 		t.Fatalf("expected ErrConsentRequired, got %v", err)
 	}
@@ -77,9 +77,9 @@ func TestRightAuth_FirstTimeAccess_ConsentRequired(t *testing.T) {
 func TestRightAuth_NoPolicyForServer_Denied(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{policies: nil}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
 
-	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "unknown.example.com", 443)
+	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "unknown.example.com", 443)
 	if err != ErrNoPolicyForServer {
 		t.Fatalf("expected ErrNoPolicyForServer, got %v", err)
 	}
@@ -104,9 +104,9 @@ func TestRightAuth_ExpiredToken_Error(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, nil)
 
-	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
+	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != ErrCredentialExpired {
 		t.Fatalf("expected ErrCredentialExpired, got %v", err)
 	}
@@ -156,9 +156,9 @@ func TestRightAuth_ExpiredToken_RefreshSuccess(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, refresher, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, refresher)
 
-	cred, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
+	cred, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,9 +206,9 @@ func TestRightAuth_ExpiredToken_RefreshFails_ReturnsExpired(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, refresher, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, refresher)
 
-	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
+	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != ErrCredentialExpired {
 		t.Fatalf("expected ErrCredentialExpired, got %v", err)
 	}
@@ -238,9 +238,9 @@ func TestRightAuth_ExpiredToken_NoRefreshToken_ReturnsExpired(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, refresher, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, refresher)
 
-	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", tenantID, "jira.example.com", 443)
+	_, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", testScope(tenantID), "jira.example.com", 443)
 	if err != ErrCredentialExpired {
 		t.Fatalf("expected ErrCredentialExpired, got %v", err)
 	}
@@ -268,9 +268,9 @@ func TestRightAuth_GetAllServerCredentials_ReturnsAllValid(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, nil)
 
-	creds, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", tenantID)
+	creds, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", testScope(tenantID))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -309,9 +309,9 @@ func TestRightAuth_GetAllServerCredentials_SkipsUnavailable(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, store, nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, store, nil)
 
-	creds, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", tenantID)
+	creds, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", testScope(tenantID))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -336,9 +336,9 @@ func TestRightAuth_GetCredentialByServerName_Found(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
 
-	cred, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", tenantID, "slack")
+	cred, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", testScope(tenantID), "slack")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -359,10 +359,80 @@ func TestRightAuth_GetCredentialByServerName_NotFound(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, "https://gw.dipolehq.com/")
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
 
-	_, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", tenantID, "unknown-server")
+	_, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", testScope(tenantID), "unknown-server")
 	if err != ErrNoPolicyForServer {
 		t.Fatalf("expected ErrNoPolicyForServer, got %v", err)
 	}
+}
+
+// An unattributed request must not reach the policy finder at all. Without this
+// guard a zero TenantScope would query policies for the nil tenant and match a
+// Client Workload whose audience identifier happened to be empty.
+func TestRightAuth_InvalidTenantScope_FailsClosed(t *testing.T) {
+	scopes := map[string]TenantScope{
+		"zero value":         {},
+		"missing tenant":     {GatewayURL: testGatewayURL},
+		"missing gatewayURL": {TenantID: uuid.New()},
+	}
+
+	for name, scope := range scopes {
+		t.Run(name, func(t *testing.T) {
+			finder := &countingPolicyFinder{}
+			rightAuth := NewRightSideAuth(finder, newMockTokenStore(), nil)
+
+			if _, err := rightAuth.GetCredential(context.Background(), "alice@corp.com", scope, "jira.example.com", 443); err != ErrInvalidTenantScope {
+				t.Errorf("GetCredential: expected ErrInvalidTenantScope, got %v", err)
+			}
+			if _, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", scope); err != ErrInvalidTenantScope {
+				t.Errorf("GetAllServerCredentials: expected ErrInvalidTenantScope, got %v", err)
+			}
+			if _, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", scope, "jira"); err != ErrInvalidTenantScope {
+				t.Errorf("GetCredentialByServerName: expected ErrInvalidTenantScope, got %v", err)
+			}
+			if finder.calls != 0 {
+				t.Errorf("policy finder must not be consulted, got %d calls", finder.calls)
+			}
+		})
+	}
+}
+
+// The scope's tenant and Gateway URL must both reach the policy finder — those
+// two values are what scope a lookup to one tenant's policies.
+func TestRightAuth_PassesScopeThroughToPolicyFinder(t *testing.T) {
+	tenantID := uuid.New()
+	finder := &countingPolicyFinder{}
+	rightAuth := NewRightSideAuth(finder, newMockTokenStore(), nil)
+	scope := TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}
+
+	if _, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", scope); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if finder.gotTenantID != tenantID {
+		t.Errorf("expected tenant %s, got %s", tenantID, finder.gotTenantID)
+	}
+	if finder.gotGatewayURL != testGatewayURL {
+		t.Errorf("expected gateway URL %q, got %q", testGatewayURL, finder.gotGatewayURL)
+	}
+}
+
+type countingPolicyFinder struct {
+	calls         int
+	gotTenantID   uuid.UUID
+	gotGatewayURL string
+}
+
+func (f *countingPolicyFinder) FindGatewayPolicies(_ context.Context, tenantID uuid.UUID, gatewayURL string) ([]RightSidePolicy, error) {
+	f.calls++
+	f.gotTenantID = tenantID
+	f.gotGatewayURL = gatewayURL
+	return nil, nil
+}
+
+func (f *countingPolicyFinder) FindPolicyForServer(_ context.Context, tenantID uuid.UUID, gatewayURL string, _ string, _ int) (*RightSidePolicy, error) {
+	f.calls++
+	f.gotTenantID = tenantID
+	f.gotGatewayURL = gatewayURL
+	return nil, nil
 }

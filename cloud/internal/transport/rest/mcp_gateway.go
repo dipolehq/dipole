@@ -11,16 +11,22 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/dipolehq/dipole/cloud/internal/platform"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
+	"github.com/google/uuid"
 )
 
 type GatewayAuthenticator interface {
-	Authenticate(token string) (*gw.AuthResult, error)
+	// Authenticate validates the inbound token. expectedAudience is the Gateway
+	// URL of the tenant that owns the hostname this request arrived on — it is
+	// what stops one tenant's token being accepted at another tenant's Gateway.
+	Authenticate(token string, expectedAudience string) (*gw.AuthResult, error)
 }
 
 type GatewayMethodHandler interface {
@@ -50,22 +56,101 @@ type JSONRPCError struct {
 	Message string `json:"message"`
 }
 
+var (
+	// ErrGatewayTenantNotEnabled means the request resolved to a real tenant, but
+	// not the one this Gateway is currently provisioned for. See
+	// MCPGatewayServer.boundTenantID.
+	ErrGatewayTenantNotEnabled = errors.New("MCP Identity Gateway is not enabled for this tenant")
+	// ErrNotGatewayHost means the tenant resolved fine but the request arrived on
+	// a different service's hostname (e.g. the -mcp Authorization Server host).
+	// Kept distinct from ErrTenantHostUnresolved so an operator debugging a 404
+	// isn't sent looking at DNS or tenant lookup when both are working and only
+	// the hostname is wrong — a likely mistake when configuring an MCP client.
+	ErrNotGatewayHost = errors.New("request hostname is not this tenant's MCP Identity Gateway host")
+)
+
 type MCPGatewayServer struct {
 	auth           GatewayAuthenticator
 	methodHandler  GatewayMethodHandler
 	consentHandler ConsentCallbackHandler
+	resolver       *TenantHostResolver
 	tracingBus     *gw.TracingBus
 	logger         *slog.Logger
+
+	// boundTenantID restricts the Gateway to a single tenant.
+	//
+	// Left-side auth and right-side policy lookup are now per-request, but the
+	// downstream MCP client map, the event sink, and the consent callback URL
+	// are still built once at startup for one tenant (progress.md Fix 11 steps
+	// 5-7). Until those are per-tenant, a request from a *different* tenant
+	// would authenticate correctly and then be matched against this tenant's
+	// client map by server NAME — so a name collision across tenants could send
+	// one tenant's credential to another tenant's MCP server.
+	//
+	// Refusing other tenants outright closes that window. It also matches how
+	// Aembit ships this component: their MCP Identity Gateway is provisioned
+	// per tenant on request, not enabled for everyone by default.
+	//
+	// uuid.Nil means "no restriction". Fix 11 step 8 removes this field once
+	// steps 5-7 make every layer tenant-aware.
+	boundTenantID uuid.UUID
 }
 
-func NewMCPGatewayServer(auth GatewayAuthenticator, handler GatewayMethodHandler, consentHandler ConsentCallbackHandler, logger *slog.Logger, tracingBus *gw.TracingBus) *MCPGatewayServer {
+func NewMCPGatewayServer(
+	auth GatewayAuthenticator,
+	handler GatewayMethodHandler,
+	consentHandler ConsentCallbackHandler,
+	logger *slog.Logger,
+	tracingBus *gw.TracingBus,
+	resolver *TenantHostResolver,
+	boundTenantID uuid.UUID,
+) *MCPGatewayServer {
 	return &MCPGatewayServer{
 		auth:           auth,
 		methodHandler:  handler,
 		consentHandler: consentHandler,
+		resolver:       resolver,
 		tracingBus:     tracingBus,
 		logger:         logger,
+		boundTenantID:  boundTenantID,
 	}
+}
+
+// resolveScope determines which tenant a Gateway request belongs to.
+//
+// Fails closed on anything it cannot attribute: a hostname that isn't a tenant
+// Gateway host, an unknown tenant, or a tenant this Gateway isn't provisioned
+// for. The service check matters because all routes share one mux, so POST /mcp
+// is reachable on every hostname this process serves — including the MCP
+// Authorization Server host, whose BaseURL would otherwise be handed to
+// left-side auth as the expected token audience.
+func (s *MCPGatewayServer) resolveScope(r *http.Request) (gw.TenantScope, error) {
+	resolved, err := s.resolver.Resolve(r.Context(), r)
+	if err != nil {
+		return gw.TenantScope{}, err
+	}
+	if resolved.Service != platform.ServiceGateway {
+		return gw.TenantScope{}, ErrNotGatewayHost
+	}
+	if s.boundTenantID != uuid.Nil && resolved.TenantID() != s.boundTenantID {
+		return gw.TenantScope{}, ErrGatewayTenantNotEnabled
+	}
+
+	scope := gw.TenantScope{TenantID: resolved.TenantID(), GatewayURL: resolved.BaseURL}
+	if !scope.Valid() {
+		return gw.TenantScope{}, ErrTenantHostUnresolved
+	}
+	return scope, nil
+}
+
+func (s *MCPGatewayServer) respondUnresolvedTenant(w http.ResponseWriter, r *http.Request, err error) {
+	if s.logger != nil {
+		s.logger.Warn("MCP gateway request could not be attributed to a tenant",
+			"host", PublicHost(r), "path", r.URL.Path, "error", err)
+	}
+	// 404, not 401: this hostname serves no Gateway, so there is no credential
+	// the caller could present that would change the outcome.
+	writeGatewayError(w, http.StatusNotFound, "this hostname does not serve a Dipole MCP Identity Gateway")
 }
 
 func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
@@ -77,6 +162,14 @@ func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 // HandleMCP processes all MCP protocol traffic. Validates the Bearer token,
 // parses the JSON-RPC request, and routes to the appropriate method handler.
 func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
+	// Resolved before the token is examined: the expected audience is derived
+	// from the tenant, so a token cannot be validated without it.
+	scope, err := s.resolveScope(r)
+	if err != nil {
+		s.respondUnresolvedTenant(w, r, err)
+		return
+	}
+
 	token := extractBearerToken(r)
 	if token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer`)
@@ -85,7 +178,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authResult, err := s.auth.Authenticate(token)
+	authResult, err := s.auth.Authenticate(token, scope.GatewayURL)
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 		s.emitTracing(r, "", "", "Error", "Invalid token: "+err.Error())
@@ -115,6 +208,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	rCtx := &gw.RequestContext{
 		UserID: authResult.UserID,
 		Claims: authResult.Claims,
+		Scope:  scope,
 	}
 
 	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)

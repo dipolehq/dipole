@@ -112,6 +112,26 @@ func TestDBPolicyFinder_FindGatewayPolicies_TrailingSlashNormalized(t *testing.T
 	}
 }
 
+// The direction that actually occurs in production since the Gateway began
+// resolving its URL per request: the query is the canonical no-slash form from
+// TenantScope.GatewayURL, while the stored Client Workload identifier carries a
+// trailing slash — which is what Aembit's setup guide tells customers to enter
+// for the OIDC ID Token Audience identifier.
+func TestDBPolicyFinder_FindGatewayPolicies_StoredIdentifierHasTrailingSlash(t *testing.T) {
+	policy := buildMCPPolicy("https://gw.example.com/", "jira", "jira.example.com", 443)
+
+	repo := &mockAccessPolicyRepo{byProtocol: []domain.AccessPolicyWithRelations{policy}}
+	finder := NewDBRightSidePolicyFinder(repo)
+
+	results, err := finder.FindGatewayPolicies(context.Background(), uuid.New(), "https://gw.example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 policy when the stored identifier carries the slash, got %d", len(results))
+	}
+}
+
 func TestDBPolicyFinder_FindGatewayPolicies_SkipsNonMatchingAudience(t *testing.T) {
 	policy := buildMCPPolicy("https://other.example.com/", "github", "github.example.com", 443)
 

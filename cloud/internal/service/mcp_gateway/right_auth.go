@@ -6,6 +6,11 @@ on behalf of a user. It finds the matching right-side Access Policy (where
 Client Workload = Gateway, Server Workload = MCP server), then retrieves
 per-user credentials. Supports MCP User-Based Access Token (per-user OAuth)
 and OAuth 2.0 Authorization Code (shared admin token).
+
+The tenant arrives per call as a TenantScope, never held on the struct: one
+process serves every tenant's Gateway, and a captured tenant would scope every
+tenant's policy lookups to whichever one was configured at startup. Calls with
+an invalid scope are refused before the policy finder is consulted.
 */
 package mcp_gateway
 
@@ -21,6 +26,10 @@ var (
 	ErrNoPolicyForServer = errors.New("no access policy found for this MCP server")
 	ErrConsentRequired   = errors.New("user authorization required for this MCP server")
 	ErrCredentialExpired = errors.New("credential expired and refresh failed")
+	// ErrInvalidTenantScope means the request was not attributed to a tenant.
+	// Fail closed: continuing would query policies across no tenant, or match a
+	// Client Workload whose audience identifier happens to be empty.
+	ErrInvalidTenantScope = errors.New("request has no valid tenant scope")
 )
 
 type ServerCredential struct {
@@ -64,29 +73,33 @@ type TokenRefresher interface {
 	Refresh(ctx context.Context, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
 }
 
+// RightSideAuth holds no tenant state. The tenant and its Gateway URL arrive
+// with each call as a TenantScope, resolved from the request hostname.
 type RightSideAuth struct {
 	policyFinder RightSidePolicyFinder
 	tokenStore   UserTokenStore
 	refresher    TokenRefresher
-	gatewayURL   string
 }
 
-func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, gatewayURL string) *RightSideAuth {
+func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher) *RightSideAuth {
 	return &RightSideAuth{
 		policyFinder: policyFinder,
 		tokenStore:   tokenStore,
 		refresher:    refresher,
-		gatewayURL:   gatewayURL,
 	}
 }
 
-func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, tenantID uuid.UUID, serverHost string, serverPort int) (*ServerCredential, error) {
-	policy, err := a.policyFinder.FindPolicyForServer(ctx, tenantID, a.gatewayURL, serverHost, serverPort)
+func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope TenantScope, serverHost string, serverPort int) (*ServerCredential, error) {
+	if !scope.Valid() {
+		return nil, ErrInvalidTenantScope
+	}
+
+	policy, err := a.policyFinder.FindPolicyForServer(ctx, scope.TenantID, scope.GatewayURL, serverHost, serverPort)
 	if err != nil || policy == nil {
 		return nil, ErrNoPolicyForServer
 	}
 
-	token, err := a.resolveCredential(ctx, userID, tenantID, policy)
+	token, err := a.resolveCredential(ctx, userID, scope.TenantID, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -97,15 +110,19 @@ func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, tenant
 	}, nil
 }
 
-func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID string, tenantID uuid.UUID) ([]ServerCredential, error) {
-	policies, err := a.policyFinder.FindGatewayPolicies(ctx, tenantID, a.gatewayURL)
+func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID string, scope TenantScope) ([]ServerCredential, error) {
+	if !scope.Valid() {
+		return nil, ErrInvalidTenantScope
+	}
+
+	policies, err := a.policyFinder.FindGatewayPolicies(ctx, scope.TenantID, scope.GatewayURL)
 	if err != nil {
 		return nil, err
 	}
 
 	var creds []ServerCredential
 	for _, policy := range policies {
-		token, err := a.resolveCredential(ctx, userID, tenantID, &policy)
+		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
 			continue
 		}
@@ -117,8 +134,12 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 	return creds, nil
 }
 
-func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID string, tenantID uuid.UUID, serverName string) (*ServerCredential, error) {
-	policies, err := a.policyFinder.FindGatewayPolicies(ctx, tenantID, a.gatewayURL)
+func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID string, scope TenantScope, serverName string) (*ServerCredential, error) {
+	if !scope.Valid() {
+		return nil, ErrInvalidTenantScope
+	}
+
+	policies, err := a.policyFinder.FindGatewayPolicies(ctx, scope.TenantID, scope.GatewayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +148,7 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 		if policy.ServerWorkload.Name != serverName {
 			continue
 		}
-		token, err := a.resolveCredential(ctx, userID, tenantID, &policy)
+		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
 			return nil, err
 		}
