@@ -86,18 +86,22 @@ func NewTokenService(codeStore *AuthCodeStore, issuer *identity.IdentityIssuer, 
 	}
 }
 
-func (s *TokenService) Exchange(req *TokenRequest, tenantID uuid.UUID) (*TokenResponse, error) {
+func (s *TokenService) Exchange(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
+	if issuerURL == "" {
+		return nil, errors.New("token issuer URL is required")
+	}
+
 	switch req.GrantType {
 	case "authorization_code":
-		return s.exchangeCode(req, tenantID)
+		return s.exchangeCode(req, tenantID, issuerURL)
 	case "refresh_token":
-		return s.exchangeRefresh(req, tenantID)
+		return s.exchangeRefresh(req, tenantID, issuerURL)
 	default:
 		return nil, errors.New("unsupported_grant_type")
 	}
 }
 
-func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID) (*TokenResponse, error) {
+func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
 	pending, err := s.codeStore.Consume(req.Code)
 	if err != nil {
 		return nil, ErrInvalidGrant
@@ -142,6 +146,7 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID) (*Tok
 	customClaims["scope"] = pending.Scope
 
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
+		IssuerURL:    issuerURL,
 		Subject:      cfg.Subject,
 		Audience:     cfg.Audience,
 		Lifetime:     cfg.Lifetime,
@@ -167,7 +172,7 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID) (*Tok
 	return resp, nil
 }
 
-func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID) (*TokenResponse, error) {
+func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
 	s.mu.Lock()
 	entry, ok := s.refreshTokens[req.RefreshToken]
 	if !ok || entry.Used || time.Now().UTC().After(entry.AbsoluteExpiresAt) {
@@ -202,6 +207,7 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID) (*
 	customClaims["scope"] = entry.Scope
 
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
+		IssuerURL:    issuerURL,
 		Subject:      cfg.Subject,
 		Audience:     cfg.Audience,
 		Lifetime:     cfg.Lifetime,

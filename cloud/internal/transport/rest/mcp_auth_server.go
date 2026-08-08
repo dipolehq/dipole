@@ -171,6 +171,18 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := resolved.TenantID()
 
+	// The token's `iss` claim must be the per-tenant identity host, not the
+	// shared platform issuer. External systems (customer MCP servers, AWS STS,
+	// Azure Entra, GCP) fetch our OIDC discovery from this URL and reject a
+	// token whose `iss` doesn't match the document's `issuer` field. Aembit's
+	// docs emphasize the same split: AS metadata issuer is the -mcp host, but
+	// the token issuer is the -id host.
+	issuerURL := s.resolver.BaseURLFor(resolved.Subdomain, platform.ServiceIdentity)
+	if issuerURL == "" {
+		writeJSONError(w, http.StatusInternalServerError, "server_error", "unable to determine token issuer for this tenant")
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
 		return
@@ -185,7 +197,7 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		RefreshToken: r.FormValue("refresh_token"),
 	}
 
-	resp, err := s.tokens.Exchange(req, tenantID)
+	resp, err := s.tokens.Exchange(req, tenantID, issuerURL)
 	if err != nil {
 		errCode := "invalid_grant"
 		if err.Error() == "unsupported_grant_type" {
