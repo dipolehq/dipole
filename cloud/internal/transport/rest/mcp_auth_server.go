@@ -17,6 +17,7 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -88,13 +89,24 @@ func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	tenantID := resolved.TenantID()
 
 	var req mcp.DCRRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	body, readErr := io.ReadAll(r.Body)
+	if readErr != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "failed to read request body")
+		return
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		if s.logger != nil {
+			s.logger.Warn("DCR request JSON decode failed", "error", err, "body", string(body), "content_type", r.Header.Get("Content-Type"))
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
 
 	resp, err := s.dcr.Register(r.Context(), tenantID, &req)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("DCR registration failed", "error", err, "redirect_uris", req.RedirectURIs, "grant_types", req.GrantTypes)
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid_client_metadata", err.Error())
 		return
 	}
