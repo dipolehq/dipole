@@ -373,8 +373,9 @@ func TestRightAuth_GetCredentialByServerName_NotFound(t *testing.T) {
 func TestRightAuth_InvalidTenantScope_FailsClosed(t *testing.T) {
 	scopes := map[string]TenantScope{
 		"zero value":         {},
-		"missing tenant":     {GatewayURL: testGatewayURL},
-		"missing gatewayURL": {TenantID: uuid.New()},
+		"missing tenant":     {TenantSubdomain: "test", GatewayURL: testGatewayURL},
+		"missing gatewayURL": {TenantID: uuid.New(), TenantSubdomain: "test"},
+		"missing subdomain":  {TenantID: uuid.New(), GatewayURL: testGatewayURL},
 	}
 
 	for name, scope := range scopes {
@@ -404,7 +405,7 @@ func TestRightAuth_PassesScopeThroughToPolicyFinder(t *testing.T) {
 	tenantID := uuid.New()
 	finder := &countingPolicyFinder{}
 	rightAuth := NewRightSideAuth(finder, newMockTokenStore(), nil)
-	scope := TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}
+	scope := TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}
 
 	if _, err := rightAuth.GetAllServerCredentials(context.Background(), "alice@corp.com", scope); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -3,7 +3,9 @@ package mcp
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,7 +92,7 @@ func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
 		RedirectURI:  "http://localhost:7777/cb",
 		ClientID:     clientID.String(),
 		CodeVerifier: verifier,
-	}, tenantID)
+	}, tenantID, "https://test-id.dipolehq.com")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,7 +133,7 @@ func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
 		RedirectURI:  "http://localhost/cb",
 		ClientID:     clientID.String(),
 		CodeVerifier: "wrong-verifier",
-	}, tenantID)
+	}, tenantID, "https://test-id.dipolehq.com")
 
 	if err != ErrPKCEFailed {
 		t.Fatalf("expected ErrPKCEFailed, got %v", err)
@@ -152,7 +154,7 @@ func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
 		RedirectURI:  "http://localhost/cb",
 		ClientID:     uuid.New().String(),
 		CodeVerifier: "whatever",
-	}, uuid.New())
+	}, uuid.New(), "https://test-id.dipolehq.com")
 
 	if err != ErrInvalidGrant {
 		t.Fatalf("expected ErrInvalidGrant, got %v", err)
@@ -189,7 +191,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 		RedirectURI:  "http://localhost/cb",
 		ClientID:     clientID.String(),
 		CodeVerifier: verifier,
-	}, tenantID)
+	}, tenantID, "https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatalf("initial exchange failed: %v", err)
 	}
@@ -202,7 +204,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 		GrantType:    "refresh_token",
 		RefreshToken: resp1.RefreshToken,
 		ClientID:     clientID.String(),
-	}, tenantID)
+	}, tenantID, "https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatalf("refresh exchange failed: %v", err)
 	}
@@ -221,7 +223,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 		GrantType:    "refresh_token",
 		RefreshToken: resp1.RefreshToken,
 		ClientID:     clientID.String(),
-	}, tenantID)
+	}, tenantID, "https://test-id.dipolehq.com")
 	if err != ErrRefreshTokenInvalid {
 		t.Fatalf("expected ErrRefreshTokenInvalid on reuse, got %v", err)
 	}
@@ -237,7 +239,7 @@ func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
 
 	_, err := svc.Exchange(&TokenRequest{
 		GrantType: "implicit",
-	}, uuid.New())
+	}, uuid.New(), "https://test-id.dipolehq.com")
 
 	if err == nil || err.Error() != "unsupported_grant_type" {
 		t.Fatalf("expected unsupported_grant_type error, got %v", err)
@@ -277,7 +279,7 @@ func TestTokenExchange_CodeFromAnotherTenant_Rejected(t *testing.T) {
 		RedirectURI:  "http://localhost:7777/cb",
 		ClientID:     clientID.String(),
 		CodeVerifier: verifier,
-	}, redeemingTenant)
+	}, redeemingTenant, "https://test-id.dipolehq.com")
 
 	if !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("expected ErrInvalidGrant for a cross-tenant code, got %v", err)
@@ -315,7 +317,7 @@ func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 		RedirectURI:  "http://localhost/cb",
 		ClientID:     clientID.String(),
 		CodeVerifier: verifier,
-	}, issuingTenant)
+	}, issuingTenant, "https://test-id.dipolehq.com")
 	if err != nil {
 		t.Fatalf("initial exchange failed: %v", err)
 	}
@@ -327,9 +329,96 @@ func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 		GrantType:    "refresh_token",
 		RefreshToken: issued.RefreshToken,
 		ClientID:     clientID.String(),
-	}, uuid.New())
+	}, uuid.New(), "https://test-id.dipolehq.com")
 
 	if !errors.Is(err, ErrRefreshTokenInvalid) {
 		t.Fatalf("expected ErrRefreshTokenInvalid for a cross-tenant refresh, got %v", err)
+	}
+}
+
+// The token's iss claim must be the per-tenant identity host passed by the
+// handler, not the shared platform issuer. External systems (customer MCP
+// servers, AWS STS, Azure Entra) fetch OIDC discovery from this URL and
+// reject a token whose iss doesn't match.
+func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
+	// Platform issuer is deliberately different from the per-tenant one we pass.
+	issuer, _ := identity.NewIdentityIssuer("https://shared-platform-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:  "https://mcp.example.com",
+			Subject:   "user@example.com",
+			Lifetime:  1 * time.Hour,
+			Algorithm: "ES256",
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	tenantID := uuid.New()
+	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	perTenantIssuer := "https://mytenant-id.dipolehq.com"
+	resp, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, tenantID, perTenantIssuer)
+	if err != nil {
+		t.Fatalf("exchange failed: %v", err)
+	}
+
+	// Decode the token and check iss
+	parts := strings.Split(resp.AccessToken, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("unmarshal claims: %v", err)
+	}
+	if got := claims["iss"]; got != perTenantIssuer {
+		t.Errorf("expected iss=%q (per-tenant), got %q", perTenantIssuer, got)
+	}
+}
+
+// Isolates the issuerURL guard specifically: uses an otherwise-valid code and
+// PKCE verifier so the ONLY thing that can fail is the empty issuerURL. Minting
+// a token with no iss (falling back silently to the platform issuer) is worse
+// than refusing to mint one, since that failure surfaces later, at a relying
+// party, with no context linking it back to this call.
+func TestTokenExchange_EmptyIssuerURL_Rejected(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"}}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+	clientID := uuid.New()
+	tenantID := uuid.New()
+	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	_, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, tenantID, "")
+
+	if err == nil {
+		t.Fatal("expected error for empty issuerURL")
 	}
 }

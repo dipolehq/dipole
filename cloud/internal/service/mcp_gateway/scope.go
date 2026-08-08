@@ -25,6 +25,12 @@ import "github.com/google/uuid"
 type TenantScope struct {
 	TenantID uuid.UUID
 
+	// TenantSubdomain is the tenant's DNS-safe subdomain (e.g. "647251" or
+	// "testing-dipole"). Carried here so downstream code that needs to build
+	// URLs for other services of the same tenant (like the MCP Auth Server URL
+	// for Protected Resource Metadata) does not have to re-resolve the tenant.
+	TenantSubdomain string
+
 	// GatewayURL is the canonical Gateway base URL for this tenant, e.g.
 	// https://647251-mcpgateway.dipolehq.com. Comparisons against it normalise
 	// a trailing slash (see audienceMatches, matchesGatewayClient), so either
@@ -39,5 +45,10 @@ type TenantScope struct {
 // would scope a query to no tenant — both turn "could not determine the tenant"
 // into "silently used the wrong one".
 func (s TenantScope) Valid() bool {
-	return s.TenantID != uuid.Nil && s.GatewayURL != ""
+	return s.TenantID != uuid.Nil && s.GatewayURL != "" && s.TenantSubdomain != ""
+}
+
+// Subdomain returns the tenant's DNS-safe subdomain.
+func (s TenantScope) Subdomain() string {
+	return s.TenantSubdomain
 }

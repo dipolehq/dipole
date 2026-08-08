@@ -108,7 +108,7 @@ func (s *MCPGatewayServer) resolveScope(r *http.Request) (gw.TenantScope, error)
 		return gw.TenantScope{}, ErrNotGatewayHost
 	}
 
-	scope := gw.TenantScope{TenantID: resolved.TenantID(), GatewayURL: resolved.BaseURL}
+	scope := gw.TenantScope{TenantID: resolved.TenantID(), TenantSubdomain: resolved.Subdomain, GatewayURL: resolved.BaseURL}
 	if !scope.Valid() {
 		return gw.TenantScope{}, ErrTenantHostUnresolved
 	}
@@ -129,6 +129,7 @@ func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mcp", s.HandleMCP)
 	mux.HandleFunc("DELETE /mcp", s.HandleSessionDelete)
 	mux.HandleFunc("GET /mcp/consent/callback", s.HandleConsentCallback)
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.HandleProtectedResourceMetadata)
 }
 
 // HandleMCP processes all MCP protocol traffic. Validates the Bearer token,
@@ -144,7 +145,12 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 
 	token := extractBearerToken(r)
 	if token == "" {
-		w.Header().Set("WWW-Authenticate", `Bearer`)
+		// RFC 9728: the resource_metadata parameter tells the MCP client where to
+		// find Protected Resource Metadata, which in turn tells it which
+		// Authorization Server to use. Claude Desktop requires this: without it
+		// the client cannot discover the Auth Server from the Gateway host.
+		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`"`)
 		s.emitTracing(r, scope.TenantID, "", "", "Error", "Missing token")
 		writeGatewayError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
 		return
@@ -152,7 +158,8 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 
 	authResult, err := s.auth.Authenticate(token, scope.GatewayURL)
 	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`", error="invalid_token"`)
 		s.emitTracing(r, scope.TenantID, "", "", "Error", "Invalid token: "+err.Error())
 		writeGatewayError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -273,6 +280,46 @@ const consentSuccessHTML = `<!DOCTYPE html>
 <html><head><title>Authorization Successful</title></head>
 <body><h1>Authorization successful</h1><p>You can close this window.</p></body>
 </html>`
+
+// HandleProtectedResourceMetadata serves RFC 9728 Protected Resource Metadata on
+// the Gateway host. This is how an MCP client (Claude Desktop, Gemini CLI, etc.)
+// discovers which Authorization Server protects this Gateway.
+//
+// Claude Desktop's documented behavior: on a 401 with
+// `resource_metadata="<url>"` in the WWW-Authenticate header, it fetches that
+// URL. If the header is absent, it falls back to probing
+// `/.well-known/oauth-protected-resource` on the server's origin. Both paths end
+// here.
+//
+// The response tells the client two things:
+//   - `resource`: the protected resource identifier (the Gateway's /mcp URL)
+//   - `authorization_servers`: which AS to use (the tenant's -mcp host)
+//
+// These are per-tenant because each tenant has its own Auth Server endpoint and
+// its own Gateway endpoint.
+func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	scope, err := s.resolveScope(r)
+	if err != nil {
+		s.respondUnresolvedTenant(w, r, err)
+		return
+	}
+
+	// The Auth Server for this tenant lives on the -mcp host.
+	authServerURL := s.resolver.BaseURLFor(scope.Subdomain(), platform.ServiceMCPAuth)
+	if authServerURL == "" {
+		// Should not happen for a valid scope, but fail closed rather than
+		// advertising an empty authorization_servers array.
+		writeGatewayError(w, http.StatusInternalServerError, "unable to determine authorization server for this tenant")
+		return
+	}
+
+	metadata := map[string]interface{}{
+		"resource":                 scope.GatewayURL + "/mcp",
+		"authorization_servers":    []string{authServerURL},
+		"bearer_methods_supported": []string{"header"},
+	}
+	writeJSON(w, http.StatusOK, metadata)
+}
 
 // emitTracing records a live diagnostic entry for the tenant handling this
 // request. tenantID is required — the buffer is shared across tenants and an

@@ -39,7 +39,7 @@ func TestBuildConsentURL_CorrectFormat(t *testing.T) {
 
 	svc := NewUserConsentService(newMockTokenStore(), resolver)
 
-	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}, userID, serverWorkloadID)
+	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestBuildConsentURL_StateFormat(t *testing.T) {
 
 	svc := NewUserConsentService(newMockTokenStore(), resolver)
 
-	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, GatewayURL: testGatewayURL}, userID, serverWorkloadID)
+	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
