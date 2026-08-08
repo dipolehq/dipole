@@ -25,11 +25,32 @@ export function CredentialProviderTab({
     onSelect(id)
     try {
       const cp = await fetchCredentialProvider(id)
+      // Copy all fields from the existing credential provider into the form,
+      // preserving any field the fetched entity carries. The spread of `values`
+      // provides defaults for any field not present on the response, ensuring
+      // the form never has undefined values.
+      const config = (cp.config ?? {}) as Record<string, unknown>
       onChange({
         ...values,
-        name: cp.name,
-        description: cp.description,
-        credentialType: cp.type,
+        name: cp.name ?? values.name,
+        description: cp.description ?? values.description,
+        credentialType: cp.type ?? values.credentialType,
+        // Type-specific config — spread flat fields from config
+        subject: (config.subject as string) ?? values.subject,
+        audience: (config.audience as string) ?? values.audience,
+        subjectValueType: (config.subjectValueType as string) ?? values.subjectValueType,
+        audienceValueType: (config.audienceValueType as string) ?? values.audienceValueType,
+        signingAlgorithm: (config.signingAlgorithm as string) ?? values.signingAlgorithm,
+        lifetimeSeconds: (config.lifetimeSeconds as number) ?? values.lifetimeSeconds,
+        apiKey: (config.apiKey as string) ?? values.apiKey,
+        username: (config.username as string) ?? values.username,
+        tokenEndpointUrl: (config.tokenEndpointUrl as string) ?? values.tokenEndpointUrl,
+        clientId: (config.clientId as string) ?? values.clientId,
+        scopes: (config.scopes as string) ?? values.scopes,
+        awsIamRoleArn: (config.awsIamRoleArn as string) ?? values.awsIamRoleArn,
+        customClaims: (config.customClaims as { name: string; value: string; valueType: string }[]) ?? values.customClaims,
+        // Structured fields
+        tags: cp.tags ?? values.tags,
       })
     } catch {
       // If fetch fails, just set the ID
@@ -826,8 +847,8 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
             label="Subject"
             value={values.subject}
             onChange={(v) => update({ subject: v })}
-            badgeValue="literal"
-            onBadgeChange={() => {}}
+            badgeValue={values.subjectValueType || 'literal'}
+            onBadgeChange={(v) => update({ subjectValueType: v })}
           />
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <ReadOnlyFieldWithCopy
@@ -866,8 +887,8 @@ export function CredentialTypeConfig({ type, values, onChange }: CredentialTypeC
             label="Audience"
             value={values.audience}
             onChange={(v) => update({ audience: v })}
-            badgeValue="literal"
-            onBadgeChange={() => {}}
+            badgeValue={values.audienceValueType || 'literal'}
+            onBadgeChange={(v) => update({ audienceValueType: v })}
           />
         </div>
       )
