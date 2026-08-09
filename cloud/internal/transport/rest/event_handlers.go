@@ -8,19 +8,26 @@ and text search. Paginated responses, sorted by timestamp DESC.
 package rest
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/google/uuid"
 )
 
-type EventHandlers struct {
-	repo repository.EventRepository
+type eventQuerier interface {
+	QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error)
+	QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error)
+	QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error)
 }
 
-func NewEventHandlers(repo repository.EventRepository) *EventHandlers {
+type EventHandlers struct {
+	repo eventQuerier
+}
+
+func NewEventHandlers(repo eventQuerier) *EventHandlers {
 	return &EventHandlers{repo: repo}
 }
 
