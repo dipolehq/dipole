@@ -4,7 +4,18 @@ Package rest — mcp_gateway.go implements the MCP Identity Gateway HTTP server.
 MCPGatewayServer handles MCP protocol traffic (JSON-RPC over HTTP) from AI agents.
 It validates Bearer tokens (left-side auth), parses MCP methods, routes to downstream
 MCP servers with per-user credentials (right-side auth), and aggregates results.
-Served at https://<tenant>-mcpgateway.dipolehq.com/mcp in production.
+Served at https://<tenant>-mcpgateway.<domain>/mcp in production.
+
+resolveScope fails closed: a request arriving on any hostname other than the
+tenant's Gateway host is rejected with 404. This matters because all routes share
+one mux, so POST /mcp is technically reachable on every hostname this process
+serves — including the MCP Auth Server host, whose BaseURL would otherwise be
+handed to left-side auth as the expected token audience.
+
+HandleProtectedResourceMetadata serves RFC 9728 Protected Resource Metadata.
+MCP clients discover which Authorization Server protects this Gateway by either
+following the resource_metadata URL in the 401 WWW-Authenticate header, or by
+probing /.well-known/oauth-protected-resource on the server's origin.
 */
 package rest
 
@@ -23,9 +34,6 @@ import (
 )
 
 type GatewayAuthenticator interface {
-	// Authenticate validates the inbound token. expectedAudience is the Gateway
-	// URL of the tenant that owns the hostname this request arrived on — it is
-	// what stops one tenant's token being accepted at another tenant's Gateway.
 	Authenticate(token string, expectedAudience string) (*gw.AuthResult, error)
 }
 
@@ -34,8 +42,6 @@ type GatewayMethodHandler interface {
 }
 
 type ConsentCallbackHandler interface {
-	// scope is the tenant resolved from the hostname the callback arrived on; the
-	// implementation must reject a state naming any other tenant.
 	HandleCallback(ctx context.Context, code string, state string, scope gw.TenantScope) error
 }
 
@@ -58,11 +64,8 @@ type JSONRPCError struct {
 	Message string `json:"message"`
 }
 
-// ErrNotGatewayHost means the tenant resolved fine but the request arrived on a
-// different service's hostname (e.g. the -mcp Authorization Server host). Kept
-// distinct from ErrTenantHostUnresolved so an operator debugging a 404 isn't sent
-// looking at DNS or tenant lookup when both are working and only the hostname is
-// wrong — a likely mistake when configuring an MCP client.
+// ErrNotGatewayHost means the tenant resolved but the request arrived on a
+// different service's hostname.
 var ErrNotGatewayHost = errors.New("request hostname is not this tenant's MCP Identity Gateway host")
 
 type MCPGatewayServer struct {
@@ -92,13 +95,6 @@ func NewMCPGatewayServer(
 	}
 }
 
-// resolveScope determines which tenant a Gateway request belongs to.
-//
-// Fails closed on anything it cannot attribute: a hostname that isn't a tenant
-// Gateway host, or an unknown tenant. The service check matters because all
-// routes share one mux, so POST /mcp is reachable on every hostname this process
-// serves — including the MCP Authorization Server host, whose BaseURL would
-// otherwise be handed to left-side auth as the expected token audience.
 func (s *MCPGatewayServer) resolveScope(r *http.Request) (gw.TenantScope, error) {
 	resolved, err := s.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -120,8 +116,6 @@ func (s *MCPGatewayServer) respondUnresolvedTenant(w http.ResponseWriter, r *htt
 		s.logger.Warn("MCP gateway request could not be attributed to a tenant",
 			"host", PublicHost(r), "path", r.URL.Path, "error", err)
 	}
-	// 404, not 401: this hostname serves no Gateway, so there is no credential
-	// the caller could present that would change the outcome.
 	writeGatewayError(w, http.StatusNotFound, "this hostname does not serve a Dipole MCP Identity Gateway")
 }
 
@@ -132,11 +126,8 @@ func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.HandleProtectedResourceMetadata)
 }
 
-// HandleMCP processes all MCP protocol traffic. Validates the Bearer token,
-// parses the JSON-RPC request, and routes to the appropriate method handler.
+// HandleMCP processes all MCP protocol traffic.
 func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
-	// Resolved before the token is examined: the expected audience is derived
-	// from the tenant, so a token cannot be validated without it.
 	scope, err := s.resolveScope(r)
 	if err != nil {
 		s.respondUnresolvedTenant(w, r, err)
@@ -145,10 +136,6 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 
 	token := extractBearerToken(r)
 	if token == "" {
-		// RFC 9728: the resource_metadata parameter tells the MCP client where to
-		// find Protected Resource Metadata, which in turn tells it which
-		// Authorization Server to use. Claude Desktop requires this: without it
-		// the client cannot discover the Auth Server from the Gateway host.
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`"`)
 		s.emitTracing(r, scope.TenantID, "", "", "Error", "Missing token")
@@ -199,7 +186,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSONRPCResponse(w, rpcReq.ID, result)
 }
 
-// HandleSessionDelete terminates an MCP session. Responds 204 (idempotent).
+// HandleSessionDelete terminates an MCP session.
 func (s *MCPGatewayServer) HandleSessionDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -243,9 +230,6 @@ func writeJSONRPCResponse(w http.ResponseWriter, id any, result any) {
 }
 
 func (s *MCPGatewayServer) HandleConsentCallback(w http.ResponseWriter, r *http.Request) {
-	// Resolved from the hostname, and passed down so the service can reject a
-	// state parameter naming a different tenant. The callback URL is per tenant,
-	// so the hostname is authoritative about which tenant's flow this is.
 	scope, err := s.resolveScope(r)
 	if err != nil {
 		s.respondUnresolvedTenant(w, r, err)
@@ -281,22 +265,6 @@ const consentSuccessHTML = `<!DOCTYPE html>
 <body><h1>Authorization successful</h1><p>You can close this window.</p></body>
 </html>`
 
-// HandleProtectedResourceMetadata serves RFC 9728 Protected Resource Metadata on
-// the Gateway host. This is how an MCP client (Claude Desktop, Gemini CLI, etc.)
-// discovers which Authorization Server protects this Gateway.
-//
-// Claude Desktop's documented behavior: on a 401 with
-// `resource_metadata="<url>"` in the WWW-Authenticate header, it fetches that
-// URL. If the header is absent, it falls back to probing
-// `/.well-known/oauth-protected-resource` on the server's origin. Both paths end
-// here.
-//
-// The response tells the client two things:
-//   - `resource`: the protected resource identifier (the Gateway's /mcp URL)
-//   - `authorization_servers`: which AS to use (the tenant's -mcp host)
-//
-// These are per-tenant because each tenant has its own Auth Server endpoint and
-// its own Gateway endpoint.
 func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	scope, err := s.resolveScope(r)
 	if err != nil {
@@ -304,11 +272,8 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 		return
 	}
 
-	// The Auth Server for this tenant lives on the -mcp host.
 	authServerURL := s.resolver.BaseURLFor(scope.Subdomain(), platform.ServiceMCPAuth)
 	if authServerURL == "" {
-		// Should not happen for a valid scope, but fail closed rather than
-		// advertising an empty authorization_servers array.
 		writeGatewayError(w, http.StatusInternalServerError, "unable to determine authorization server for this tenant")
 		return
 	}
@@ -321,10 +286,6 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, metadata)
 }
 
-// emitTracing records a live diagnostic entry for the tenant handling this
-// request. tenantID is required — the buffer is shared across tenants and an
-// entry carries the end user's identity, so an unattributed entry is dropped by
-// the bus rather than shown to anyone.
 func (s *MCPGatewayServer) emitTracing(r *http.Request, tenantID uuid.UUID, userID string, resource string, severity string, detail string) {
 	if s.tracingBus == nil {
 		return
