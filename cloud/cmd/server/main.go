@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,7 +19,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/config"
-	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
@@ -400,61 +398,13 @@ func buildHTTPServer(
 		mcpDipole.RegisterMCPServerRoutes(mux)
 	}
 
-	handler := applyMiddleware(mux, authenticator, parseCORSOrigins(cfg.CORSAllowedOrigins))
+	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins))
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-}
-
-func applyMiddleware(mux *http.ServeMux, authenticator rest.APIAuthenticator, allowedOrigins []string) http.Handler {
-	rateLimiter := rest.NewRateLimiter(100, 30)
-
-	protected := rateLimiter.Middleware(mux)
-	protected = rest.AuthMiddleware(authenticator)(protected)
-
-	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPublicPath(r.URL.Path) {
-			mux.ServeHTTP(w, r)
-			return
-		}
-		protected.ServeHTTP(w, r)
-	})
-
-	return rest.RequestIDMiddleware(rest.CORSMiddleware(allowedOrigins)(rest.ResourceSetMiddleware(routed)))
-}
-
-func isPublicPath(path string) bool {
-	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/signup" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/api/v1/auth/sso/") || strings.HasPrefix(path, "/internal/") {
-		return true
-	}
-	if strings.HasPrefix(path, "/edge/") {
-		return true
-	}
-	if strings.HasPrefix(path, "/.well-known/") ||
-		strings.HasPrefix(path, "/register") ||
-		strings.HasPrefix(path, "/connect/") ||
-		strings.HasPrefix(path, "/callback/") ||
-		strings.HasPrefix(path, "/mcp") {
-		return true
-	}
-	return false
-}
-
-func parseCORSOrigins(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	var origins []string
-	for _, o := range strings.Split(raw, ",") {
-		o = strings.TrimSpace(o)
-		if o != "" {
-			origins = append(origins, o)
-		}
-	}
-	return origins
 }
 
 func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, logger *slog.Logger) {
@@ -513,71 +463,4 @@ func setupLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	}))
-}
-
-// devBootstrap creates a tenant, an admin user, and an API token so a fresh
-// local database is immediately usable.
-//
-// It is gated behind DIPOLE_DEV_BOOTSTRAP and does nothing otherwise. It used
-// to run in EVERY environment, which is how staging ended up with a phantom
-// "dev" tenant: with no tenant env vars set it invented one, wrote it back into
-// the config, and every MCP service then bound to it — so requests were served
-// as a tenant that contained none of the real customer's configuration.
-//
-// It also creates a well-known password, which must never exist in a deployed
-// environment.
-func devBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *config.Config, logger *slog.Logger) error {
-	if !cfg.DevBootstrap {
-		return nil
-	}
-
-	const devSubdomain = "dev"
-
-	existing, err := repos.Tenants.GetBySubdomain(ctx, devSubdomain)
-	if err != nil {
-		return fmt.Errorf("lookup dev tenant: %w", err)
-	}
-	if existing != nil {
-		logger.Info("dev tenant already present", "id", existing.ID, "subdomain", existing.Subdomain)
-		return nil
-	}
-
-	token, err := service.GenerateAPIToken()
-	if err != nil {
-		return fmt.Errorf("generate api token: %w", err)
-	}
-
-	tenant := &domain.Tenant{
-		Name:         "Dev Tenant",
-		Subdomain:    devSubdomain,
-		APITokenHash: service.HashAPIToken(token),
-	}
-	if err := repos.Tenants.Create(ctx, tenant); err != nil {
-		return fmt.Errorf("create dev tenant: %w", err)
-	}
-
-	passwordHash, err := service.HashPassword("admin123")
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
-	}
-	adminUser := &domain.User{
-		Email:        "admin@dipole.dev",
-		Name:         "Admin",
-		FirstName:    "Admin",
-		IsActive:     true,
-		PasswordHash: passwordHash,
-	}
-	if err := repos.Users.Create(ctx, tenant.ID, adminUser); err != nil {
-		return fmt.Errorf("create dev admin user: %w", err)
-	}
-
-	logger.Warn("DEV BOOTSTRAP: created tenant with a well-known password — local development only",
-		"tenant_id", tenant.ID,
-		"subdomain", devSubdomain,
-		"email", "admin@dipole.dev",
-		"password", "admin123",
-		"api_token", token,
-	)
-
-	return nil
 }
