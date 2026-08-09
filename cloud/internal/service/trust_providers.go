@@ -1,5 +1,7 @@
-// Package service — trust_providers.go implements business logic and
-// validation for Trust Providers, sitting between transport and repository.
+/*
+Package service — trust_providers.go implements business logic and
+validation for Trust Providers, sitting between transport and repository.
+*/
 package service
 
 import (

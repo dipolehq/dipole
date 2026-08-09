@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 )
 
@@ -38,14 +39,14 @@ func (r *MCPUserCredentialRepo) Get(ctx context.Context, tenantID uuid.UUID, use
 		return nil, nil
 	}
 
-	accessToken, err := Decrypt(accessEnc, r.encKey)
+	accessToken, err := crypto.Decrypt(accessEnc, r.encKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var refreshToken string
 	if len(refreshEnc) > 0 {
-		rt, err := Decrypt(refreshEnc, r.encKey)
+		rt, err := crypto.Decrypt(refreshEnc, r.encKey)
 		if err == nil {
 			refreshToken = string(rt)
 		}
@@ -59,14 +60,14 @@ func (r *MCPUserCredentialRepo) Get(ctx context.Context, tenantID uuid.UUID, use
 }
 
 func (r *MCPUserCredentialRepo) Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, token *gw.UserTokenEntry) error {
-	accessEnc, err := Encrypt([]byte(token.AccessToken), r.encKey)
+	accessEnc, err := crypto.Encrypt([]byte(token.AccessToken), r.encKey)
 	if err != nil {
 		return err
 	}
 
 	var refreshEnc []byte
 	if token.RefreshToken != "" {
-		refreshEnc, err = Encrypt([]byte(token.RefreshToken), r.encKey)
+		refreshEnc, err = crypto.Encrypt([]byte(token.RefreshToken), r.encKey)
 		if err != nil {
 			return err
 		}

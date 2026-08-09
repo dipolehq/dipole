@@ -1,4 +1,10 @@
-package postgres
+/*
+Package crypto provides AES-256-GCM encryption and decryption used across
+the codebase for encrypting credential provider configs, MFA secrets, PKI
+keys, and MCP user tokens at rest. Deliberately separate from the repository
+layer: encryption is a cross-cutting concern, not a database concern.
+*/
+package crypto
 
 import (
 	"crypto/aes"

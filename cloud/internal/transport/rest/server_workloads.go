@@ -1,5 +1,7 @@
-// Package rest — server_workloads.go is the HTTP handler for the Server
-// Workloads resource (typed handler → service → repository with DTOs).
+/*
+Package rest — server_workloads.go is the HTTP handler for the Server
+Workloads resource (typed handler → service → repository with DTOs).
+*/
 package rest
 
 import (

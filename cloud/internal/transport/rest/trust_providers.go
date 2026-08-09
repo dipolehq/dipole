@@ -1,5 +1,7 @@
-// Package rest — trust_providers.go is the HTTP handler for the Trust
-// Providers resource (typed handler → service → repository with DTOs).
+/*
+Package rest — trust_providers.go is the HTTP handler for the Trust
+Providers resource (typed handler → service → repository with DTOs).
+*/
 package rest
 
 import (

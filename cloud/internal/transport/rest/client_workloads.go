@@ -1,6 +1,8 @@
-// Package rest — client_workloads.go is the HTTP handler for the Client
-// Workloads resource and the reference implementation of the CRUD pattern
-// (typed handler → service → repository with request/response DTOs).
+/*
+Package rest — client_workloads.go is the HTTP handler for the Client
+Workloads resource and the reference implementation of the CRUD pattern
+(typed handler → service → repository with request/response DTOs).
+*/
 package rest
 
 import (

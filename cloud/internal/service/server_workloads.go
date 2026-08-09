@@ -1,5 +1,7 @@
-// Package service — server_workloads.go implements business logic and
-// validation for Server Workloads, sitting between transport and repository.
+/*
+Package service — server_workloads.go implements business logic and
+validation for Server Workloads, sitting between transport and repository.
+*/
 package service
 
 import (

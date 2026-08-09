@@ -1,5 +1,7 @@
-// Package service — access_conditions.go implements business logic and
-// validation for Access Conditions, sitting between transport and repository.
+/*
+Package service — access_conditions.go implements business logic and
+validation for Access Conditions, sitting between transport and repository.
+*/
 package service
 
 import (

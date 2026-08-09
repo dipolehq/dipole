@@ -1,5 +1,7 @@
-// Package rest — api_handlers.go holds the legacy CRUD handlers for resources
-// not yet migrated to the per-resource handler + service pattern.
+/*
+Package rest — api_handlers.go holds the legacy CRUD handlers for resources
+not yet migrated to the per-resource handler + service pattern.
+*/
 package rest
 
 import (

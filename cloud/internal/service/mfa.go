@@ -1,14 +1,16 @@
 /*
-mfa.go implements Multi-Factor Authentication (TOTP + Backup Codes):
+mfa.go implements Multi-Factor Authentication (TOTP + Backup Codes).
 
-  - Setup: Generates a TOTP secret, encrypts it, stores it (not yet enabled).
-    Returns the secret and otpauth:// URI for QR code generation.
-  - Verify: Validates a 6-digit TOTP code against the stored secret.
-    On success, marks MFA as enabled.
-  - BackupCodes: Generates 10 single-use backup codes, encrypts and stores them.
-  - UseBackupCode: Validates and consumes a backup code.
-  - Reset: Deletes all MFA config for a user.
-  - Status: Returns whether MFA is configured and enabled.
+Setup generates a TOTP secret, encrypts it, stores it (not yet enabled), and
+returns the secret and otpauth URI for QR code generation. Verify validates a
+6-digit TOTP code against the stored secret and marks MFA as enabled on success.
+GenerateBackupCodes creates 10 single-use recovery codes, encrypted at rest.
+UseBackupCode validates and consumes one (case-insensitive). Reset deletes all
+MFA config for a user. GetStatus/IsEnabled report current state.
+
+MFAService is stateless with respect to tenant: every method takes tenantID as
+an explicit parameter resolved per-request from the caller's JWT, rather than
+baked in at construction. This lets a single instance serve every tenant.
 */
 package service
 
@@ -23,21 +25,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 )
 
 const (
 	mfaIssuerName    = "Dipole"
 	backupCodeCount  = 10
-	backupCodeLength = 8 // characters per code
+	backupCodeLength = 8
 )
 
-// MFAService is stateless with respect to tenant — every method takes
-// tenantID as an explicit parameter, resolved per-request from the caller's
-// JWT (via TenantIDFromContext) rather than baked in at construction. This
-// lets a single MFAService instance serve every tenant correctly.
 type MFAService struct {
 	mfaRepo repository.UserMFARepository
 	encKey  []byte
@@ -91,7 +89,7 @@ func (s *MFAService) Setup(ctx context.Context, tenantID, userID uuid.UUID, user
 		return nil, fmt.Errorf("generate totp key: %w", err)
 	}
 
-	secretEncrypted, err := postgres.Encrypt([]byte(key.Secret()), s.encKey)
+	secretEncrypted, err := crypto.Encrypt([]byte(key.Secret()), s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt totp secret: %w", err)
 	}
@@ -133,7 +131,7 @@ func (s *MFAService) Verify(ctx context.Context, tenantID, userID uuid.UUID, cod
 		return fmt.Errorf("MFA not configured")
 	}
 
-	secret, err := postgres.Decrypt(mfa.TOTPSecretEncrypted, s.encKey)
+	secret, err := crypto.Decrypt(mfa.TOTPSecretEncrypted, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt totp secret: %w", err)
 	}
@@ -161,7 +159,7 @@ func (s *MFAService) ValidateCode(ctx context.Context, tenantID, userID uuid.UUI
 		return fmt.Errorf("MFA not enabled")
 	}
 
-	secret, err := postgres.Decrypt(mfa.TOTPSecretEncrypted, s.encKey)
+	secret, err := crypto.Decrypt(mfa.TOTPSecretEncrypted, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt totp secret: %w", err)
 	}
@@ -191,7 +189,7 @@ func (s *MFAService) GenerateBackupCodes(ctx context.Context, tenantID, userID u
 		return nil, fmt.Errorf("marshal backup codes: %w", err)
 	}
 
-	encrypted, err := postgres.Encrypt(codesJSON, s.encKey)
+	encrypted, err := crypto.Encrypt(codesJSON, s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt backup codes: %w", err)
 	}
@@ -214,7 +212,7 @@ func (s *MFAService) UseBackupCode(ctx context.Context, tenantID, userID uuid.UU
 		return fmt.Errorf("no backup codes configured")
 	}
 
-	decrypted, err := postgres.Decrypt(mfa.BackupCodesEncrypted, s.encKey)
+	decrypted, err := crypto.Decrypt(mfa.BackupCodesEncrypted, s.encKey)
 	if err != nil {
 		return fmt.Errorf("decrypt backup codes: %w", err)
 	}
@@ -231,7 +229,7 @@ func (s *MFAService) UseBackupCode(ctx context.Context, tenantID, userID uuid.UU
 	for _, c := range codes {
 		if !found && strings.ToLower(c) == normalizedInput {
 			found = true
-			continue // consume it
+			continue
 		}
 		remaining = append(remaining, c)
 	}
@@ -245,7 +243,7 @@ func (s *MFAService) UseBackupCode(ctx context.Context, tenantID, userID uuid.UU
 	if err != nil {
 		return fmt.Errorf("marshal remaining codes: %w", err)
 	}
-	encrypted, err := postgres.Encrypt(remainingJSON, s.encKey)
+	encrypted, err := crypto.Encrypt(remainingJSON, s.encKey)
 	if err != nil {
 		return fmt.Errorf("encrypt remaining codes: %w", err)
 	}

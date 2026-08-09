@@ -1,5 +1,7 @@
-// Package rest — access_conditions.go is the HTTP handler for the Access
-// Conditions resource (typed handler → service → repository with DTOs).
+/*
+Package rest — access_conditions.go is the HTTP handler for the Access
+Conditions resource (typed handler → service → repository with DTOs).
+*/
 package rest
 
 import (
