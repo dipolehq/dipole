@@ -41,14 +41,22 @@ const DefaultDomain = "dipolehq.com"
 
 // Hosts builds and parses per-tenant service hostnames for one platform domain.
 type Hosts struct {
-	domain string
+	domain    string
+	envSuffix string
 }
 
-func NewHosts(domain string) *Hosts {
+func NewHosts(domain string, env string) *Hosts {
 	if domain == "" {
 		domain = DefaultDomain
 	}
-	return &Hosts{domain: strings.ToLower(strings.TrimSpace(domain))}
+	envSuffix := ""
+	if env == "staging" {
+		envSuffix = "-staging"
+	}
+	return &Hosts{
+		domain:    strings.ToLower(strings.TrimSpace(domain)),
+		envSuffix: envSuffix,
+	}
 }
 
 func (h *Hosts) Domain() string { return h.domain }
@@ -82,7 +90,7 @@ func (h *Hosts) urlFor(tenantSubdomain string, svc Service) string {
 	if !IsValidSubdomain(tenantSubdomain) {
 		return ""
 	}
-	return "https://" + tenantSubdomain + "-" + string(svc) + "." + h.domain
+	return "https://" + tenantSubdomain + "-" + string(svc) + h.envSuffix + "." + h.domain
 }
 
 const maxSubdomainLen = 50

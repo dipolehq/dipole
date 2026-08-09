@@ -17,7 +17,7 @@ import (
 )
 
 // recordingGatewayAuth captures the expected audience the transport derived from
-// the request hostname, which is what binds a token to one tenant.
+// the request hostname.
 type recordingGatewayAuth struct {
 	called       bool
 	gotAudience  string
@@ -36,8 +36,6 @@ func (a *recordingGatewayAuth) Authenticate(token string, expectedAudience strin
 	return &gw.AuthResult{UserID: a.resultUserID, Claims: map[string]any{}}, nil
 }
 
-// recordingMethodHandler captures the RequestContext so tests can assert the
-// tenant scope handed to the business layer.
 type recordingMethodHandler struct {
 	called  bool
 	gotCtx  *gw.RequestContext
@@ -51,7 +49,6 @@ func (h *recordingMethodHandler) HandleMethod(_ context.Context, rCtx *gw.Reques
 	return map[string]any{}, nil
 }
 
-// recordingConsentHandler captures the scope the consent callback resolved.
 type recordingConsentHandler struct {
 	called   bool
 	gotState string
@@ -71,8 +68,6 @@ const (
 	gwTenantBSubdomain = "889900"
 )
 
-// newGatewayTestServer builds a Gateway wired to a resolver that knows two
-// tenants, so cross-tenant behaviour can be asserted.
 func newGatewayTestServer(t *testing.T) (*MCPGatewayServer, *recordingGatewayAuth, *recordingMethodHandler, map[string]*domain.Tenant) {
 	t.Helper()
 
@@ -81,7 +76,7 @@ func newGatewayTestServer(t *testing.T) (*MCPGatewayServer, *recordingGatewayAut
 		gwTenantBSubdomain: {ID: uuid.New(), Name: "Tenant B", Subdomain: gwTenantBSubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	auth := &recordingGatewayAuth{resultUserID: "alice@corp.com"}
 	handler := &recordingMethodHandler{}
@@ -129,8 +124,6 @@ func TestGatewayHandleMCP_ResolvesTenantFromHostname(t *testing.T) {
 	}
 }
 
-// The Gateway now serves every tenant, and each tenant's hostname must produce
-// that tenant's scope and that tenant's expected audience.
 func TestGatewayHandleMCP_ServesEveryTenantWithItsOwnScope(t *testing.T) {
 	srv, auth, handler, tenants := newGatewayTestServer(t)
 
@@ -151,9 +144,6 @@ func TestGatewayHandleMCP_ServesEveryTenantWithItsOwnScope(t *testing.T) {
 	}
 }
 
-// All routes share one mux, so POST /mcp is reachable on the MCP Authorization
-// Server hostname too. Without a service check the Auth Server's base URL would
-// be passed to left-side auth as the expected token audience.
 func TestGatewayHandleMCP_RejectsNonGatewayServiceHost(t *testing.T) {
 	srv, auth, handler, _ := newGatewayTestServer(t)
 
@@ -168,9 +158,6 @@ func TestGatewayHandleMCP_RejectsNonGatewayServiceHost(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("host %s: expected 404, got %d", host, rec.Code)
 		}
-		// The tenant resolved fine here — only the service was wrong. The error
-		// must say so, so a 404 while debugging an MCP client doesn't look like
-		// broken DNS or a missing tenant.
 		if _, err := srv.resolveScope(req); !errors.Is(err, ErrNotGatewayHost) {
 			t.Errorf("host %s: expected ErrNotGatewayHost, got %v", host, err)
 		}
@@ -209,9 +196,6 @@ func TestGatewayHandleMCP_UnresolvableHostsFailClosed(t *testing.T) {
 	}
 }
 
-// A missing token on a valid Gateway hostname must still produce the 401 +
-// WWW-Authenticate that makes an MCP client begin OAuth discovery. Resolving the
-// tenant first must not turn that into a 404.
 func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
 	srv, auth, _, _ := newGatewayTestServer(t)
 
@@ -225,9 +209,6 @@ func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
 	if wwwAuth == "" {
 		t.Fatal("expected a WWW-Authenticate challenge")
 	}
-	// RFC 9728: the challenge must contain resource_metadata pointing at the
-	// Gateway host's protected-resource document so the MCP client knows where
-	// to discover the Authorization Server.
 	wantMetadata := `resource_metadata="https://` + gwTenantASubdomain + `-mcpgateway.dipolehq.com/.well-known/oauth-protected-resource"`
 	if !strings.Contains(wwwAuth, wantMetadata) {
 		t.Errorf("WWW-Authenticate missing resource_metadata:\n  got:  %s\n  want substring: %s", wwwAuth, wantMetadata)
@@ -252,15 +233,13 @@ func TestGatewayHandleMCP_InvalidTokenReturns401(t *testing.T) {
 	}
 }
 
-// Tracing entries carry the end user's identity, so they must be attributed to
-// the tenant that served the request and never emitted unattributed.
 func TestGatewayHandleMCP_TracingEntriesAreTenantScoped(t *testing.T) {
 	tenants := map[string]*domain.Tenant{
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 		gwTenantBSubdomain: {ID: uuid.New(), Name: "Tenant B", Subdomain: gwTenantBSubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 	bus := gw.NewTracingBus()
 
 	srv := NewMCPGatewayServer(
@@ -270,7 +249,6 @@ func TestGatewayHandleMCP_TracingEntriesAreTenantScoped(t *testing.T) {
 
 	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
 	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest(gwTenantBSubdomain+"-mcpgateway.dipolehq.com", "tok"))
-	// Unattributable: must produce no entry for anyone.
 	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest("api.dipolehq.com", "tok"))
 
 	aEntries := bus.Recent(tenants[gwTenantASubdomain].ID)
@@ -295,7 +273,7 @@ func TestGatewayConsentCallback_ResolvesTenantFromHostname(t *testing.T) {
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 	consent := &recordingConsentHandler{}
 
 	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
@@ -326,7 +304,7 @@ func TestGatewayConsentCallback_UnresolvableHostFailsClosed(t *testing.T) {
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 	consent := &recordingConsentHandler{}
 
 	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
@@ -346,14 +324,12 @@ func TestGatewayConsentCallback_UnresolvableHostFailsClosed(t *testing.T) {
 	}
 }
 
-// RFC 9728: the Gateway host must serve Protected Resource Metadata so MCP
-// clients can discover which Authorization Server protects this resource.
 func TestGatewayProtectedResourceMetadata_ReturnsCorrectAuthServer(t *testing.T) {
 	tenants := map[string]*domain.Tenant{
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
 
@@ -388,13 +364,12 @@ func TestGatewayProtectedResourceMetadata_ReturnsCorrectAuthServer(t *testing.T)
 	}
 }
 
-// The endpoint must only be served on the Gateway host, not on -mcp or -id.
 func TestGatewayProtectedResourceMetadata_RejectsNonGatewayHost(t *testing.T) {
 	tenants := map[string]*domain.Tenant{
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
 
@@ -410,13 +385,12 @@ func TestGatewayProtectedResourceMetadata_RejectsNonGatewayHost(t *testing.T) {
 	}
 }
 
-// The endpoint must fail closed for unknown tenants.
 func TestGatewayProtectedResourceMetadata_UnknownTenantFailsClosed(t *testing.T) {
 	tenants := map[string]*domain.Tenant{
 		gwTenantASubdomain: {ID: uuid.New(), Name: "Tenant A", Subdomain: gwTenantASubdomain},
 	}
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
 
