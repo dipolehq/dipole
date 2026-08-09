@@ -5,6 +5,27 @@ from Credential Providers.
 CredentialBrokerImpl decrypts stored credential configs (AES-256-GCM), dispatches
 to type-specific handlers, caches results, and returns credential values.
 Decrypted values are never logged or stored beyond the Retrieve() call scope.
+
+tenantID is required on Retrieve because several credential types mint a token
+signed by us, and the iss claim must be the requesting tenant's identity host.
+AWS STS, Azure Entra and GCP WIF all fetch OIDC discovery from iss and reject a
+mismatch. One process serves every tenant, so the issuer URL cannot be fixed at
+startup.
+
+Cache entries are keyed by credential provider ID, and a provider belongs to
+exactly one tenant, so a cached credential can never cross tenants. Static types
+(api_key, username_password) bypass the cache since they never expire.
+
+selfSignedCredentialTypes lists types where we mint the token and need the
+tenant's identity issuer URL. Everything else either returns a stored secret or
+fetches a token from an external provider. aws_secrets_manager and
+azure_key_vault don't sign tokens directly but authenticate to the secret store
+by delegating to the STS/Azure WIF handlers, which do.
+
+tenantIssuerURL fails closed for self-signed types: a wrong iss would be
+accepted here and then rejected opaquely by AWS/Azure/GCP, which is far harder
+to diagnose than an explicit error. An empty IssuerURL would silently fall back
+to the platform issuer, so we refuse to build one from an invalid subdomain.
 */
 package credentials
 
@@ -13,26 +34,17 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	"github.com/google/uuid"
 )
 
-// CredentialBroker retrieves the credential a policy authorises.
-//
-// tenantID is required because several credential types mint a token signed by
-// us, and the `iss` claim on those tokens must be the REQUESTING TENANT's
-// identity host — AWS STS, Azure Entra and GCP WIF all fetch OIDC discovery
-// from `iss` and reject a mismatch. One process serves every tenant, so the
-// issuer URL cannot be fixed at startup.
 type CredentialBroker interface {
 	Retrieve(ctx context.Context, tenantID uuid.UUID, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
-// TenantLookup is the subset of the tenant repository the broker needs in order
-// to derive a tenant's identity issuer URL.
 type TenantLookup interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error)
 }
@@ -86,35 +98,27 @@ func NewCredentialBroker(encryptionKey []byte, issuer *identity.IdentityIssuer, 
 }
 
 func (b *CredentialBrokerImpl) Retrieve(ctx context.Context, tenantID uuid.UUID, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
-	// Check cache (skip for static types). Cache entries are keyed by credential
-	// provider ID, and a provider belongs to exactly one tenant, so a cached
-	// credential can never cross tenants.
 	if provider.Type != "api_key" && provider.Type != "username_password" {
 		if cached, ok := b.cache.Get(provider.ID); ok {
 			return cached, nil
 		}
 	}
 
-	// Decrypt config
-	configJSON, err := postgres.Decrypt(provider.ConfigEncrypted, b.encryptionKey)
+	configJSON, err := crypto.Decrypt(provider.ConfigEncrypted, b.encryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt credential config: %w", err)
 	}
 
-	// Resolved lazily — only needed on a cache miss, and only by the credential
-	// types that mint a token we sign.
 	issuerURL, err := b.tenantIssuerURL(ctx, tenantID, provider.Type)
 	if err != nil {
 		return nil, err
 	}
 
-	// Dispatch to handler
 	cred, err := b.dispatch(ctx, provider.Type, configJSON, issuerURL, evidence, trustClaims)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache result
 	if ttl := CacheTTL(provider.Type, cred.ExpiresAt); ttl > 0 {
 		b.cache.Set(provider.ID, cred, ttl)
 	}
@@ -122,10 +126,6 @@ func (b *CredentialBrokerImpl) Retrieve(ctx context.Context, tenantID uuid.UUID,
 	return cred, nil
 }
 
-// selfSignedCredentialTypes are the credential types where WE mint the token,
-// so the tenant's identity issuer URL becomes the `iss` claim and must be
-// correct. Everything else either returns a stored secret or fetches a token
-// from an external provider, and never embeds our issuer.
 var selfSignedCredentialTypes = map[string]bool{
 	"dipole_access_token": true,
 	"oidc_id_token":       true,
@@ -135,16 +135,10 @@ var selfSignedCredentialTypes = map[string]bool{
 	"azure_entra_wif":     true,
 	"gcp_wif":             true,
 	"claude_wif":          true,
-	// These two don't sign a token directly, but they authenticate to the secret
-	// store by delegating to the STS / Azure WIF handlers, which do.
 	"aws_secrets_manager": true,
 	"azure_key_vault":     true,
 }
 
-// tenantIssuerURL resolves the requesting tenant's identity host. It fails
-// closed for the credential types that need it: a wrong `iss` would be accepted
-// here and then rejected opaquely by AWS/Azure/GCP, which is far harder to
-// diagnose than an explicit error.
 func (b *CredentialBrokerImpl) tenantIssuerURL(ctx context.Context, tenantID uuid.UUID, providerType string) (string, error) {
 	if !selfSignedCredentialTypes[providerType] {
 		return "", nil
@@ -163,11 +157,6 @@ func (b *CredentialBrokerImpl) tenantIssuerURL(ctx context.Context, tenantID uui
 
 	issuerURL := b.hosts.IdentityIssuerURL(tenant.Subdomain)
 	if issuerURL == "" {
-		// The subdomain can't form a valid hostname, so we cannot produce a
-		// correct `iss`. Failing here is essential: an empty IssuerURL would
-		// silently fall back to the platform issuer, and the relying party
-		// (AWS/Azure/GCP) would reject the token with an error that gives no
-		// hint the issuer was wrong.
 		return "", fmt.Errorf(
 			"cannot build token issuer URL for tenant %s: subdomain %q is not a valid hostname label",
 			tenantID, tenant.Subdomain)

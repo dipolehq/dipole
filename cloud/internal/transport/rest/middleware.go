@@ -218,3 +218,48 @@ func extractAPIToken(r *http.Request) string {
 	}
 	return parts[1]
 }
+
+func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string) http.Handler {
+	rateLimiter := NewRateLimiter(100, 30)
+	protected := rateLimiter.Middleware(mux)
+	protected = AuthMiddleware(authenticator)(protected)
+	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsPublicPath(r.URL.Path) {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		protected.ServeHTTP(w, r)
+	})
+	return RequestIDMiddleware(CORSMiddleware(allowedOrigins)(ResourceSetMiddleware(routed)))
+}
+
+func IsPublicPath(path string) bool {
+	if path == "/api/v1/health" || path == "/api/v1/auth/login" || path == "/api/v1/auth/signup" || path == "/api/v1/auth/forgot-password" || path == "/api/v1/auth/reset-password" || path == "/api/v1/auth/mfa-verify" || strings.HasPrefix(path, "/api/v1/auth/sso/") || strings.HasPrefix(path, "/internal/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/edge/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/.well-known/") ||
+		strings.HasPrefix(path, "/register") ||
+		strings.HasPrefix(path, "/connect/") ||
+		strings.HasPrefix(path, "/callback/") ||
+		strings.HasPrefix(path, "/mcp") {
+		return true
+	}
+	return false
+}
+
+func ParseCORSOrigins(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var origins []string
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}

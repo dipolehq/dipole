@@ -94,9 +94,6 @@ migrate-force: ## Force schema to VERSION and clear dirty flag (recovery only): 
 run: ## Run the cloud server (REST + gRPC)
 	@cd $(CLOUD_DIR) && if [ -f .env ]; then set -a && . ./.env && set +a; fi && go run ./cmd/server
 
-.PHONY: bootstrap
-bootstrap: ## Provision a dev tenant and print an API token: make bootstrap [SUBDOMAIN=dev]
-	cd $(CLOUD_DIR) && go run ./cmd/bootstrap $(if $(SUBDOMAIN),-subdomain $(SUBDOMAIN),)
 
 .PHONY: build
 build: ## Build all cloud binaries

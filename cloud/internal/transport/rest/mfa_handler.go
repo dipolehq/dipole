@@ -9,20 +9,27 @@ mfa_handler.go serves the MFA (multi-factor authentication) profile endpoints:
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
-	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/google/uuid"
+
+	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
+type userByEmailResolver interface {
+	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.User, error)
+}
+
 type MFAHandler struct {
 	mfaSvc *service.MFAService
-	users  repository.UserRepository
+	users  userByEmailResolver
 	audit  *AuditEmitter
 }
 
-func NewMFAHandler(mfaSvc *service.MFAService, users repository.UserRepository) *MFAHandler {
+func NewMFAHandler(mfaSvc *service.MFAService, users userByEmailResolver) *MFAHandler {
 	return &MFAHandler{mfaSvc: mfaSvc, users: users}
 }
 

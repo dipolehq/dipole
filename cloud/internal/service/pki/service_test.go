@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 )
 
 type mockTenantCARepo struct {
@@ -131,7 +131,7 @@ func TestGetOrCreateTenantCA_EncryptsKeyAtRest(t *testing.T) {
 		t.Fatalf("GetOrCreateTenantCA: %v", err)
 	}
 
-	decrypted, err := postgres.Decrypt(repo.keyEncrypted, encKey)
+	decrypted, err := crypto.Decrypt(repo.keyEncrypted, encKey)
 	if err != nil {
 		t.Fatalf("decrypt stored key: %v", err)
 	}

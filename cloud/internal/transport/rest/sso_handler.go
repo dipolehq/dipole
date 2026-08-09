@@ -7,6 +7,7 @@ sso_handler.go serves SSO authentication endpoints:
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -14,20 +15,24 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
+type identityProviderStore interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.IdentityProvider, int, error)
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.IdentityProvider, error)
+}
+
 type SSOHandler struct {
-	idpRepo  repository.IdentityProviderRepository
+	idpRepo  identityProviderStore
 	ssoSvc   *service.AdminSSOService
 	issuer   *identity.IdentityIssuer
 	tenantID uuid.UUID
 }
 
 func NewSSOHandler(
-	idpRepo repository.IdentityProviderRepository,
+	idpRepo identityProviderStore,
 	ssoSvc *service.AdminSSOService,
 	issuer *identity.IdentityIssuer,
 	tenantID uuid.UUID,

@@ -1,5 +1,7 @@
-// Package rest — access_policies.go is the HTTP handler for the Access
-// Policies resource (typed handler → service → repository with DTOs).
+/*
+Package rest — access_policies.go is the HTTP handler for the Access
+Policies resource (typed handler → service → repository with DTOs).
+*/
 package rest
 
 import (

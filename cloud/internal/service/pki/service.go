@@ -22,8 +22,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 )
 
 type TenantCAService struct {
@@ -41,7 +41,7 @@ func (s *TenantCAService) GetOrCreateTenantCA(ctx context.Context, tenantID uuid
 		return "", "", fmt.Errorf("generate CA: %w", err)
 	}
 
-	keyEncrypted, err := postgres.Encrypt([]byte(keyPEM), s.encryptionKey)
+	keyEncrypted, err := crypto.Encrypt([]byte(keyPEM), s.encryptionKey)
 	if err != nil {
 		return "", "", fmt.Errorf("encrypt CA key: %w", err)
 	}
@@ -51,7 +51,7 @@ func (s *TenantCAService) GetOrCreateTenantCA(ctx context.Context, tenantID uuid
 		return "", "", fmt.Errorf("store CA: %w", err)
 	}
 
-	storedKeyPEM, err := postgres.Decrypt(storedKeyEnc, s.encryptionKey)
+	storedKeyPEM, err := crypto.Decrypt(storedKeyEnc, s.encryptionKey)
 	if err != nil {
 		return "", "", fmt.Errorf("decrypt CA key: %w", err)
 	}

@@ -1,5 +1,7 @@
-// Package service — credential_providers.go implements business logic for
-// Credential Providers including encryption/decryption of config at rest.
+/*
+Package service — credential_providers.go implements business logic for
+Credential Providers including encryption/decryption of config at rest.
+*/
 package service
 
 import (
@@ -9,9 +11,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 )
 
 type CredentialProviderService struct {
@@ -41,7 +43,7 @@ func (s *CredentialProviderService) Get(ctx context.Context, tenantID, id uuid.U
 
 	var config json.RawMessage
 	if len(cp.ConfigEncrypted) > 0 {
-		decrypted, err := postgres.Decrypt(cp.ConfigEncrypted, s.encryptionKey)
+		decrypted, err := crypto.Decrypt(cp.ConfigEncrypted, s.encryptionKey)
 		if err != nil {
 			config = json.RawMessage("{}")
 		} else {
@@ -65,7 +67,7 @@ func (s *CredentialProviderService) Create(ctx context.Context, tenantID uuid.UU
 		return err
 	}
 
-	encrypted, err := postgres.Encrypt(configJSON, s.encryptionKey)
+	encrypted, err := crypto.Encrypt(configJSON, s.encryptionKey)
 	if err != nil {
 		return domain.NewValidationError("config", "failed to encrypt configuration")
 	}
@@ -88,7 +90,7 @@ func (s *CredentialProviderService) Update(ctx context.Context, tenantID uuid.UU
 		return domain.ErrNotFound
 	}
 
-	encrypted, err := postgres.Encrypt(configJSON, s.encryptionKey)
+	encrypted, err := crypto.Encrypt(configJSON, s.encryptionKey)
 	if err != nil {
 		return domain.NewValidationError("config", "failed to encrypt configuration")
 	}

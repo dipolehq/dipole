@@ -1,5 +1,7 @@
-// Package service — access_policies.go implements business logic and
-// validation for Access Policies, sitting between transport and repository.
+/*
+Package service — access_policies.go implements business logic and
+validation for Access Policies, sitting between transport and repository.
+*/
 package service
 
 import (

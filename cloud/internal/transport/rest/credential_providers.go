@@ -1,5 +1,7 @@
-// Package rest — credential_providers.go is the HTTP handler for the
-// Credential Providers resource with encrypted config at rest.
+/*
+Package rest — credential_providers.go is the HTTP handler for the
+Credential Providers resource with encrypted config at rest.
+*/
 package rest
 
 import (

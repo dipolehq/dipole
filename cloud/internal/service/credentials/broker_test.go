@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
-	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	"github.com/google/uuid"
 )
 
-var testKey = []byte("01234567890123456789012345678901") // 32 bytes
+var testKey = []byte("01234567890123456789012345678901")
 
 func testIssuer(t *testing.T) *identity.IdentityIssuer {
 	t.Helper()
@@ -26,8 +26,6 @@ func testIssuer(t *testing.T) *identity.IdentityIssuer {
 	return issuer
 }
 
-// stubTenantLookup lets the broker resolve a tenant subdomain, which it needs to
-// build the per-tenant token issuer URL.
 type stubTenantLookup struct {
 	tenant *domain.Tenant
 	err    error
@@ -57,7 +55,7 @@ var testTenantID = uuid.New()
 
 func encrypt(t *testing.T, plaintext string) []byte {
 	t.Helper()
-	ct, err := postgres.Encrypt([]byte(plaintext), testKey)
+	ct, err := crypto.Encrypt([]byte(plaintext), testKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +134,6 @@ func TestRetrieve_UnsupportedType_ReturnsError(t *testing.T) {
 	}
 }
 
-// decodeJWTClaim pulls a single claim out of a JWT payload without verifying the
-// signature — enough to assert which issuer was stamped on the token.
 func decodeJWTClaim(t *testing.T, token, claim string) string {
 	t.Helper()
 
@@ -157,10 +153,6 @@ func decodeJWTClaim(t *testing.T, token, claim string) string {
 	return s
 }
 
-// The whole point of threading tenantID into Retrieve: a token we sign must
-// carry the REQUESTING tenant's identity host as `iss`. AWS STS / Azure Entra /
-// GCP WIF fetch OIDC discovery from `iss` and reject a mismatch, so a shared or
-// stale issuer silently breaks federation for every tenant but one.
 func TestRetrieve_SelfSignedToken_UsesRequestingTenantIssuer(t *testing.T) {
 	tenantA := uuid.New()
 	tenantB := uuid.New()
@@ -204,8 +196,6 @@ func TestRetrieve_SelfSignedToken_UsesRequestingTenantIssuer(t *testing.T) {
 	}
 }
 
-// A credential type that never embeds our issuer must not require a tenant
-// lookup, so a lookup failure can't break unrelated credential types.
 func TestRetrieve_StoredSecret_DoesNotRequireTenantLookup(t *testing.T) {
 	broker := NewCredentialBroker(
 		testKey,
@@ -227,14 +217,11 @@ func TestRetrieve_StoredSecret_DoesNotRequireTenantLookup(t *testing.T) {
 	}
 }
 
-// Fail closed: if we can't determine the tenant's issuer, refuse rather than
-// signing a token with the wrong `iss` that the cloud provider will reject
-// opaquely later.
 func TestRetrieve_SelfSignedToken_UnknownTenantFailsClosed(t *testing.T) {
 	broker := NewCredentialBroker(
 		testKey,
 		testIssuer(t),
-		&stubTenantLookup{tenant: nil}, // resolves to "not found"
+		&stubTenantLookup{tenant: nil},
 		platform.NewHosts("dipolehq.com"),
 	)
 	provider := &domain.CredentialProvider{
