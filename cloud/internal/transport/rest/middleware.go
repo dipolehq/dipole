@@ -244,6 +244,10 @@ func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowed
 func ProxySecretMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if r.Header.Get("X-Dipole-Proxy-Secret") != secret {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
