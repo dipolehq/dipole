@@ -8,7 +8,7 @@ import type { PolicyFormValues } from '@/features/policies/types/formValues'
 export const EMPTY_POLICY_FORM_VALUES: PolicyFormValues = {
   name: '',
   description: '',
-  status: '',
+  status: 'active',
   tags: [],
 
   clientWorkloadId: '',
