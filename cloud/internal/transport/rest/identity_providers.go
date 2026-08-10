@@ -104,6 +104,7 @@ func (h *APIHandlers) UpdateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	idp := req.toDomain()
 	idp.ID = id
 	idp.TenantID = tenantID
+	idp.Config = preserveSecrets(existing.Config, idp.Config)
 	if err := h.identityProviders.Update(r.Context(), tenantID, &idp); err != nil {
 		respondDomainError(w, err)
 		return
@@ -212,4 +213,37 @@ func toIdpResponses(idps []domain.IdentityProvider) []idpResponse {
 		resp = append(resp, toIdpResponse(&idps[i]))
 	}
 	return resp
+}
+
+// preserveSecrets merges incoming config with the existing config, preserving
+// secret fields (clientSecret) when the incoming value is empty. This prevents
+// the frontend from accidentally wiping secrets it can't read back (redacted on
+// GET responses).
+func preserveSecrets(existingRaw, incomingRaw json.RawMessage) json.RawMessage {
+	secretFields := []string{"clientSecret"}
+
+	var existing, incoming map[string]json.RawMessage
+	if json.Unmarshal(existingRaw, &existing) != nil {
+		return incomingRaw
+	}
+	if json.Unmarshal(incomingRaw, &incoming) != nil {
+		return incomingRaw
+	}
+
+	for _, field := range secretFields {
+		inVal, inOK := incoming[field]
+		exVal, exOK := existing[field]
+		if !exOK {
+			continue
+		}
+		if !inOK || string(inVal) == `""` || string(inVal) == `null` || string(inVal) == "" {
+			incoming[field] = exVal
+		}
+	}
+
+	merged, err := json.Marshal(incoming)
+	if err != nil {
+		return incomingRaw
+	}
+	return merged
 }
