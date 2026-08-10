@@ -33,7 +33,7 @@ func (f *fakeTenantLookup) GetBySubdomain(ctx context.Context, subdomain string)
 func newTestResolver(allowHeader bool) (*TenantHostResolver, *fakeTenantLookup) {
 	tenant := &domain.Tenant{ID: uuid.New(), Name: "Acme", Subdomain: "647251"}
 	lookup := &fakeTenantLookup{bySubdomain: map[string]*domain.Tenant{"647251": tenant}}
-	return NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), allowHeader), lookup
+	return NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), allowHeader), lookup
 }
 
 func requestWith(host, forwardedHost string) *http.Request {
@@ -63,9 +63,6 @@ func TestResolve_FromForwardedHost(t *testing.T) {
 	}
 }
 
-// The Cloudflare Worker rewrites Host to Cloud Run's internal hostname, so
-// X-Forwarded-Host must win. Reading r.Host would never resolve a tenant in
-// production.
 func TestResolve_ForwardedHostTakesPrecedenceOverHost(t *testing.T) {
 	r, _ := newTestResolver(false)
 
@@ -114,7 +111,6 @@ func TestResolve_IdentityHostResolvesIdentityService(t *testing.T) {
 	}
 }
 
-// Fail closed: a non-tenant hostname must never resolve to some default tenant.
 func TestResolve_UnresolvableHostFailsClosed(t *testing.T) {
 	r, _ := newTestResolver(false)
 
@@ -133,8 +129,6 @@ func TestResolve_UnknownTenantFailsClosed(t *testing.T) {
 	}
 }
 
-// These routes are unauthenticated, so an ungated tenant-selection header would
-// let any caller act as any tenant.
 func TestResolve_DevHeaderIgnoredWhenDisabled(t *testing.T) {
 	r, _ := newTestResolver(false)
 
@@ -142,7 +136,7 @@ func TestResolve_DevHeaderIgnoredWhenDisabled(t *testing.T) {
 	req.Header.Set(DevTenantHeader, "647251")
 
 	if _, err := r.Resolve(context.Background(), req); err == nil {
-		t.Fatal("dev tenant header was honoured with override disabled — any caller could select any tenant")
+		t.Fatal("dev tenant header was honoured with override disabled")
 	}
 }
 
@@ -159,7 +153,6 @@ func TestResolve_DevHeaderWorksWhenEnabled(t *testing.T) {
 	if got.Subdomain != "647251" {
 		t.Errorf("Subdomain = %q, want 647251", got.Subdomain)
 	}
-	// Even via the header, the advertised URL is the canonical per-tenant one.
 	if want := "https://647251-mcp.dipolehq.com"; got.BaseURL != want {
 		t.Errorf("BaseURL = %q, want %q", got.BaseURL, want)
 	}
@@ -189,20 +182,18 @@ func TestResolve_CachesNegativeResult(t *testing.T) {
 	}
 }
 
-// A transient DB error must not be cached, or one blip pins failure for the TTL.
 func TestResolve_DoesNotCacheLookupErrors(t *testing.T) {
 	tenant := &domain.Tenant{ID: uuid.New(), Subdomain: "647251"}
 	lookup := &fakeTenantLookup{
 		bySubdomain: map[string]*domain.Tenant{"647251": tenant},
 		err:         errors.New("connection refused"),
 	}
-	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	if _, err := r.Resolve(context.Background(), requestWith("x", "647251-mcp.dipolehq.com")); err == nil {
 		t.Fatal("expected error from failing lookup")
 	}
 
-	// Recover, then confirm the next call actually retries the DB.
 	lookup.err = nil
 	if _, err := r.Resolve(context.Background(), requestWith("x", "647251-mcp.dipolehq.com")); err != nil {
 		t.Fatalf("Resolve after recovery: %v", err)
@@ -251,9 +242,6 @@ func TestPublicHost(t *testing.T) {
 	}
 }
 
-// The resolver is shared by every in-flight request, so its cache is read and
-// written concurrently. Run under -race: without this, the race detector never
-// sees the cache exercised from multiple goroutines and reports nothing.
 func TestResolve_ConcurrentAccessIsRaceFree(t *testing.T) {
 	tenantA := &domain.Tenant{ID: uuid.New(), Subdomain: "111111"}
 	tenantB := &domain.Tenant{ID: uuid.New(), Subdomain: "222222"}
@@ -261,16 +249,14 @@ func TestResolve_ConcurrentAccessIsRaceFree(t *testing.T) {
 		"111111": tenantA,
 		"222222": tenantB,
 	}}
-	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
-	// Mix cache hits, cache misses (unknown tenants, which are negatively
-	// cached), and different services so writes and reads interleave.
 	hosts := []string{
 		"111111-mcp.dipolehq.com",
 		"111111-id.dipolehq.com",
 		"222222-mcp.dipolehq.com",
-		"999999-mcp.dipolehq.com", // unknown → negative cache write
-		"api.dipolehq.com",        // unresolvable → no cache interaction
+		"999999-mcp.dipolehq.com",
+		"api.dipolehq.com",
 	}
 
 	var wg sync.WaitGroup
@@ -281,9 +267,6 @@ func TestResolve_ConcurrentAccessIsRaceFree(t *testing.T) {
 			host := hosts[i%len(hosts)]
 			for j := 0; j < 20; j++ {
 				resolved, err := r.Resolve(context.Background(), requestWith("x", host))
-				// Correctness under concurrency: a resolved tenant must always
-				// match the hostname it was resolved from. Cross-contamination
-				// here would mean serving one tenant's data to another.
 				if err == nil && resolved != nil {
 					if !strings.HasPrefix(host, resolved.Subdomain+"-") {
 						t.Errorf("host %q resolved to subdomain %q", host, resolved.Subdomain)
@@ -296,19 +279,15 @@ func TestResolve_ConcurrentAccessIsRaceFree(t *testing.T) {
 	wg.Wait()
 }
 
-// Exceeding the cache bound triggers a full reset; do it concurrently to prove
-// the reset can't be observed as a torn state.
 func TestResolve_CacheEvictionUnderConcurrency(t *testing.T) {
 	lookup := &concurrentTenantLookup{bySubdomain: map[string]*domain.Tenant{}}
-	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	r := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	var wg sync.WaitGroup
 	for g := 0; g < 8; g++ {
 		wg.Add(1)
 		go func(g int) {
 			defer wg.Done()
-			// All misses, so every call writes a negative entry — this is the
-			// path an attacker probing random subdomains would take.
 			for i := 0; i < 2000; i++ {
 				host := fmt.Sprintf("t%d%d-mcp.dipolehq.com", g, i)
 				_, _ = r.Resolve(context.Background(), requestWith("x", host))
@@ -317,7 +296,6 @@ func TestResolve_CacheEvictionUnderConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 
-	// The bound must actually hold, or a probing attacker grows memory freely.
 	r.mu.RLock()
 	size := len(r.cache)
 	r.mu.RUnlock()
@@ -326,8 +304,6 @@ func TestResolve_CacheEvictionUnderConcurrency(t *testing.T) {
 	}
 }
 
-// concurrentTenantLookup is safe for parallel use, unlike fakeTenantLookup which
-// counts calls without synchronisation.
 type concurrentTenantLookup struct {
 	bySubdomain map[string]*domain.Tenant
 }

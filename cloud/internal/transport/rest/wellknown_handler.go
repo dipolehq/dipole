@@ -49,8 +49,7 @@ func (h *WellKnownHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", h.HandleJWKS)
 }
 
-// HandleOAuthMetadata serves OAuth 2.1 Authorization Server metadata. Only
-// meaningful on the MCP Authorization Server host.
+// HandleOAuthMetadata serves OAuth 2.1 Authorization Server metadata.
 func (h *WellKnownHandler) HandleOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	resolved, err := h.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -66,10 +65,7 @@ func (h *WellKnownHandler) HandleOAuthMetadata(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, OAuthAuthorizationServerMetadata(resolved.BaseURL))
 }
 
-// HandleOpenIDConfiguration serves whichever discovery document matches the
-// host it was called on. Per the MCP specification the authorization server
-// returns identical content for oauth-authorization-server and
-// openid-configuration, so the -mcp host answers with AS metadata.
+// HandleOpenIDConfiguration serves the discovery document matching the host.
 func (h *WellKnownHandler) HandleOpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
 	resolved, err := h.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -87,11 +83,7 @@ func (h *WellKnownHandler) HandleOpenIDConfiguration(w http.ResponseWriter, r *h
 	}
 }
 
-// HandleJWKS returns the public signing keys. Deliberately host-agnostic: the
-// signing key is shared platform-wide (per-tenant scoping comes from the `iss`
-// claim, not from separate keys), and this is public key material, so there is
-// nothing to gate. Serving it on any host also means a relying party can never
-// fail to fetch it.
+// HandleJWKS returns the public signing keys.
 func (h *WellKnownHandler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.issuer.JWKS())
 }
@@ -104,11 +96,7 @@ func (h *WellKnownHandler) respondUnresolved(w http.ResponseWriter, r *http.Requ
 	writeJSONError(w, http.StatusNotFound, "not_found", "unknown tenant for this hostname")
 }
 
-// OAuthAuthorizationServerMetadata builds the RFC 8414 metadata document for an
-// MCP Authorization Server reachable at serverURL.
-//
-// Only capabilities we actually implement are advertised — advertising anything
-// else causes clients to attempt flows we then reject.
+// OAuthAuthorizationServerMetadata builds the RFC 8414 metadata document.
 func OAuthAuthorizationServerMetadata(serverURL string) map[string]any {
 	return map[string]any{
 		"issuer":                                serverURL,

@@ -47,7 +47,7 @@ func testBroker(t *testing.T) *CredentialBrokerImpl {
 		testKey,
 		testIssuer(t),
 		&stubTenantLookup{tenant: &domain.Tenant{ID: testTenantID, Subdomain: "647251"}},
-		platform.NewHosts("dipolehq.com"),
+		platform.NewHosts("dipolehq.com", ""),
 	)
 }
 
@@ -108,7 +108,7 @@ func TestRetrieve_WrongKey_ReturnsError(t *testing.T) {
 		[]byte("wrong-key-wrong-key-wrong-key!!"),
 		testIssuer(t),
 		&stubTenantLookup{tenant: &domain.Tenant{ID: testTenantID, Subdomain: "647251"}},
-		platform.NewHosts("dipolehq.com"),
+		platform.NewHosts("dipolehq.com", ""),
 	)
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
@@ -161,12 +161,10 @@ func TestRetrieve_SelfSignedToken_UsesRequestingTenantIssuer(t *testing.T) {
 		tenantA: {ID: tenantA, Subdomain: "111111"},
 		tenantB: {ID: tenantB, Subdomain: "222222"},
 	}}
-	broker := NewCredentialBroker(testKey, testIssuer(t), lookup, platform.NewHosts("dipolehq.com"))
+	broker := NewCredentialBroker(testKey, testIssuer(t), lookup, platform.NewHosts("dipolehq.com", ""))
 
 	newProvider := func() *domain.CredentialProvider {
 		return &domain.CredentialProvider{
-			// Distinct IDs so the credential cache can't serve one tenant's
-			// token to the other.
 			ID:              uuid.New(),
 			Type:            "oidc_id_token",
 			ConfigEncrypted: encrypt(t, `{"subject":"workload","audience":"https://api.example.com"}`),
@@ -201,7 +199,7 @@ func TestRetrieve_StoredSecret_DoesNotRequireTenantLookup(t *testing.T) {
 		testKey,
 		testIssuer(t),
 		&stubTenantLookup{err: errors.New("tenant lookup unavailable")},
-		platform.NewHosts("dipolehq.com"),
+		platform.NewHosts("dipolehq.com", ""),
 	)
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
@@ -222,7 +220,7 @@ func TestRetrieve_SelfSignedToken_UnknownTenantFailsClosed(t *testing.T) {
 		testKey,
 		testIssuer(t),
 		&stubTenantLookup{tenant: nil},
-		platform.NewHosts("dipolehq.com"),
+		platform.NewHosts("dipolehq.com", ""),
 	)
 	provider := &domain.CredentialProvider{
 		ID:              uuid.New(),

@@ -1,6 +1,7 @@
-// Command server is the dipole cloud control-plane entry point. It assembles
-// the database pool, repositories, services, and both the REST (management)
-// and gRPC (edge data-plane) transports.
+/*
+Command server is the Dipole Cloud control-plane entry point. Assembles the
+database pool, repositories, services, and both the REST and gRPC transports.
+*/
 package main
 
 import (
@@ -105,13 +106,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	tracingBus := mcpgw.NewTracingBus()
 
-	// Single source of truth for per-tenant service hostnames.
-	platformHosts := platform.NewHosts(cfg.PlatformDomain)
+	platformHosts := platform.NewHosts(cfg.PlatformDomain, cfg.Env)
 
-	// One shared signing key for all tenants; the per-tenant `iss` is supplied
-	// per issuance request. The platform issuer URL below is only used for
-	// tokens we verify ourselves (admin sessions, MFA challenges, Edge API
-	// tokens), so nothing fetches OIDC discovery from it.
 	issuer, err := identity.NewIdentityIssuer("https://id." + platformHosts.Domain())
 	if err != nil {
 		return fmt.Errorf("init identity issuer: %w", err)
@@ -125,9 +121,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
-	// Edge SDK Client ID / Audience must embed the subdomain of the tenant that
-	// owns the Trust Provider, so the service resolves it per call rather than
-	// capturing one subdomain at startup.
 	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts)
 	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
@@ -157,16 +150,12 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	edgeTenantResolver := service.NewTenantResolverAdapter(repos.Tenants)
 	edgeAPI := rest.NewEdgeAPIHandler(issuer, edgeTrustValidator, edgePolicyAdapter, edgeTenantResolver)
 
-	// Resolves which tenant a request belongs to from its hostname. Shared by
-	// every component that serves per-tenant hostnames.
 	tenantHostResolver := rest.NewTenantHostResolver(repos.Tenants, platformHosts, cfg.DevBootstrap)
 	if cfg.DevBootstrap {
 		logger.Warn("dev bootstrap enabled: tenant may be selected via header — never enable this in a deployed environment",
 			"header", rest.DevTenantHeader)
 	}
 
-	// MCP Authorization Server — tenant-agnostic, serves every tenant. Each
-	// request resolves its own tenant from the hostname it arrived on.
 	mcpCodeStore := mcpsvc.NewAuthCodeStore()
 	mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 	mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
@@ -179,30 +168,19 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	mcpAuthServer := rest.NewMCPAuthServer(mcpDCR, mcpAuthorizeService, mcpTokenService, mcpIdPCallback, tenantHostResolver, logger)
 
-	// Discovery endpoints are shared between the -mcp and -id hostnames, so they
-	// are owned by neither service directly.
 	wellKnownHandler := rest.NewWellKnownHandler(issuer, tenantHostResolver, logger)
 
-	// Dipole MCP Server (read-only event query API for AI agents) resolves its
-	// tenant from the caller's API token, so it needs no hostname binding.
 	mcpAuditLogger := mcpserver.NewAuditLogger(repos.Events)
 	mcpToolService := mcpserver.NewToolService(repos.Events, mcpAuditLogger)
 	mcpResourceService := mcpserver.NewResourceService()
 	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
-	// MCP Identity Gateway — tenant-agnostic, serves every tenant. Each request
-	// resolves its own tenant from the hostname it arrived on, and the tenant's
-	// Gateway URL, downstream server endpoints, event attribution, and consent
-	// callback URL all derive from that.
 	gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
 	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 	gwTokenStore := repos.MCPUserCredentials
 	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil)
 	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
 	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
-	// Downstream MCP servers are derived per request from the tenant's Access
-	// Policies, so the factory shares one connection pool instead of holding a
-	// startup-built map of clients.
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
 	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter)
 
@@ -211,9 +189,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver)
 
-	// Built as literal patterns rather than via platformHosts: the URL builders
-	// validate their input and would (correctly) return "" for a placeholder
-	// like "<tenant>".
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
 		"auth_server_pattern", "https://<tenant>-mcp."+platformHosts.Domain(),
@@ -351,9 +326,6 @@ func buildHTTPServer(
 	)).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
-	// MFAService is stateless w.r.t. tenant (resolves tenantID per-call from
-	// the caller's JWT), so it's constructed unconditionally — MFA works
-	// for every tenant, not just the one from DIPOLE_TENANT_ID.
 	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
 	mfaHandler.SetAudit(auditEmitter)
@@ -363,22 +335,12 @@ func buildHTTPServer(
 	loginSvc.SetMFA(repos.UserMFA, encKey)
 	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
-	// Per-environment: a hardcoded value sends staging users to production.
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)
 	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(auditEmitter)
 	authHandler.RegisterRoutes(mux)
 
-	// Admin SSO login is still bound to a single tenant at construction
-	// (see the admin-console SSO entry in later.md — it needs a design decision).
-	//
-	// It can't use either mechanism the rest of the codebase now uses: it runs
-	// BEFORE authentication so there's no JWT to read a tenant from, and the
-	// admin console is served from one shared hostname rather than a per-tenant
-	// subdomain, so the hostname can't supply it either. Listing a tenant's SSO
-	// providers on the login page has the same problem. Left exactly as it was
-	// (single-tenant) rather than papered over; later.md records the options.
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
 		oidcClient := service.NewHTTPOIDCClient()
 		ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
@@ -387,9 +349,6 @@ func buildHTTPServer(
 
 	edgeAPI.RegisterEdgeRoutes(mux)
 
-	// Discovery endpoints are always served: external systems (AWS STS, Azure
-	// Entra, GCP WIF) fetch them to verify tokens we sign, independently of
-	// whether MCP is in use.
 	wellKnown.RegisterRoutes(mux)
 	mcpAuth.RegisterRoutes(mux)
 
@@ -398,7 +357,7 @@ func buildHTTPServer(
 		mcpDipole.RegisterMCPServerRoutes(mux)
 	}
 
-	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins))
+	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret)
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),

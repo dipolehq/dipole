@@ -13,9 +13,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
-// Exercises the real ServeMux + handlers over HTTP, because the behaviour that
-// matters here is a function of routing and the request hostname — neither of
-// which a unit test on the handler methods would cover.
 func newWellKnownTestServer(t *testing.T, tenants map[string]*domain.Tenant) *http.ServeMux {
 	t.Helper()
 
@@ -25,7 +22,7 @@ func newWellKnownTestServer(t *testing.T, tenants map[string]*domain.Tenant) *ht
 	}
 
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
-	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com"), false)
+	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
 	mux := http.NewServeMux()
 	NewWellKnownHandler(issuer, resolver, nil).RegisterRoutes(mux)
@@ -52,10 +49,6 @@ func testTenants() map[string]*domain.Tenant {
 	}
 }
 
-// The exact-vs-prefix distinction matters: if Go's ServeMux treated
-// "/.well-known/openid-configuration" as a prefix, the JWKS route would be
-// shadowed and relying parties fetching JWKS would silently receive a discovery
-// document instead of keys.
 func TestWellKnown_JWKSRouteIsNotShadowedByDiscovery(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -64,16 +57,13 @@ func TestWellKnown_JWKSRouteIsNotShadowedByDiscovery(t *testing.T) {
 		t.Fatalf("JWKS status = %d, want 200", status)
 	}
 	if _, ok := body["keys"]; !ok {
-		t.Fatalf("JWKS response has no `keys` field — the discovery route shadowed it: %v", body)
+		t.Fatalf("JWKS response has no keys field: %v", body)
 	}
 	if _, ok := body["issuer"]; ok {
-		t.Error("JWKS response contains `issuer` — discovery document served on the JWKS path")
+		t.Error("JWKS response contains issuer — discovery document served on the JWKS path")
 	}
 }
 
-// The -id host must advertise ITSELF as issuer. Returning the -mcp host here is
-// the bug that made AWS STS / Azure Entra / GCP WIF unable to verify our tokens,
-// since OIDC requires issuer == the URL discovery was fetched from.
 func TestWellKnown_IdentityHostAdvertisesItselfAsIssuer(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -84,7 +74,6 @@ func TestWellKnown_IdentityHostAdvertisesItselfAsIssuer(t *testing.T) {
 	if want := "https://111111-id.dipolehq.com"; body["issuer"] != want {
 		t.Errorf("issuer = %v, want %v", body["issuer"], want)
 	}
-	// Must not leak the authorization server's endpoints onto the issuer host.
 	if _, ok := body["authorization_endpoint"]; ok {
 		t.Error("identity host returned OAuth authorization server metadata")
 	}
@@ -110,8 +99,6 @@ func TestWellKnown_MCPHostAdvertisesItselfAsIssuer(t *testing.T) {
 	}
 }
 
-// Two tenants hitting their own hostnames must each get their own issuer from
-// the same running process. This is the core property Fix 10 exists to provide.
 func TestWellKnown_PerTenantIsolation(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -129,7 +116,6 @@ func TestWellKnown_PerTenantIsolation(t *testing.T) {
 	}
 }
 
-// The gateway host serves neither discovery document.
 func TestWellKnown_GatewayHostServesNoDiscovery(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -143,8 +129,6 @@ func TestWellKnown_GatewayHostServesNoDiscovery(t *testing.T) {
 	}
 }
 
-// Fail closed: a non-tenant hostname must never be served a discovery document
-// for some default tenant.
 func TestWellKnown_NonTenantHostsFailClosed(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -153,7 +137,7 @@ func TestWellKnown_NonTenantHostsFailClosed(t *testing.T) {
 		"console.dipolehq.com",
 		"dipolehq.com",
 		"111111-mcp.evil.com",
-		"dipole-cloud-abc123-uc.a.run.app", // Worker failed to set X-Forwarded-Host
+		"dipole-cloud-abc123-uc.a.run.app",
 	} {
 		for _, path := range []string{
 			"/.well-known/oauth-authorization-server",
@@ -167,7 +151,6 @@ func TestWellKnown_NonTenantHostsFailClosed(t *testing.T) {
 	}
 }
 
-// An unknown tenant must 404 rather than fall back to any configured tenant.
 func TestWellKnown_UnknownTenantFailsClosed(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
@@ -176,11 +159,7 @@ func TestWellKnown_UnknownTenantFailsClosed(t *testing.T) {
 	}
 }
 
-// A stored subdomain that can't form a hostname must not yield a document with
-// an empty issuer — resolution fails instead.
 func TestWellKnown_InvalidStoredSubdomainFailsClosed(t *testing.T) {
-	// ParseHost accepts the underscore (we stay liberal about what arrives), so
-	// the request reaches the tenant; building its canonical URL is what fails.
 	mux := newWellKnownTestServer(t, map[string]*domain.Tenant{
 		"bad_subdomain": {ID: uuid.New(), Subdomain: "bad_subdomain"},
 	})
@@ -194,8 +173,6 @@ func TestWellKnown_InvalidStoredSubdomainFailsClosed(t *testing.T) {
 	}
 }
 
-// JWKS is intentionally host-agnostic: the signing key is shared platform-wide,
-// it's public key material, and a relying party must never fail to fetch it.
 func TestWellKnown_JWKSServedOnAnyHost(t *testing.T) {
 	mux := newWellKnownTestServer(t, testTenants())
 
