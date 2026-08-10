@@ -37,11 +37,13 @@ func TestAWSRoleValidator_ValidSTS_Attested(t *testing.T) {
 		stsURLFmt:  server.URL + "/%s", // region gets substituted but URL points to mock
 	}
 
-	cfg, _ := json.Marshal(awsRoleConfig{
-		MatchRules: []MatchRule{{Field: "accountId", Value: "123456789012"}},
-	})
+	cfg, _ := json.Marshal(struct{}{})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "accountId", Value: "123456789012"}},
+	}
 	evidence := &domain.ClientEvidence{
 		AWS: &domain.AWSEvidence{
 			STSGetCallerIdentity: &domain.STSGetCallerIdentity{
@@ -74,7 +76,7 @@ func TestAWSRoleValidator_STS403_InvalidSignature(t *testing.T) {
 		stsURLFmt:  server.URL + "/%s",
 	}
 
-	cfg, _ := json.Marshal(awsRoleConfig{})
+	cfg, _ := json.Marshal(struct{}{})
 	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
 	evidence := &domain.ClientEvidence{
 		AWS: &domain.AWSEvidence{
@@ -109,11 +111,13 @@ func TestAWSRoleValidator_MatchRuleFailed(t *testing.T) {
 		stsURLFmt:  server.URL + "/%s",
 	}
 
-	cfg, _ := json.Marshal(awsRoleConfig{
-		MatchRules: []MatchRule{{Field: "accountId", Value: "999999999999"}},
-	})
+	cfg, _ := json.Marshal(struct{}{})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "accountId", Value: "999999999999"}},
+	}
 	evidence := &domain.ClientEvidence{
 		AWS: &domain.AWSEvidence{
 			STSGetCallerIdentity: &domain.STSGetCallerIdentity{
@@ -140,7 +144,7 @@ func TestAWSRoleValidator_MatchRuleFailed(t *testing.T) {
 
 func TestAWSRoleValidator_NoEvidence_NoDataFound(t *testing.T) {
 	v := NewAWSRoleValidator()
-	cfg, _ := json.Marshal(awsRoleConfig{})
+	cfg, _ := json.Marshal(struct{}{})
 	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
 
 	result, err := v.Validate(context.Background(), provider, &domain.ClientEvidence{}, nil)
@@ -154,7 +158,7 @@ func TestAWSRoleValidator_NoEvidence_NoDataFound(t *testing.T) {
 
 func TestAWSRoleValidator_EmptyHeaders_NoDataFound(t *testing.T) {
 	v := NewAWSRoleValidator()
-	cfg, _ := json.Marshal(awsRoleConfig{})
+	cfg, _ := json.Marshal(struct{}{})
 	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
 
 	evidence := &domain.ClientEvidence{
@@ -180,7 +184,7 @@ func TestAWSRoleValidator_STSUnreachable_InvalidSignature(t *testing.T) {
 		httpClient: &http.Client{Timeout: 1 * time.Second},
 		stsURLFmt:  "https://localhost:1/%s", // unreachable
 	}
-	cfg, _ := json.Marshal(awsRoleConfig{})
+	cfg, _ := json.Marshal(struct{}{})
 	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
 
 	evidence := &domain.ClientEvidence{

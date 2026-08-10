@@ -20,8 +20,7 @@ import (
 type K8sValidator struct{}
 
 type k8sConfig struct {
-	OIDCEndpoint string      `json:"oidc_endpoint"`
-	MatchRules   []MatchRule `json:"match_rules"`
+	OIDCEndpoint string `json:"oidcEndpoint"`
 }
 
 func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, jwksCache *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -75,7 +74,7 @@ func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 	}
 
 	// Evaluate match rules
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

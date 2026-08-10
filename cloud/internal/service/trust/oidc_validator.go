@@ -26,11 +26,11 @@ import (
 type OIDCValidator struct{}
 
 type oidcConfig struct {
-	AttestationMethod string      `json:"attestation_method"`
-	OIDCEndpoint      string      `json:"oidc_endpoint"`
-	JWKS              string      `json:"jwks"`
-	SymmetricKey      string      `json:"symmetric_key"`
-	MatchRules        []MatchRule `json:"match_rules"`
+	AttestationMethod string `json:"attestationMethod"`
+	OIDCEndpoint      string `json:"oidcEndpoint"`
+	JWKS              string `json:"jwks"`
+	SymmetricKey      string `json:"symmetricKey"`
+	PublicKey         string `json:"publicKey"`
 }
 
 func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, jwksCache *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -78,7 +78,7 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 	}
 
 	// Evaluate match rules
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

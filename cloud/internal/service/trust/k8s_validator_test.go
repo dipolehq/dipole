@@ -75,7 +75,8 @@ func TestK8sValidator_ValidToken_Attested(t *testing.T) {
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"oidc_endpoint":"` + server.URL + `","match_rules":[{"field":"kubernetes.io.namespace","value":"production"}]}`),
+		Config:     json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "kubernetes.io.namespace", Value: "production"}},
 	}
 	evidence := &domain.ClientEvidence{
 		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
@@ -103,7 +104,7 @@ func TestK8sValidator_WrongKey_InvalidSignature(t *testing.T) {
 	token := signJWT(t, signingKey, kid, claims)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"oidc_endpoint":"` + server.URL + `","match_rules":[]}`),
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
 	}
 	evidence := &domain.ClientEvidence{
 		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
@@ -130,7 +131,7 @@ func TestK8sValidator_ExpiredToken(t *testing.T) {
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"oidc_endpoint":"` + server.URL + `","match_rules":[]}`),
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
 	}
 	evidence := &domain.ClientEvidence{
 		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
@@ -162,7 +163,8 @@ func TestK8sValidator_MatchRuleFailed(t *testing.T) {
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"oidc_endpoint":"` + server.URL + `","match_rules":[{"field":"kubernetes.io.namespace","value":"production"}]}`),
+		Config:     json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "kubernetes.io.namespace", Value: "production"}},
 	}
 	evidence := &domain.ClientEvidence{
 		K8s: &domain.K8sEvidence{ServiceAccountToken: token},

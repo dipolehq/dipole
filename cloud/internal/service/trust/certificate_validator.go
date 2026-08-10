@@ -22,8 +22,7 @@ import (
 type CertificateValidator struct{}
 
 type certificateConfig struct {
-	TrustAnchorPEM string      `json:"trust_anchor_pem"`
-	MatchRules     []MatchRule `json:"match_rules"`
+	TrustAnchorPEM string `json:"trustAnchorPem"`
 }
 
 func (v *CertificateValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -56,7 +55,7 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	if len(cfg.MatchRules) == 0 {
+	if len(provider.MatchRules) == 0 {
 		return &domain.TrustProviderResult{Attested: true}, nil
 	}
 
@@ -69,7 +68,7 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		"subject.province":     firstOrEmpty(cert.Subject.Province),
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, subjectFields)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), subjectFields)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

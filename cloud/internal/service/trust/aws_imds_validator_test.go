@@ -62,10 +62,13 @@ func TestAWSIMDSValidator_ValidSignature_Attested(t *testing.T) {
 
 	cfg, _ := json.Marshal(awsIMDSConfig{
 		Certificate: certPEM,
-		MatchRules:  []MatchRule{{Field: "accountId", Value: "123456789012"}},
 	})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "accountId", Value: "123456789012"}},
+	}
 	evidence := &domain.ClientEvidence{
 		AWS: &domain.AWSEvidence{
 			InstanceIdentityDocument:  docB64,
@@ -124,10 +127,13 @@ func TestAWSIMDSValidator_MatchRuleFailed(t *testing.T) {
 
 	cfg, _ := json.Marshal(awsIMDSConfig{
 		Certificate: certPEM,
-		MatchRules:  []MatchRule{{Field: "accountId", Value: "999999999999"}},
 	})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "accountId", Value: "999999999999"}},
+	}
 	evidence := &domain.ClientEvidence{
 		AWS: &domain.AWSEvidence{
 			InstanceIdentityDocument:  docB64,

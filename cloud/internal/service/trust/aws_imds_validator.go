@@ -25,8 +25,7 @@ import (
 type AWSIMDSValidator struct{}
 
 type awsIMDSConfig struct {
-	Certificate string      `json:"certificate"`
-	MatchRules  []MatchRule `json:"match_rules"`
+	Certificate string `json:"certificate"`
 }
 
 func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -64,7 +63,7 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, docFields)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), docFields)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

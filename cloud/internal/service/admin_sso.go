@@ -33,16 +33,16 @@ type IdentityProviderConfig struct {
 }
 
 type OIDCConfig struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	DiscoveryURL string `json:"discovery_url"`
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	DiscoveryURL string `json:"baseUrl"`
 	Scopes       string `json:"scopes"`
 }
 
 type SAMLConfig struct {
-	MetadataURL string `json:"metadata_url"`
-	EntityID    string `json:"entity_id"`
-	ACSURL      string `json:"acs_url"`
+	MetadataURL string `json:"metadataUrl"`
+	EntityID    string `json:"entityId"`
+	ACSURL      string `json:"acsUrl"`
 }
 
 type SSOResult struct {

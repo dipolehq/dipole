@@ -39,7 +39,8 @@ func TestGitHubValidator_ValidToken_Attested(t *testing.T) {
 	provider := &domain.TrustProvider{
 		ID:              uuid.New(),
 		EdgeSDKAudience: audience,
-		Config:          json.RawMessage(`{"match_rules":[{"field":"repository","value":"myorg/myrepo"}]}`),
+		Config:          json.RawMessage(`{}`),
+		MatchRules:      []domain.MatchRule{{Attribute: "repository", Value: "myorg/myrepo"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
@@ -74,7 +75,7 @@ func TestGitHubValidator_AudienceMismatch(t *testing.T) {
 
 	provider := &domain.TrustProvider{
 		EdgeSDKAudience: "https://acme-id.dipolehq.com",
-		Config:          json.RawMessage(`{"match_rules":[]}`),
+		Config:          json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{
 		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
@@ -111,7 +112,8 @@ func TestGitHubValidator_WrongRepository_MatchRuleFailed(t *testing.T) {
 
 	provider := &domain.TrustProvider{
 		EdgeSDKAudience: audience,
-		Config:          json.RawMessage(`{"match_rules":[{"field":"repository","value":"myorg/myrepo"}]}`),
+		Config:          json.RawMessage(`{}`),
+		MatchRules:      []domain.MatchRule{{Attribute: "repository", Value: "myorg/myrepo"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},

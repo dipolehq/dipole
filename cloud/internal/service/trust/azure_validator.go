@@ -23,8 +23,7 @@ import (
 type AzureValidator struct{}
 
 type azureConfig struct {
-	SigningCAPEM string      `json:"signing_ca_pem"`
-	MatchRules   []MatchRule `json:"match_rules"`
+	SigningCAPEM string `json:"signingCaPem"`
 }
 
 func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -42,11 +41,11 @@ func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvi
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	if len(cfg.MatchRules) == 0 {
+	if len(provider.MatchRules) == 0 {
 		return &domain.TrustProviderResult{Attested: true}, nil
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, computeFields)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), computeFields)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

@@ -11,6 +11,8 @@ package trust
 import (
 	"fmt"
 	"strings"
+
+	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
 type MatchRule struct {
@@ -86,4 +88,12 @@ func resolveClaimPath(claims map[string]interface{}, path string) (string, bool)
 	}
 
 	return "", false
+}
+
+func toMatchRules(domainRules []domain.MatchRule) []MatchRule {
+	rules := make([]MatchRule, len(domainRules))
+	for i, r := range domainRules {
+		rules[i] = MatchRule{Field: r.Attribute, Value: r.Value}
+	}
+	return rules
 }

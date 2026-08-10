@@ -35,8 +35,9 @@ func TestOIDCValidator_Discovery_Attested(t *testing.T) {
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
-		Type:   "gitlab_job",
-		Config: json.RawMessage(`{"attestation_method":"oidc_discovery","oidc_endpoint":"` + endpoint + `","match_rules":[{"field":"project_path","value":"myorg/myproject"}]}`),
+		Type:       "gitlab_job",
+		Config:     json.RawMessage(`{"attestationMethod":"oidc_discovery","oidcEndpoint":"` + endpoint + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "project_path", Value: "myorg/myproject"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
@@ -72,8 +73,9 @@ func TestOIDCValidator_UploadJWKS_Attested(t *testing.T) {
 	jwksEscaped, _ := json.Marshal(jwksStr)
 
 	provider := &domain.TrustProvider{
-		Type:   "oidc_id_token",
-		Config: json.RawMessage(`{"attestation_method":"upload_jwks","jwks":` + string(jwksEscaped) + `,"match_rules":[{"field":"sub","value":"workload-123"}]}`),
+		Type:       "oidc_id_token",
+		Config:     json.RawMessage(`{"attestationMethod":"upload_jwks","jwks":` + string(jwksEscaped) + `}`),
+		MatchRules: []domain.MatchRule{{Attribute: "sub", Value: "workload-123"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
@@ -112,8 +114,9 @@ func TestOIDCValidator_SymmetricKey_Attested(t *testing.T) {
 	token := signingInput + "." + sig
 
 	provider := &domain.TrustProvider{
-		Type:   "oidc_id_token",
-		Config: json.RawMessage(`{"attestation_method":"symmetric_key","symmetric_key":"` + secretB64 + `","match_rules":[{"field":"sub","value":"test-workload"}]}`),
+		Type:       "oidc_id_token",
+		Config:     json.RawMessage(`{"attestationMethod":"symmetric_key","symmetricKey":"` + secretB64 + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "sub", Value: "test-workload"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
@@ -148,7 +151,7 @@ func TestOIDCValidator_SymmetricKey_WrongSecret(t *testing.T) {
 
 	provider := &domain.TrustProvider{
 		Type:   "oidc_id_token",
-		Config: json.RawMessage(`{"attestation_method":"symmetric_key","symmetric_key":"` + wrongB64 + `","match_rules":[]}`),
+		Config: json.RawMessage(`{"attestationMethod":"symmetric_key","symmetricKey":"` + wrongB64 + `"}`),
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},

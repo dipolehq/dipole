@@ -62,9 +62,9 @@ func (r *DBIdentityProviderResolver) ResolveOIDCProvider(ctx context.Context, te
 		}
 
 		var cfg struct {
-			ClientID     string `json:"client_id"`
-			ClientSecret string `json:"client_secret"`
-			DiscoveryURL string `json:"discovery_url"`
+			ClientID     string `json:"clientId"`
+			ClientSecret string `json:"clientSecret"`
+			DiscoveryURL string `json:"baseUrl"`
 			Scopes       string `json:"scopes"`
 		}
 		if err := json.Unmarshal(idp.Config, &cfg); err != nil {

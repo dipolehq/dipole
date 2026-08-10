@@ -21,8 +21,7 @@ import (
 type GCPValidator struct{}
 
 type gcpConfig struct {
-	OIDCEndpoint string      `json:"oidc_endpoint"`
-	MatchRules   []MatchRule `json:"match_rules"`
+	OIDCEndpoint string `json:"oidcEndpoint"`
 }
 
 func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, jwksCache *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -51,7 +50,7 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		}
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

@@ -22,18 +22,9 @@ const githubOIDCEndpoint = "https://token.actions.githubusercontent.com"
 
 type GitHubValidator struct{}
 
-type githubConfig struct {
-	MatchRules []MatchRule `json:"match_rules"`
-}
-
 func (v *GitHubValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, jwksCache *JWKSCache) (*domain.TrustProviderResult, error) {
 	if evidence.GitHub == nil || evidence.GitHub.IdentityToken == "" {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
-	}
-
-	var cfg githubConfig
-	if err := json.Unmarshal(provider.Config, &cfg); err != nil {
-		return nil, err
 	}
 
 	token := evidence.GitHub.IdentityToken
@@ -80,7 +71,7 @@ func (v *GitHubValidator) Validate(ctx context.Context, provider *domain.TrustPr
 	}
 
 	// Evaluate match rules
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

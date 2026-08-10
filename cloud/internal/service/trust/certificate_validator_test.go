@@ -74,12 +74,13 @@ func TestCertificateValidator_ValidChain_Attested(t *testing.T) {
 	caKey, caPEM := generateCACert(t)
 	leafPEM := generateLeafCert(t, caKey, caPEM, "my-workload")
 
-	cfg, _ := json.Marshal(certificateConfig{
-		TrustAnchorPEM: caPEM,
-		MatchRules:     []MatchRule{{Field: "subject.cn", Value: "my-workload"}},
-	})
+	cfg, _ := json.Marshal(certificateConfig{TrustAnchorPEM: caPEM})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "subject.cn", Value: "my-workload"}},
+	}
 	evidence := &domain.ClientEvidence{
 		Environment: map[string]string{"ATTESTATION_CERTIFICATE": leafPEM},
 	}
@@ -122,12 +123,13 @@ func TestCertificateValidator_MatchRuleFailed_WrongCN(t *testing.T) {
 	caKey, caPEM := generateCACert(t)
 	leafPEM := generateLeafCert(t, caKey, caPEM, "other-workload")
 
-	cfg, _ := json.Marshal(certificateConfig{
-		TrustAnchorPEM: caPEM,
-		MatchRules:     []MatchRule{{Field: "subject.cn", Value: "my-workload"}},
-	})
+	cfg, _ := json.Marshal(certificateConfig{TrustAnchorPEM: caPEM})
 
-	provider := &domain.TrustProvider{ID: uuid.New(), Config: cfg}
+	provider := &domain.TrustProvider{
+		ID:         uuid.New(),
+		Config:     cfg,
+		MatchRules: []domain.MatchRule{{Attribute: "subject.cn", Value: "my-workload"}},
+	}
 	evidence := &domain.ClientEvidence{
 		Environment: map[string]string{"ATTESTATION_CERTIFICATE": leafPEM},
 	}

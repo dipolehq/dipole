@@ -16,7 +16,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,10 +32,6 @@ type KerberosValidator struct {
 
 func NewKerberosValidator(controllerRepo repository.AgentControllerRepository) *KerberosValidator {
 	return &KerberosValidator{controllerRepo: controllerRepo}
-}
-
-type kerberosConfig struct {
-	MatchRules []MatchRule `json:"match_rules"`
 }
 
 type kerberosPayload struct {
@@ -114,12 +109,6 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		return &domain.TrustProviderResult{Attested: false, Reason: "AttestationExpired"}, nil
 	}
 
-	// Parse config match rules
-	var cfg kerberosConfig
-	if err := json.Unmarshal(provider.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("parse kerberos config: %w", err)
-	}
-
 	claims := map[string]interface{}{
 		"principal": payload.Principal,
 		"realm":     payload.Realm,
@@ -127,7 +116,7 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		"sourceIp":  evidence.SourceIP,
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,
