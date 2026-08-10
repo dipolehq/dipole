@@ -39,9 +39,8 @@ func NewSAMLValidator() *SAMLValidator {
 }
 
 type samlConfig struct {
-	IdPMetadataURL string      `json:"idp_metadata_url"`
-	IdPMetadataXML string      `json:"idp_metadata_xml"`
-	MatchRules     []MatchRule `json:"match_rules"`
+	IdPMetadataURL string `json:"samlMetadataUrl"`
+	IdPMetadataXML string `json:"samlMetadataXml"`
 }
 
 func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
@@ -69,7 +68,7 @@ func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

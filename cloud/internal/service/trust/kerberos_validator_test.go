@@ -83,8 +83,9 @@ func TestKerberosValidator_ValidAttestation_Attested(t *testing.T) {
 
 	v := NewKerberosValidator(repo)
 	provider := &domain.TrustProvider{
-		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[{"field":"principal","value":"user@CORP.LOCAL"}]}`),
+		TenantID:   uuid.New(),
+		Config:     json.RawMessage(`{}`),
+		MatchRules: []domain.MatchRule{{Attribute: "principal", Value: "user@CORP.LOCAL"}},
 	}
 	evidence := &domain.ClientEvidence{
 		KerberosAttestation: attest,
@@ -120,7 +121,7 @@ func TestKerberosValidator_InvalidSignature_NotAttested(t *testing.T) {
 	v := NewKerberosValidator(repo)
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[]}`),
+		Config:   json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{KerberosAttestation: attest}
 
@@ -157,7 +158,7 @@ func TestKerberosValidator_ExpiredTimestamp_NotAttested(t *testing.T) {
 	v := NewKerberosValidator(repo)
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[]}`),
+		Config:   json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{KerberosAttestation: attest}
 
@@ -179,7 +180,7 @@ func TestKerberosValidator_NoAttestation_NotAttested(t *testing.T) {
 
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[]}`),
+		Config:   json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{}
 
@@ -214,8 +215,9 @@ func TestKerberosValidator_MatchRuleFailed_NotAttested(t *testing.T) {
 
 	v := NewKerberosValidator(repo)
 	provider := &domain.TrustProvider{
-		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[{"field":"principal","value":"admin@CORP.LOCAL"}]}`),
+		TenantID:   uuid.New(),
+		Config:     json.RawMessage(`{}`),
+		MatchRules: []domain.MatchRule{{Attribute: "principal", Value: "admin@CORP.LOCAL"}},
 	}
 	evidence := &domain.ClientEvidence{KerberosAttestation: attest}
 
@@ -254,8 +256,9 @@ func TestKerberosValidator_LegacyEnvironmentFallback_Attested(t *testing.T) {
 
 	v := NewKerberosValidator(repo)
 	provider := &domain.TrustProvider{
-		TenantID: uuid.New(),
-		Config:   json.RawMessage(`{"match_rules":[{"field":"realm","value":"CORP.LOCAL"}]}`),
+		TenantID:   uuid.New(),
+		Config:     json.RawMessage(`{}`),
+		MatchRules: []domain.MatchRule{{Attribute: "realm", Value: "CORP.LOCAL"}},
 	}
 	// Use environment map instead of KerberosAttestation field (backward compat)
 	evidence := &domain.ClientEvidence{

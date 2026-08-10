@@ -11,7 +11,6 @@ package trust
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -34,10 +33,6 @@ func NewAWSRoleValidator() *AWSRoleValidator {
 	}
 }
 
-type awsRoleConfig struct {
-	MatchRules []MatchRule `json:"match_rules"`
-}
-
 func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
 	if evidence.AWS == nil || evidence.AWS.STSGetCallerIdentity == nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
@@ -46,11 +41,6 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 	sts := evidence.AWS.STSGetCallerIdentity
 	if len(sts.SignedHeaders) == 0 || sts.Region == "" {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
-	}
-
-	var cfg awsRoleConfig
-	if err := json.Unmarshal(provider.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("parse aws_role config: %w", err)
 	}
 
 	identity, err := v.replaySTS(ctx, sts.SignedHeaders, sts.Region)
@@ -66,7 +56,7 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 		"assumedRole": identity.Arn,
 	}
 
-	passed, failure := EvaluateMatchRules(cfg.MatchRules, claims)
+	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
 			Attested:      false,

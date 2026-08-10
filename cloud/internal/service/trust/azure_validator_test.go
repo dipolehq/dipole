@@ -29,7 +29,8 @@ func TestAzureValidator_ValidPKCS7_Attested(t *testing.T) {
 	sigBase64 := base64.StdEncoding.EncodeToString(sig)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"signing_ca_pem":"` + escapePEM(caPEM) + `","match_rules":[{"field":"subscriptionId","value":"sub-123"}]}`),
+		Config:     json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "subscriptionId", Value: "sub-123"}},
 	}
 	evidence := &domain.ClientEvidence{
 		Azure: &domain.AzureEvidence{Signature: sigBase64},
@@ -47,7 +48,7 @@ func TestAzureValidator_ValidPKCS7_Attested(t *testing.T) {
 
 func TestAzureValidator_InvalidSignature_NotAttested(t *testing.T) {
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"match_rules":[]}`),
+		Config: json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{
 		Azure: &domain.AzureEvidence{Signature: base64.StdEncoding.EncodeToString([]byte("not valid pkcs7"))},
@@ -77,7 +78,7 @@ func TestAzureValidator_TamperedPayload_NotAttested(t *testing.T) {
 	sigBase64 := base64.StdEncoding.EncodeToString(sig)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"signing_ca_pem":"` + escapePEM(caPEM) + `","match_rules":[]}`),
+		Config: json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
 	}
 	evidence := &domain.ClientEvidence{
 		Azure: &domain.AzureEvidence{Signature: sigBase64},
@@ -100,7 +101,8 @@ func TestAzureValidator_MatchRuleFails_NotAttested(t *testing.T) {
 	sigBase64 := base64.StdEncoding.EncodeToString(sig)
 
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"signing_ca_pem":"` + escapePEM(caPEM) + `","match_rules":[{"field":"subscriptionId","value":"sub-123"}]}`),
+		Config:     json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+		MatchRules: []domain.MatchRule{{Attribute: "subscriptionId", Value: "sub-123"}},
 	}
 	evidence := &domain.ClientEvidence{
 		Azure: &domain.AzureEvidence{Signature: sigBase64},
@@ -124,7 +126,7 @@ func TestAzureValidator_MatchRuleFails_NotAttested(t *testing.T) {
 
 func TestAzureValidator_NoEvidence_NotAttested(t *testing.T) {
 	provider := &domain.TrustProvider{
-		Config: json.RawMessage(`{"match_rules":[]}`),
+		Config: json.RawMessage(`{}`),
 	}
 	evidence := &domain.ClientEvidence{}
 
