@@ -93,10 +93,20 @@ export function PolicyForm({
       onSwitchToEdit?.()
       return
     }
-    void handleSubmit(async (values) => {
-      await onSubmit(values)
-      if (mode === 'edit') onSwitchToView?.()
-    })()
+    void handleSubmit(
+      async (values) => {
+        await onSubmit(values)
+        if (mode === 'edit') onSwitchToView?.()
+      },
+      (errors) => {
+        // Surface the first validation error so the user knows what's wrong.
+        const firstKey = Object.keys(errors)[0] as string | undefined
+        if (firstKey) {
+          const msg = (errors as Record<string, { message?: string }>)[firstKey]?.message
+          if (msg) alert(msg)
+        }
+      },
+    )()
   }
 
   function handleSecondary() {
