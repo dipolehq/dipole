@@ -357,7 +357,7 @@ func buildHTTPServer(
 		mcpDipole.RegisterMCPServerRoutes(mux)
 	}
 
-	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins))
+	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret)
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),

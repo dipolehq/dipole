@@ -84,7 +84,7 @@ func NewTenantHostResolver(tenants TenantLookup, hosts *platform.Hosts, allowHea
 
 // Resolve determines the tenant and the service host for a request.
 func (r *TenantHostResolver) Resolve(ctx context.Context, req *http.Request) (*ResolvedTenantHost, error) {
-	subdomain, svc, ok := r.hosts.ParseHost(PublicHost(req))
+	subdomain, svc, _, ok := r.hosts.ParseHost(PublicHost(req))
 	if !ok {
 		if r.allowHeaderOverride {
 			if resolved, err := r.resolveFromHeader(ctx, req); err != nil || resolved != nil {

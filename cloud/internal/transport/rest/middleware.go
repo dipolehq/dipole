@@ -1,9 +1,10 @@
 /*
 Package rest — middleware.go provides HTTP middleware for the REST API.
 
-Implements: auth (Bearer token validation), tenant scoping, request ID generation,
-rate limiting (per-tenant token bucket), CORS, and Resource Set scoping.
-All middleware stores extracted values in request context for downstream handlers.
+Implements: proxy secret verification, auth (Bearer token validation), tenant
+scoping, request ID generation, rate limiting (per-tenant token bucket), CORS,
+and Resource Set scoping. All middleware stores extracted values in request
+context for downstream handlers.
 */
 package rest
 
@@ -219,7 +220,7 @@ func extractAPIToken(r *http.Request) string {
 	return parts[1]
 }
 
-func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string) http.Handler {
+func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string) http.Handler {
 	rateLimiter := NewRateLimiter(100, 30)
 	protected := rateLimiter.Middleware(mux)
 	protected = AuthMiddleware(authenticator)(protected)
@@ -230,7 +231,26 @@ func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowed
 		}
 		protected.ServeHTTP(w, r)
 	})
-	return RequestIDMiddleware(CORSMiddleware(allowedOrigins)(ResourceSetMiddleware(routed)))
+	handler := RequestIDMiddleware(CORSMiddleware(allowedOrigins)(ResourceSetMiddleware(routed)))
+	if proxySecret != "" {
+		handler = ProxySecretMiddleware(proxySecret)(handler)
+	}
+	return handler
+}
+
+// ProxySecretMiddleware rejects requests that don't carry a valid
+// X-Dipole-Proxy-Secret header. This prevents direct access to Cloud Run
+// bypassing Cloudflare, which would allow X-Forwarded-Host forgery.
+func ProxySecretMiddleware(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-Dipole-Proxy-Secret") != secret {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func IsPublicPath(path string) bool {

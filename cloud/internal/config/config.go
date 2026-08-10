@@ -6,6 +6,10 @@ Key fields:
     emits <tenant>-<svc>-staging hostnames and clients never leave the staging
     boundary.
   - PlatformDomain: apex domain for per-tenant service hostnames.
+  - ProxySecret: shared secret the Cloudflare Worker attaches to every request.
+    When set, requests without a matching X-Dipole-Proxy-Secret header are
+    rejected with 403, preventing direct access to Cloud Run that would allow
+    X-Forwarded-Host forgery.
   - DevBootstrap: enables auto-tenant creation and the X-Dipole-Tenant-Subdomain
     header for local development. Must be false in deployed environments.
   - AdminSSOTenantID: binds admin SSO login to one tenant. Last remaining
@@ -31,6 +35,7 @@ type Config struct {
 	Region             string
 	Env                string
 	PlatformDomain     string
+	ProxySecret        string
 	ConsoleURL         string
 	DevBootstrap       bool
 	AdminSSOTenantID   string
@@ -52,6 +57,7 @@ func LoadFromEnv() (*Config, error) {
 		Region:             envStr("DIPOLE_REGION", "ap-south-1"),
 		Env:                envStr("DIPOLE_ENV", "production"),
 		PlatformDomain:     envStr("DIPOLE_PLATFORM_DOMAIN", platform.DefaultDomain),
+		ProxySecret:        os.Getenv("DIPOLE_PROXY_SECRET"),
 		ConsoleURL:         envStr("DIPOLE_CONSOLE_URL", "https://console.dipolehq.com"),
 		DevBootstrap:       envBool("DIPOLE_DEV_BOOTSTRAP", false),
 		AdminSSOTenantID:   os.Getenv("DIPOLE_TENANT_ID"),

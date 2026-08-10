@@ -115,11 +115,12 @@ func IsValidSubdomain(s string) bool {
 
 // ParseHost turns a request hostname back into the tenant subdomain and the
 // service being addressed. Returns ok=false for anything that isn't a
-// well-formed per-tenant service host.
-func (h *Hosts) ParseHost(host string) (tenantSubdomain string, svc Service, ok bool) {
+// well-formed per-tenant service host. The env return is "staging" if the
+// hostname contained a -staging suffix, or "" otherwise.
+func (h *Hosts) ParseHost(host string) (tenantSubdomain string, svc Service, env string, ok bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 
 	if i := strings.LastIndex(host, ":"); i != -1 && !strings.Contains(host[i:], "]") {
@@ -129,12 +130,18 @@ func (h *Hosts) ParseHost(host string) (tenantSubdomain string, svc Service, ok 
 
 	suffix := "." + h.domain
 	if !strings.HasSuffix(host, suffix) {
-		return "", "", false
+		return "", "", "", false
 	}
 
 	label := strings.TrimSuffix(host, suffix)
 	if label == "" || strings.Contains(label, ".") {
-		return "", "", false
+		return "", "", "", false
+	}
+
+	parsedEnv := ""
+	if strings.HasSuffix(label, "-staging") {
+		label = strings.TrimSuffix(label, "-staging")
+		parsedEnv = "staging"
 	}
 
 	for _, known := range knownServices {
@@ -143,10 +150,10 @@ func (h *Hosts) ParseHost(host string) (tenantSubdomain string, svc Service, ok 
 			continue
 		}
 		if trimmed == "" {
-			return "", "", false
+			return "", "", "", false
 		}
-		return trimmed, known, true
+		return trimmed, known, parsedEnv, true
 	}
 
-	return "", "", false
+	return "", "", "", false
 }
