@@ -74,6 +74,12 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		}, nil
 	}
 
+	if session.TrustProvider == nil {
+		return &CallbackResult{
+			RedirectURL: buildErrorRedirect(session.OriginalRequest.RedirectURI, "access_denied", "session missing trust provider configuration", session.OriginalRequest.State),
+		}, nil
+	}
+
 	evidence := &domain.ClientEvidence{
 		SourceIP: session.ClientIP,
 		Environment: map[string]string{
@@ -81,7 +87,11 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		},
 	}
 
-	trustResult, err := s.trust.Validate(ctx, session.TrustProvider, evidence)
+	// EdgeSDKAudience only applies to Edge/CLI attestation, not OAuth code exchange — clear it on a copy.
+	tp := *session.TrustProvider
+	tp.EdgeSDKAudience = ""
+
+	trustResult, err := s.trust.Validate(ctx, &tp, evidence)
 	if err != nil || !trustResult.Attested {
 		reason := "Trust Provider validation failed"
 		if trustResult != nil && trustResult.Reason != "" {
@@ -94,7 +104,29 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 
 	userClaims := extractUserClaims(idToken)
 
+	// Prevents replay of a different, otherwise-valid id_token into this login attempt.
+	if err := verifyNonce(userClaims, session.Nonce); err != nil {
+		return &CallbackResult{
+			RedirectURL: buildErrorRedirect(session.OriginalRequest.RedirectURI, "access_denied", err.Error(), session.OriginalRequest.State),
+		}, nil
+	}
+
 	return s.issueCodeAfterAuth(ctx, session, userClaims)
+}
+
+// verifyNonce checks the id_token's nonce claim against the session's nonce.
+func verifyNonce(claims map[string]any, expected string) error {
+	if expected == "" {
+		return fmt.Errorf("session missing nonce")
+	}
+	actual, _ := claims["nonce"].(string)
+	if actual == "" {
+		return fmt.Errorf("id_token missing nonce claim")
+	}
+	if actual != expected {
+		return fmt.Errorf("id_token nonce does not match request")
+	}
+	return nil
 }
 
 func (s *IdPCallbackService) HandleSAMLCallback(ctx context.Context, samlResponse, relayState string) (*CallbackResult, error) {
