@@ -36,6 +36,9 @@ type IdPSession struct {
 	AccessConditions []domain.AccessCondition
 	ClientIP         string
 	CreatedAt        time.Time
+
+	// Nonce sent to the IdP in the OIDC authorize request; empty for SAML. Verified against the id_token on callback.
+	Nonce string
 }
 
 type IdPRedirectResult struct {
@@ -98,6 +101,7 @@ func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeReques
 		AccessConditions: conditions,
 		ClientIP:         clientIP,
 		CreatedAt:        time.Now().UTC(),
+		Nonce:            nonce,
 	}
 	s.mu.Unlock()
 
