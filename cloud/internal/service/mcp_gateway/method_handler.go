@@ -121,7 +121,15 @@ func (h *MethodHandler) handleInitialize() (any, error) {
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {
 	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("right-side auth: %w", err)
+	}
+
+	if len(creds) == 0 {
+		policies, _ := h.rightAuth.DebugFindPolicies(ctx, rCtx.Scope)
+		return map[string]any{
+			"tools":  nil,
+			"_debug": fmt.Sprintf("0 credentials resolved. policies_found=%d, gateway_url=%q, user=%q", policies, rCtx.Scope.GatewayURL, rCtx.UserID),
+		}, nil
 	}
 
 	var allTools []MCPTool
@@ -130,7 +138,7 @@ func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContex
 
 		tools, err := client.ListTools(ctx, cred.AccessToken)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("ListTools for %q failed: %w", cred.ServerWorkload.Name, err)
 		}
 
 		for _, tool := range tools {
