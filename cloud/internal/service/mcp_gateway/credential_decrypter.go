@@ -42,7 +42,7 @@ func (d *AESCredentialDecrypter) DecryptCredential(configEncrypted []byte, credT
 
 func extractAPIKey(configJSON []byte) (string, error) {
 	var config struct {
-		APIKey string `json:"api_key"`
+		APIKey string `json:"apiKey"`
 	}
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return "", fmt.Errorf("parse api key config: %w", err)

@@ -17,7 +17,6 @@ package mcp_gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -139,20 +138,15 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 	}
 
 	var creds []ServerCredential
-	var lastCredErr error
 	for _, policy := range policies {
 		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
-			lastCredErr = err
 			continue
 		}
 		creds = append(creds, ServerCredential{
 			AccessToken:    token,
 			ServerWorkload: policy.ServerWorkload,
 		})
-	}
-	if len(creds) == 0 && lastCredErr != nil {
-		return nil, fmt.Errorf("credential resolution failed: %w", lastCredErr)
 	}
 	return creds, nil
 }
@@ -227,15 +221,4 @@ func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, 
 	}
 
 	return refreshed.AccessToken, nil
-}
-
-func (a *RightSideAuth) DebugFindPolicies(ctx context.Context, scope TenantScope) (int, error) {
-	if !scope.Valid() {
-		return 0, ErrInvalidTenantScope
-	}
-	policies, err := a.policyFinder.FindGatewayPolicies(ctx, scope.TenantID, scope.GatewayURL)
-	if err != nil {
-		return 0, err
-	}
-	return len(policies), nil
 }

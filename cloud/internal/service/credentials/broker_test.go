@@ -66,7 +66,7 @@ func TestRetrieve_APIKey(t *testing.T) {
 	broker := testBroker(t)
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
-		ConfigEncrypted: encrypt(t, `{"api_key":"sk_live_test123"}`),
+		ConfigEncrypted: encrypt(t, `{"apiKey":"sk_live_test123"}`),
 	}
 
 	cred, err := broker.Retrieve(context.Background(), testTenantID, provider, &domain.ClientEvidence{}, nil)
@@ -112,7 +112,7 @@ func TestRetrieve_WrongKey_ReturnsError(t *testing.T) {
 	)
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
-		ConfigEncrypted: encrypt(t, `{"api_key":"x"}`),
+		ConfigEncrypted: encrypt(t, `{"apiKey":"x"}`),
 	}
 
 	_, err := broker.Retrieve(context.Background(), testTenantID, provider, &domain.ClientEvidence{}, nil)
@@ -203,7 +203,7 @@ func TestRetrieve_StoredSecret_DoesNotRequireTenantLookup(t *testing.T) {
 	)
 	provider := &domain.CredentialProvider{
 		Type:            "api_key",
-		ConfigEncrypted: encrypt(t, `{"api_key":"sk_live_test123"}`),
+		ConfigEncrypted: encrypt(t, `{"apiKey":"sk_live_test123"}`),
 	}
 
 	cred, err := broker.Retrieve(context.Background(), uuid.New(), provider, &domain.ClientEvidence{}, nil)
