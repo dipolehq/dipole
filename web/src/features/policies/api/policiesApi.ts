@@ -1,4 +1,5 @@
 import { apiClient, ApiError, apiErrorMessage } from '@/shared/lib/api-client'
+import { groupIdentifiers, flattenIdentifiers } from '@/shared/lib/identifiers'
 import type { PolicyFormValues, PolicyMetadata } from '@/features/policies/types/formValues'
 
 const BASE = '/access-policies'
@@ -237,7 +238,7 @@ export async function fetchPolicy(id: string): Promise<FetchPolicyResult | null>
       ? {
           name: cwData.name,
           description: cwData.description,
-          identifiers: (cwData.identifiers ?? []).map((i) => ({ type: i.type, values: [i.value] })),
+          identifiers: groupIdentifiers(cwData.identifiers ?? []),
           tags: (cwData.tags ?? []).map((t) => ({ key: t.key, value: t.value })),
         }
       : { name: '', description: '', identifiers: [{ type: '', values: [''] }], tags: [] }
@@ -381,9 +382,7 @@ export async function createPolicy(values: PolicyFormValues): Promise<void> {
         name: values.client.name,
         description: values.client.description,
         isActive: true,
-        identifiers: values.client.identifiers.flatMap((ident) =>
-          ident.values.filter(Boolean).map((v) => ({ type: ident.type, value: v })),
-        ),
+        identifiers: flattenIdentifiers(values.client.identifiers),
         tags: (values.client.tags ?? []).map((t) => ({ key: t.key, value: t.value })),
       })
       clientWorkloadId = cw.id
