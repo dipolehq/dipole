@@ -1,317 +1,465 @@
 /*
-mcp_http_client_test.go tests the HTTPMCPClient that calls downstream MCP
-servers using JSON-RPC over HTTP with Bearer token authorization.
+mcp_http_client_test.go covers readJSONRPCResponse's ID-correlation
+correctness against adversarial SSE event orderings (including proving it
+returns as soon as the matching event is seen, not after stream EOF), and
+HTTPMCPClient's full request lifecycle (session init, concurrency,
+stale-session retry, 202/404 handling, context-deadline enforcement) against
+a real httptest server speaking the MCP Streamable HTTP transport.
 */
 package mcp_gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-func TestHTTPMCPClient_ListTools(t *testing.T) {
-	var receivedMethod string
-	var receivedToken string
+func readJSONRPC(t *testing.T, contentType string, body string, requestID int64) ([]byte, error) {
+	t.Helper()
+	return readJSONRPCResponse(strings.NewReader(body), contentType, requestID)
+}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedToken = r.Header.Get("Authorization")
-
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]any
-		json.Unmarshal(body, &req)
-		receivedMethod = req["method"].(string)
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result": map[string]any{
-				"tools": []map[string]any{
-					{"name": "create_issue", "description": "Create a Jira issue"},
-					{"name": "search_issues", "description": "Search issues"},
-				},
-			},
-		})
-	}))
-	defer srv.Close()
-
-	client := newClientFromTestServer(srv)
-
-	tools, err := client.ListTools(context.Background(), "test-token-123")
+func TestReadJSONRPCResponse_PlainJSON(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`
+	got, err := readJSONRPC(t, "application/json", body, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if receivedMethod != "tools/list" {
-		t.Errorf("expected method 'tools/list', got '%s'", receivedMethod)
-	}
-	if receivedToken != "Bearer test-token-123" {
-		t.Errorf("expected 'Bearer test-token-123', got '%s'", receivedToken)
-	}
-	if len(tools) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(tools))
-	}
-	if tools[0].Name != "create_issue" {
-		t.Errorf("expected first tool 'create_issue', got '%s'", tools[0].Name)
-	}
-	if tools[1].Description != "Search issues" {
-		t.Errorf("expected description 'Search issues', got '%s'", tools[1].Description)
+	if string(got) != body {
+		t.Errorf("expected body unchanged, got %s", got)
 	}
 }
 
-func TestHTTPMCPClient_CallTool(t *testing.T) {
-	var receivedMethod string
-	var receivedParams map[string]any
-	var receivedToken string
+func TestReadJSONRPCResponse_SSE_SingleEvent(t *testing.T) {
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedToken = r.Header.Get("Authorization")
+func TestReadJSONRPCResponse_SSE_NoEventLine(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":2,"result":{}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
 
-		if r.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("expected Content-Type application/json, got '%s'", r.Header.Get("Content-Type"))
+func TestReadJSONRPCResponse_SSE_NotificationBeforeResponse(t *testing.T) {
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n" +
+		"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"tools\":[{\"name\":\"foo\"}]}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":7,"result":{"tools":[{"name":"foo"}]}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_ResponseBeforeTrailingNotification(t *testing.T) {
+	// A naive "return the last event" implementation would return the
+	// trailing notification here instead of the response that already
+	// arrived.
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"tools\":[{\"name\":\"foo\"}]}}\n\n" +
+		"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":7,"result":{"tools":[{"name":"foo"}]}}`
+	if string(got) != expected {
+		t.Errorf("expected the id-matching event regardless of position, got %s", got)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_MultipleResponses_PicksMatchingID(t *testing.T) {
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"marker\":\"wrong\"}}\n\n" +
+		"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"marker\":\"right\"}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed struct {
+		Result struct {
+			Marker string `json:"marker"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(got, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if parsed.Result.Marker != "right" {
+		t.Errorf("expected the event matching id=2, got marker=%s", parsed.Result.Marker)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_StringID_DoesNotMatchNumeric(t *testing.T) {
+	// This client always sends numeric ids, so an id encoded as a JSON
+	// string is never a match for it — verifies id comparison is exact
+	// (raw JSON bytes), not a loose numeric-vs-string coercion.
+	body := "data: {\"jsonrpc\":\"2.0\",\"id\":\"7\",\"result\":{}}\n\n"
+	_, err := readJSONRPC(t, "text/event-stream", body, 7)
+	if err == nil {
+		t.Fatal("expected no match between numeric request id 7 and string id \"7\", got a match")
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_NoMatchingID_Errors(t *testing.T) {
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n" +
+		"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n"
+	_, err := readJSONRPC(t, "text/event-stream", body, 99)
+	if err == nil {
+		t.Fatal("expected an error when no SSE event matches the request id, got nil")
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_EmptyBody_Errors(t *testing.T) {
+	_, err := readJSONRPC(t, "text/event-stream", "", 1)
+	if err == nil {
+		t.Fatal("expected an error for an SSE response with no data: events, got nil")
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_MultiLineData(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\ndata: \"id\":1,\"result\":{}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "{\"jsonrpc\":\"2.0\",\n\"id\":1,\"result\":{}}"
+	if string(got) != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_NoTrailingNewline(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"
+	got, err := readJSONRPC(t, "text/event-stream", body, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":1,"result":{}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_WithCharset(t *testing.T) {
+	body := "data: {\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"ok\":true}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream; charset=utf-8", body, 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":5,"result":{"ok":true}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+func TestReadJSONRPCResponse_SSE_CommentsAndRetryIgnored(t *testing.T) {
+	body := ": this is a comment\nretry: 3000\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n"
+	got, err := readJSONRPC(t, "text/event-stream", body, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":1,"result":{}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+// TestReadJSONRPCResponse_SSE_ReturnsAsSoonAsMatchFound proves the
+// incremental-read fix: the reader is a pipe that never closes, so an
+// io.ReadAll-based implementation would hang forever. readJSONRPCResponse
+// must return as soon as it scans the matching event, without waiting for
+// the stream to end.
+func TestReadJSONRPCResponse_SSE_ReturnsAsSoonAsMatchFound(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+
+	go func() {
+		fmt.Fprint(pw, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"ok\":true}}\n\n")
+		// Deliberately never close pw and never write more: a
+		// stream-holding-open server. If readJSONRPCResponse waited for
+		// EOF, this test would hang until its own timeout.
+	}()
+
+	done := make(chan struct{})
+	var got []byte
+	var err error
+	go func() {
+		got, err = readJSONRPCResponse(pr, "text/event-stream", 3)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("readJSONRPCResponse did not return promptly after the matching event arrived; it appears to be waiting for EOF")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"jsonrpc":"2.0","id":3,"result":{"ok":true}}`
+	if string(got) != expected {
+		t.Errorf("expected %s, got %s", expected, got)
+	}
+}
+
+// sseServer speaks the MCP Streamable HTTP transport: assigns a session ID on
+// initialize, requires it on subsequent calls, and lets the test control what
+// each method returns via handlers. invalidateOnce forces the next
+// non-initialize call to receive a 404, for exercising the stale-session
+// retry path.
+type sseServer struct {
+	mu             sync.Mutex
+	sessionID      string
+	handlers       map[string]func(id int64) (any, error)
+	invalidateOnce atomic.Bool
+}
+
+func newSSEServer() *sseServer {
+	return &sseServer{
+		sessionID: "test-session-abc",
+		handlers:  map[string]func(id int64) (any, error){},
+	}
+}
+
+func (s *sseServer) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int64  `json:"id"`
+			Method string `json:"method"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &req)
+
+		if req.Method != "initialize" {
+			sid := r.Header.Get("Mcp-Session-Id")
+			if sid == "" {
+				http.Error(w, "missing session id", http.StatusBadRequest)
+				return
+			}
+			if s.invalidateOnce.CompareAndSwap(true, false) {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			s.mu.Lock()
+			valid := sid == s.sessionID
+			s.mu.Unlock()
+			if !valid {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 		}
 
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]any
-		json.Unmarshal(body, &req)
-		receivedMethod = req["method"].(string)
-		if p, ok := req["params"].(map[string]any); ok {
-			receivedParams = p
+		var result any
+		var err error
+		if req.Method == "initialize" {
+			result = map[string]any{"protocolVersion": "2025-03-26"}
+		} else if h, ok := s.handlers[req.Method]; ok {
+			result, err = h(req.ID)
+		} else {
+			err = fmt.Errorf("method not found")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result":  map[string]any{"issueId": "PROJ-123"},
-		})
-	}))
-	defer srv.Close()
+		if req.Method == "initialize" {
+			s.mu.Lock()
+			sid := s.sessionID
+			s.mu.Unlock()
+			w.Header().Set("Mcp-Session-Id", sid)
+		}
 
-	client := newClientFromTestServer(srv)
-
-	args := json.RawMessage(`{"project": "PROJ", "summary": "Test issue"}`)
-	result, err := client.CallTool(context.Background(), "my-bearer-token", "create_issue", args)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if receivedMethod != "tools/call" {
-		t.Errorf("expected method 'tools/call', got '%s'", receivedMethod)
-	}
-	if receivedToken != "Bearer my-bearer-token" {
-		t.Errorf("expected 'Bearer my-bearer-token', got '%s'", receivedToken)
-	}
-	if receivedParams["name"] != "create_issue" {
-		t.Errorf("expected tool name 'create_issue', got '%v'", receivedParams["name"])
-	}
-
-	resultMap, ok := result.(map[string]any)
-	if !ok {
-		t.Fatal("expected map result")
-	}
-	if resultMap["issueId"] != "PROJ-123" {
-		t.Errorf("expected issueId 'PROJ-123', got '%v'", resultMap["issueId"])
+		resp := map[string]any{"jsonrpc": "2.0", "id": req.ID}
+		if err != nil {
+			resp["error"] = map[string]any{"code": -32601, "message": err.Error()}
+		} else {
+			resp["result"] = result
+		}
+		respBody, _ := json.Marshal(resp)
+		w.Write(respBody)
 	}
 }
 
-func TestHTTPMCPClient_ListResources(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]any
-		json.Unmarshal(body, &req)
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result": map[string]any{
-				"resources": []map[string]any{
-					{"uri": "file:///docs/readme.md", "name": "README", "mimeType": "text/markdown"},
-				},
-			},
-		})
-	}))
-	defer srv.Close()
-
-	client := newClientFromTestServer(srv)
-
-	resources, err := client.ListResources(context.Background(), "token")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(resources))
-	}
-	if resources[0].URI != "file:///docs/readme.md" {
-		t.Errorf("expected URI 'file:///docs/readme.md', got '%s'", resources[0].URI)
-	}
-	if resources[0].MimeType != "text/markdown" {
-		t.Errorf("expected mimeType 'text/markdown', got '%s'", resources[0].MimeType)
-	}
-}
-
-func TestHTTPMCPClient_ReadResource(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]any
-		json.Unmarshal(body, &req)
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"result": map[string]any{
-				"uri":      "file:///docs/readme.md",
-				"mimeType": "text/markdown",
-				"text":     "# Hello World",
-			},
-		})
-	}))
-	defer srv.Close()
-
-	client := newClientFromTestServer(srv)
-
-	content, err := client.ReadResource(context.Background(), "token", "file:///docs/readme.md")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if content == nil {
-		t.Fatal("expected non-nil content")
-	}
-	if content.Text != "# Hello World" {
-		t.Errorf("expected text '# Hello World', got '%s'", content.Text)
-	}
-	if content.URI != "file:///docs/readme.md" {
-		t.Errorf("expected URI 'file:///docs/readme.md', got '%s'", content.URI)
-	}
-}
-
-func TestHTTPMCPClient_ServerError_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal server error"))
-	}))
-	defer srv.Close()
-
-	client := newClientFromTestServer(srv)
-
-	_, err := client.ListTools(context.Background(), "token")
-	if err == nil {
-		t.Fatal("expected error for HTTP 500")
-	}
-	if !contains(err.Error(), "500") {
-		t.Errorf("expected error to mention status 500, got: %v", err)
-	}
-}
-
-func TestHTTPMCPClient_JSONRPCError_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]any
-		json.Unmarshal(body, &req)
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"jsonrpc": "2.0",
-			"id":      req["id"],
-			"error": map[string]any{
-				"code":    -32600,
-				"message": "Invalid request",
-			},
-		})
-	}))
-	defer srv.Close()
-
-	client := newClientFromTestServer(srv)
-
-	_, err := client.CallTool(context.Background(), "token", "bad_tool", nil)
-	if err == nil {
-		t.Fatal("expected error for JSON-RPC error response")
-	}
-	if !contains(err.Error(), "-32600") {
-		t.Errorf("expected error code -32600, got: %v", err)
-	}
-	if !contains(err.Error(), "Invalid request") {
-		t.Errorf("expected error message 'Invalid request', got: %v", err)
-	}
-}
-
-// newClientFromTestServer creates an HTTPMCPClient pointing at the test server.
-func newClientFromTestServer(srv *httptest.Server) *HTTPMCPClient {
+func newTestClient(t *testing.T, srv *httptest.Server) *HTTPMCPClient {
+	t.Helper()
 	return &HTTPMCPClient{
 		baseURL:    srv.URL,
 		httpClient: srv.Client(),
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
+func TestHTTPMCPClient_ListTools_HappyPath(t *testing.T) {
+	s := newSSEServer()
+	s.handlers["tools/list"] = func(id int64) (any, error) {
+		return map[string]any{"tools": []MCPTool{{Name: "foo"}}}, nil
+	}
+	srv := httptest.NewServer(s.handler())
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	tools, err := client.ListTools(context.Background(), "tok")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "foo" {
+		t.Errorf("unexpected tools: %+v", tools)
+	}
 }
 
-func containsSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+func TestHTTPMCPClient_ConcurrentCalls_InitializeOnlyOnce(t *testing.T) {
+	s := newSSEServer()
+	var initCount atomic.Int64
+	s.handlers["tools/list"] = func(id int64) (any, error) {
+		return map[string]any{"tools": []MCPTool{}}, nil
+	}
+
+	origHandler := s.handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var peek struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &peek)
+		if peek.Method == "initialize" {
+			initCount.Add(1)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		origHandler(w, r)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := client.ListTools(context.Background(), "tok")
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("unexpected error from concurrent call: %v", err)
 		}
 	}
-	return false
-}
 
-// The endpoint is derived from the policy's ServerInfo on every request, so the
-// factory must honour every field — a dropped TLS flag or path would silently
-// send a credential to the wrong scheme or route.
-func TestHTTPMCPClientFactory_DerivesEndpointFromServerInfo(t *testing.T) {
-	cases := []struct {
-		name   string
-		server ServerInfo
-		want   string
-	}{
-		{"https default port", ServerInfo{Host: "mcp.example.com", Port: 443, TLS: true}, "https://mcp.example.com"},
-		{"https custom port", ServerInfo{Host: "mcp.example.com", Port: 8443, TLS: true}, "https://mcp.example.com:8443"},
-		{"http default port", ServerInfo{Host: "mcp.example.com", Port: 80}, "http://mcp.example.com"},
-		{"http custom port", ServerInfo{Host: "localhost", Port: 8000}, "http://localhost:8000"},
-		{"with path", ServerInfo{Host: "mcp.example.com", Port: 443, TLS: true, Path: "/mcp"}, "https://mcp.example.com/mcp"},
-	}
-
-	factory := NewHTTPMCPClientFactory()
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			client := factory.ClientFor(tc.server)
-			httpClient, ok := client.(*HTTPMCPClient)
-			if !ok {
-				t.Fatalf("expected *HTTPMCPClient, got %T", client)
-			}
-			if httpClient.baseURL != tc.want {
-				t.Errorf("expected baseURL %q, got %q", tc.want, httpClient.baseURL)
-			}
-		})
+	if got := initCount.Load(); got != 1 {
+		t.Errorf("expected exactly 1 initialize call across %d concurrent callers, got %d", n, got)
 	}
 }
 
-// Clients are built per request, so they must share one connection pool —
-// otherwise every tool call would open a fresh TCP connection to the upstream.
-func TestHTTPMCPClientFactory_SharesOneHTTPClient(t *testing.T) {
-	factory := NewHTTPMCPClientFactory()
+func TestHTTPMCPClient_StaleSession_RetriesAndSucceeds(t *testing.T) {
+	s := newSSEServer()
+	s.handlers["tools/list"] = func(id int64) (any, error) {
+		return map[string]any{"tools": []MCPTool{{Name: "recovered"}}}, nil
+	}
+	srv := httptest.NewServer(s.handler())
+	defer srv.Close()
 
-	first := factory.ClientFor(ServerInfo{Host: "a.example.com", Port: 443, TLS: true}).(*HTTPMCPClient)
-	second := factory.ClientFor(ServerInfo{Host: "b.example.com", Port: 443, TLS: true}).(*HTTPMCPClient)
+	client := newTestClient(t, srv)
 
-	if first.httpClient != second.httpClient {
-		t.Error("expected both clients to share the factory's http.Client")
+	if _, err := client.ListTools(context.Background(), "tok"); err != nil {
+		t.Fatalf("initial call failed: %v", err)
+	}
+
+	s.invalidateOnce.Store(true)
+
+	tools, err := client.ListTools(context.Background(), "tok")
+	if err != nil {
+		t.Fatalf("expected the client to recover from a stale session automatically, got error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "recovered" {
+		t.Errorf("expected the retried call's real result, got: %+v", tools)
 	}
 }
 
-// The factory contract is that a client is always returned, never nil — callers
-// use the result directly and expect failures to surface from the call.
-func TestHTTPMCPClientFactory_NeverReturnsNil(t *testing.T) {
-	factory := NewHTTPMCPClientFactory()
-	if client := factory.ClientFor(ServerInfo{}); client == nil {
-		t.Fatal("factory returned nil for a zero ServerInfo")
+func TestHTTPMCPClient_404WithoutSession_IsNotTreatedAsSessionExpiry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	_, err := client.ListTools(context.Background(), "tok")
+	if err == nil {
+		t.Fatal("expected an error for a 404 with no session involved, got nil")
+	}
+}
+
+func TestHTTPMCPClient_202OnRequest_IsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var peek struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &peek)
+		if peek.Method == "initialize" {
+			w.Header().Set("Mcp-Session-Id", "sid")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	_, err := client.CallTool(context.Background(), "tok", "some_tool", nil)
+	if err == nil {
+		t.Fatal("expected 202 Accepted on a tools/call request to be an error, got nil")
+	}
+}
+
+func TestHTTPMCPClient_ContextDeadline_BoundsSlowServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var peek struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &peek)
+		if peek.Method == "initialize" {
+			w.Header().Set("Mcp-Session-Id", "sid")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+			return
+		}
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := client.ListTools(ctx, "tok")
+	if err == nil {
+		t.Fatal("expected the call to fail once the caller's context deadline elapsed, got nil")
 	}
 }

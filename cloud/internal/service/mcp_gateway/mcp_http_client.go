@@ -1,13 +1,41 @@
 /*
-mcp_http_client.go implements MCPServerClient using JSON-RPC over HTTP.
+mcp_http_client.go implements MCPServerClient using JSON-RPC over HTTP,
+against the MCP Streamable HTTP transport.
 
-HTTPMCPClient calls downstream MCP servers by sending JSON-RPC 2.0 requests
-with Bearer token authorization. It handles tools/list, tools/call,
-resources/list, and resources/read methods.
+HTTPMCPClient calls downstream MCP servers for tools/list, tools/call,
+resources/list, and resources/read, with Bearer token authorization.
+
+Design notes:
+  - Each call is bounded by mcpUpstreamTimeout via a per-call context deadline
+    (not http.Client.Timeout), so the bound covers reading a slow/streaming SSE
+    body too, without capping connection reuse across unrelated calls.
+  - Session state (sessionState) is guarded by a mutex, not atomics: acquiring
+    a session is check-then-act (read, then maybe initialize and write), which
+    needs to be atomic as a whole so concurrent callers can't both initialize.
+  - doRequest never touches session state directly (session id is passed in,
+    received id is returned out) so it can be called safely both with and
+    without session.mu already held — it has no locking of its own.
+  - A JSON response body is read in full; an SSE response body is scanned
+    event-by-event and returned as soon as the event whose JSON-RPC id matches
+    the request is found, without waiting for the server to close the stream.
+  - ID correlation compares raw JSON bytes of the "id" field rather than
+    decoding it into a Go type, so it isn't coupled to any assumption about
+    whether an id is numeric or string — it only has to match what this
+    client itself encoded when sending the request.
+  - This client advertises protocolVersion "2025-03-26" in initialize and
+    records whatever version the server's InitializeResult actually reports;
+    it does not implement multi-version negotiation or retry-on-mismatch.
+  - A stale session (404 on a request that carried a session id) triggers one
+    re-initialize + resend of the same request, so callers get a real result or
+    a real error, never a message that only claims a retry will happen.
+  - A 202 response is only valid for notification/response-only POST bodies;
+    this client always sends requests (always carries an id), so a 202 here is
+    treated as a protocol error rather than "success with no result".
 */
 package mcp_gateway
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,39 +43,36 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const mcpUpstreamTimeout = 30 * time.Second
 
-// MCPClientFactory builds a client for one downstream MCP server.
-//
-// Implementations must always return a usable client, never nil: callers treat
-// the result as ready to use, and an unreachable server is expected to surface as
-// an error from a call rather than as a missing client.
-//
-// The Gateway resolves which servers a request may reach from that tenant's
-// Access Policies on every request, then asks the factory for a client per
-// server. Clients are therefore not held anywhere: there is no per-tenant
-// registry to keep in sync, no cache to expire, and no map that could be keyed
-// by one tenant and read by another.
+// maxSSELineSize bounds a single SSE "data:" line, which for this transport
+// is an entire JSON-RPC message on one line (JSON has no literal newlines
+// unless the server pretty-prints, which it shouldn't). bufio.Scanner's
+// default 64KiB limit is too small for a tools/list response listing many
+// tools with full input schemas.
+const maxSSELineSize = 8 << 20 // 8MiB
+
+// MCPClientFactory builds a client for one downstream MCP server. Clients are
+// built per request from that request's Access Policy, not cached, so a
+// server only ever becomes reachable through the policy that authorizes it.
 type MCPClientFactory interface {
 	ClientFor(server ServerInfo) MCPServerClient
 }
 
-// HTTPMCPClientFactory produces JSON-RPC-over-HTTP clients that share one
-// http.Client, so connection pooling and keep-alive still apply even though a
-// client value is constructed per request. Pooling lives in the shared
-// Transport and is keyed by target host, so per-request client values cost
-// nothing.
+// HTTPMCPClientFactory shares one http.Client (and its connection pool)
+// across all clients it produces.
 type HTTPMCPClientFactory struct {
 	httpClient *http.Client
 }
 
 func NewHTTPMCPClientFactory() *HTTPMCPClientFactory {
 	return &HTTPMCPClientFactory{
-		httpClient: &http.Client{Timeout: mcpUpstreamTimeout},
+		httpClient: &http.Client{},
 	}
 }
 
@@ -58,11 +83,17 @@ func (f *HTTPMCPClientFactory) ClientFor(server ServerInfo) MCPServerClient {
 	}
 }
 
+type sessionState struct {
+	mu          sync.Mutex
+	id          string
+	sessionless bool
+}
+
 type HTTPMCPClient struct {
 	baseURL    string
 	httpClient *http.Client
 	reqID      atomic.Int64
-	sessionID  atomic.Value // stores string; empty until initialized
+	session    sessionState
 }
 
 // NewHTTPMCPClient builds a standalone client with its own connection pool.
@@ -70,12 +101,10 @@ type HTTPMCPClient struct {
 func NewHTTPMCPClient(host string, port int, path string, tls bool) *HTTPMCPClient {
 	return &HTTPMCPClient{
 		baseURL:    mcpBaseURL(ServerInfo{Host: host, Port: port, Path: path, TLS: tls}),
-		httpClient: &http.Client{Timeout: mcpUpstreamTimeout},
+		httpClient: &http.Client{},
 	}
 }
 
-// mcpBaseURL renders a server's endpoint, omitting the port when it is the
-// default for the scheme.
 func mcpBaseURL(server ServerInfo) string {
 	scheme := "http"
 	if server.TLS {
@@ -151,12 +180,43 @@ func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri stri
 }
 
 func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, params any) (any, error) {
-	// Ensure session is initialized before any non-initialize call.
 	if method != "initialize" {
 		if err := c.ensureSession(ctx, token); err != nil {
 			return nil, fmt.Errorf("session initialization failed: %w", err)
 		}
 	}
+
+	res, err := c.doRequest(ctx, token, method, params, c.currentSessionID())
+	if err != nil {
+		return nil, err
+	}
+	c.recordSessionID(res.receivedSessionID)
+
+	if res.staleSession {
+		if err := c.reinitialize(ctx, token); err != nil {
+			return nil, fmt.Errorf("session expired and re-initialization failed: %w", err)
+		}
+		res, err = c.doRequest(ctx, token, method, params, c.currentSessionID())
+		if err != nil {
+			return nil, err
+		}
+		c.recordSessionID(res.receivedSessionID)
+		if res.staleSession {
+			return nil, fmt.Errorf("MCP server rejected session immediately after re-initialization")
+		}
+	}
+	return res.result, nil
+}
+
+type requestOutcome struct {
+	result            any
+	receivedSessionID string
+	staleSession      bool
+}
+
+func (c *HTTPMCPClient) doRequest(ctx context.Context, token string, method string, params any, sentSessionID string) (requestOutcome, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, mcpUpstreamTimeout)
+	defer cancel()
 
 	id := c.reqID.Add(1)
 
@@ -171,40 +231,48 @@ func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, p
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return requestOutcome{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return requestOutcome{}, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	if sid, ok := c.sessionID.Load().(string); ok && sid != "" {
-		req.Header.Set("Mcp-Session-Id", sid)
+	if sentSessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sentSessionID)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send request to %s: %w", c.baseURL, err)
+		return requestOutcome{}, fmt.Errorf("send request to %s: %w", c.baseURL, err)
 	}
 	defer resp.Body.Close()
 
-	// Capture session ID from response if present.
-	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
-		c.sessionID.Store(sid)
+	receivedSessionID := resp.Header.Get("Mcp-Session-Id")
+
+	if resp.StatusCode == http.StatusNotFound && sentSessionID != "" {
+		io.Copy(io.Discard, resp.Body)
+		return requestOutcome{staleSession: true}, nil
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
+	if resp.StatusCode == http.StatusAccepted {
+		io.Copy(io.Discard, resp.Body)
+		return requestOutcome{}, fmt.Errorf("MCP server returned 202 Accepted for a JSON-RPC request, which is not a valid response to a request carrying an id")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("MCP server returned status %d: %s", resp.StatusCode, truncate(string(respBody), 200))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return requestOutcome{}, fmt.Errorf("MCP server returned status %d: %s", resp.StatusCode, truncate(string(respBody), 200))
+	}
+
+	jsonBody, err := readJSONRPCResponse(resp.Body, resp.Header.Get("Content-Type"), id)
+	if err != nil {
+		return requestOutcome{}, err
 	}
 
 	var rpcResp struct {
@@ -216,32 +284,71 @@ func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, p
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
-		return nil, fmt.Errorf("parse JSON-RPC response: %w", err)
+	if err := json.Unmarshal(jsonBody, &rpcResp); err != nil {
+		return requestOutcome{}, fmt.Errorf("parse JSON-RPC response: %w", err)
 	}
 
 	if rpcResp.Error != nil {
-		return nil, fmt.Errorf("MCP server error (code %d): %s", rpcResp.Error.Code, rpcResp.Error.Message)
+		return requestOutcome{}, fmt.Errorf("MCP server error (code %d): %s", rpcResp.Error.Code, rpcResp.Error.Message)
 	}
 
-	return rpcResp.Result, nil
+	return requestOutcome{result: rpcResp.Result, receivedSessionID: receivedSessionID}, nil
 }
 
-// ensureSession sends an initialize request if no session ID has been acquired yet.
+func (c *HTTPMCPClient) currentSessionID() string {
+	c.session.mu.Lock()
+	defer c.session.mu.Unlock()
+	return c.session.id
+}
+
+func (c *HTTPMCPClient) recordSessionID(sid string) {
+	if sid == "" {
+		return
+	}
+	c.session.mu.Lock()
+	c.session.id = sid
+	c.session.mu.Unlock()
+}
+
 func (c *HTTPMCPClient) ensureSession(ctx context.Context, token string) error {
-	if sid, ok := c.sessionID.Load().(string); ok && sid != "" {
+	c.session.mu.Lock()
+	defer c.session.mu.Unlock()
+
+	if c.session.id != "" || c.session.sessionless {
 		return nil
 	}
+	return c.initializeLocked(ctx, token)
+}
 
-	_, err := c.call(ctx, token, "initialize", map[string]any{
+func (c *HTTPMCPClient) reinitialize(ctx context.Context, token string) error {
+	c.session.mu.Lock()
+	defer c.session.mu.Unlock()
+
+	c.session.id = ""
+	c.session.sessionless = false
+	return c.initializeLocked(ctx, token)
+}
+
+// initializeLocked requires c.session.mu to already be held by the caller.
+func (c *HTTPMCPClient) initializeLocked(ctx context.Context, token string) error {
+	res, err := c.doRequest(ctx, token, "initialize", map[string]any{
 		"protocolVersion": "2025-03-26",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "Dipole MCP Identity Gateway",
 			"version": "0.1.0",
 		},
-	})
-	return err
+	}, "")
+	if err != nil {
+		return err
+	}
+	if res.staleSession {
+		return fmt.Errorf("unexpected: initialize reported a stale session")
+	}
+
+	c.session.id = res.receivedSessionID
+	c.session.sessionless = c.session.id == ""
+	return nil
 }
 
 func remarshal(src any, dst any) error {
@@ -250,6 +357,108 @@ func remarshal(src any, dst any) error {
 		return err
 	}
 	return json.Unmarshal(raw, dst)
+}
+
+// readJSONRPCResponse reads a response body and returns the bytes of the
+// JSON-RPC message that answers requestID.
+//
+// For application/json the whole body is one JSON-RPC object and is read in
+// full. For text/event-stream the body is scanned line by line as events
+// arrive; each completed event's "id" field is compared (as raw JSON bytes,
+// not decoded into a Go type) against requestID's own JSON encoding, and the
+// function returns as soon as a match is found — it does not wait for the
+// server to close the stream, so a long-lived SSE connection that keeps
+// emitting notifications after our response has already been sent will not
+// block this call.
+func readJSONRPCResponse(body io.Reader, contentType string, requestID int64) ([]byte, error) {
+	if !isSSE(contentType) {
+		return io.ReadAll(body)
+	}
+
+	wantID := strconv.FormatInt(requestID, 10)
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineSize)
+
+	var currentData []byte
+	haveData := false
+	sawAnyEvent := false
+
+	flush := func() ([]byte, bool) {
+		if !haveData {
+			return nil, false
+		}
+		event := currentData
+		currentData = nil
+		haveData = false
+		sawAnyEvent = true
+		return event, true
+	}
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		switch {
+		case bytes.HasPrefix(line, []byte("data:")):
+			payload := bytes.TrimPrefix(line, []byte("data:"))
+			payload = bytes.TrimPrefix(payload, []byte(" "))
+			if haveData {
+				currentData = append(currentData, '\n')
+				currentData = append(currentData, payload...)
+			} else {
+				currentData = append([]byte(nil), payload...)
+				haveData = true
+			}
+		case len(bytes.TrimSpace(line)) == 0:
+			if event, ok := flush(); ok && sseEventMatchesID(event, wantID) {
+				return event, nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read SSE response: %w", err)
+	}
+	if event, ok := flush(); ok && sseEventMatchesID(event, wantID) {
+		return event, nil
+	}
+
+	if !sawAnyEvent {
+		return nil, fmt.Errorf("SSE response contained no data: events")
+	}
+	return nil, fmt.Errorf("SSE response closed without a reply matching request id %d", requestID)
+}
+
+// sseEventMatchesID reports whether event's JSON-RPC "id" field, taken as raw
+// JSON bytes, equals wantID (already the canonical decimal encoding of the
+// request id this client sent). Comparing raw bytes rather than decoding into
+// a Go type avoids assuming ids are numeric on the wire; this client only
+// needs to recognize the exact id it itself generated.
+func sseEventMatchesID(event []byte, wantID string) bool {
+	var peek struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(event, &peek); err != nil {
+		return false
+	}
+	if peek.ID == nil {
+		return false
+	}
+	return string(bytes.TrimSpace(peek.ID)) == wantID
+}
+
+func isSSE(contentType string) bool {
+	for _, part := range splitContentType(contentType) {
+		if part == "text/event-stream" {
+			return true
+		}
+	}
+	return false
+}
+
+func splitContentType(ct string) []string {
+	parts := make([]string, 0, 2)
+	for _, p := range bytes.Split([]byte(ct), []byte{';'}) {
+		parts = append(parts, string(bytes.TrimSpace(p)))
+	}
+	return parts
 }
 
 func truncate(s string, maxLen int) string {
