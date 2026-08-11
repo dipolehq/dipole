@@ -146,7 +146,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
@@ -209,7 +209,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
@@ -243,7 +243,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
@@ -256,7 +256,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
@@ -269,7 +269,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
@@ -284,7 +284,7 @@ func TestPing_RespondsDirect(t *testing.T) {
 func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
@@ -347,7 +347,7 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
@@ -397,7 +397,7 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
@@ -433,7 +433,7 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
 	handler := NewMethodHandler(rightAuth, clients, nil)
 

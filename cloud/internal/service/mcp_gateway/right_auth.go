@@ -69,15 +69,23 @@ type RightSidePolicyFinder interface {
 }
 
 type RightSidePolicy struct {
-	PolicyID             uuid.UUID
-	ServerWorkload       ServerInfo
-	CredentialProviderID uuid.UUID
-	CredentialType       string
-	SharedAccessToken    string
+	PolicyID                  uuid.UUID
+	ServerWorkload            ServerInfo
+	CredentialProviderID      uuid.UUID
+	CredentialType            string
+	CredentialConfigEncrypted []byte
+	SharedAccessToken         string
 }
 
 type TokenRefresher interface {
 	Refresh(ctx context.Context, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
+}
+
+// CredentialDecrypter decrypts a credential provider's encrypted config and
+// extracts the usable token/key. Injected so right_auth.go has no dependency
+// on the crypto package or encryption key directly.
+type CredentialDecrypter interface {
+	DecryptCredential(configEncrypted []byte, credType string) (accessToken string, err error)
 }
 
 // RightSideAuth holds no tenant state. The tenant and its Gateway URL arrive
@@ -86,13 +94,15 @@ type RightSideAuth struct {
 	policyFinder RightSidePolicyFinder
 	tokenStore   UserTokenStore
 	refresher    TokenRefresher
+	decrypter    CredentialDecrypter
 }
 
-func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher) *RightSideAuth {
+func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, decrypter CredentialDecrypter) *RightSideAuth {
 	return &RightSideAuth{
 		policyFinder: policyFinder,
 		tokenStore:   tokenStore,
 		refresher:    refresher,
+		decrypter:    decrypter,
 	}
 }
 
@@ -169,6 +179,11 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 
 func (a *RightSideAuth) resolveCredential(ctx context.Context, userID string, tenantID uuid.UUID, policy *RightSidePolicy) (string, error) {
 	switch policy.CredentialType {
+	case "api_key", "username_password":
+		if a.decrypter == nil {
+			return "", ErrNoPolicyForServer
+		}
+		return a.decrypter.DecryptCredential(policy.CredentialConfigEncrypted, policy.CredentialType)
 	case "mcp_user_based_access_token":
 		return a.resolvePerUserToken(ctx, userID, tenantID, policy)
 	case "oauth_authorization_code":
@@ -177,6 +192,7 @@ func (a *RightSideAuth) resolveCredential(ctx context.Context, userID string, te
 		}
 		return policy.SharedAccessToken, nil
 	default:
+		// Unsupported credential type for Gateway right-side auth.
 		return "", ErrNoPolicyForServer
 	}
 }

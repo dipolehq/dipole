@@ -62,6 +62,7 @@ type HTTPMCPClient struct {
 	baseURL    string
 	httpClient *http.Client
 	reqID      atomic.Int64
+	sessionID  atomic.Value // stores string; empty until initialized
 }
 
 // NewHTTPMCPClient builds a standalone client with its own connection pool.
@@ -150,6 +151,13 @@ func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri stri
 }
 
 func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, params any) (any, error) {
+	// Ensure session is initialized before any non-initialize call.
+	if method != "initialize" {
+		if err := c.ensureSession(ctx, token); err != nil {
+			return nil, fmt.Errorf("session initialization failed: %w", err)
+		}
+	}
+
 	id := c.reqID.Add(1)
 
 	reqBody := map[string]any{
@@ -172,13 +180,23 @@ func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, p
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if sid, ok := c.sessionID.Load().(string); ok && sid != "" {
+		req.Header.Set("Mcp-Session-Id", sid)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send request to %s: %w", c.baseURL, err)
 	}
 	defer resp.Body.Close()
+
+	// Capture session ID from response if present.
+	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
+		c.sessionID.Store(sid)
+	}
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -207,6 +225,23 @@ func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, p
 	}
 
 	return rpcResp.Result, nil
+}
+
+// ensureSession sends an initialize request if no session ID has been acquired yet.
+func (c *HTTPMCPClient) ensureSession(ctx context.Context, token string) error {
+	if sid, ok := c.sessionID.Load().(string); ok && sid != "" {
+		return nil
+	}
+
+	_, err := c.call(ctx, token, "initialize", map[string]any{
+		"protocolVersion": "2025-03-26",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "Dipole MCP Identity Gateway",
+			"version": "0.1.0",
+		},
+	})
+	return err
 }
 
 func remarshal(src any, dst any) error {
