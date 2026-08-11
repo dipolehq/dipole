@@ -210,7 +210,7 @@ func (b *CredentialBrokerImpl) dispatch(ctx context.Context, providerType string
 
 func (b *CredentialBrokerImpl) retrieveAPIKey(configJSON []byte) (*domain.Credential, error) {
 	var config struct {
-		APIKey string `json:"api_key"`
+		APIKey string `json:"apiKey"`
 	}
 	if err := json.Unmarshal(configJSON, &config); err != nil {
 		return nil, fmt.Errorf("parse api key config: %w", err)
