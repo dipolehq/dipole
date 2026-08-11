@@ -89,6 +89,7 @@ func mapToRightSidePolicy(p *domain.AccessPolicyWithRelations) RightSidePolicy {
 
 	if len(p.CredentialProviders) > 0 {
 		rsp.CredentialType = p.CredentialProviders[0].Type
+		rsp.CredentialConfigEncrypted = p.CredentialProviders[0].ConfigEncrypted
 	}
 
 	return rsp

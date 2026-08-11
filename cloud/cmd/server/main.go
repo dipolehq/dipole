@@ -178,7 +178,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
 	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 	gwTokenStore := repos.MCPUserCredentials
-	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil)
+	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
+	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
 	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
 	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
