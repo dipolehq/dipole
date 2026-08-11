@@ -222,3 +222,14 @@ func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, 
 
 	return refreshed.AccessToken, nil
 }
+
+func (a *RightSideAuth) DebugFindPolicies(ctx context.Context, scope TenantScope) (int, error) {
+	if !scope.Valid() {
+		return 0, ErrInvalidTenantScope
+	}
+	policies, err := a.policyFinder.FindGatewayPolicies(ctx, scope.TenantID, scope.GatewayURL)
+	if err != nil {
+		return 0, err
+	}
+	return len(policies), nil
+}
