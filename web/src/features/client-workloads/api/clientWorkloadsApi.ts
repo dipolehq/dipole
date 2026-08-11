@@ -1,5 +1,6 @@
 import { apiClient, ApiError } from '@/shared/lib/api-client'
 import { CLIENT_IDENTIFIER_TYPES } from '@/shared/constants/policies'
+import { groupIdentifiers, flattenIdentifiers } from '@/shared/lib/identifiers'
 
 export interface ClientWorkloadListItem {
   id: string
@@ -50,34 +51,6 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries(
 
 function labelForType(type: string): string {
   return TYPE_LABELS[type] ?? type
-}
-
-/** Backend stores flat {type,value} pairs; the UI groups values under a type. */
-function groupIdentifiers(flat: IdentifierDTO[]): { type: string; values: string[] }[] {
-  const grouped: { type: string; values: string[] }[] = []
-  const indexByType = new Map<string, number>()
-  for (const { type, value } of flat) {
-    const existingIndex = indexByType.get(type)
-    const entry = existingIndex === undefined ? undefined : grouped[existingIndex]
-    if (entry) {
-      entry.values.push(value)
-    } else {
-      indexByType.set(type, grouped.length)
-      grouped.push({ type, values: [value] })
-    }
-  }
-  return grouped.length > 0 ? grouped : [{ type: '', values: [''] }]
-}
-
-function flattenIdentifiers(groups: { type: string; values: string[] }[]): IdentifierDTO[] {
-  const flat: IdentifierDTO[] = []
-  for (const group of groups) {
-    if (!group.type) continue
-    for (const value of group.values) {
-      if (value.trim()) flat.push({ type: group.type, value: value.trim() })
-    }
-  }
-  return flat
 }
 
 function toTagDTOs(tags: FormTag[]): TagDTO[] {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ExistingWorkloadSelector } from '@/features/policies/components/tabs/client-workload/ExistingWorkloadSelector'
 import { ClientWorkloadForm } from '@/shared/components/forms/ClientWorkloadForm'
 import { fetchClientWorkload } from '@/features/policies/api/entityApi'
+import { groupIdentifiers } from '@/shared/lib/identifiers'
 import type { ClientWorkloadFormValues } from '@/shared/components/forms/types'
 
 interface ClientWorkloadTabProps {
@@ -25,21 +26,13 @@ export function ClientWorkloadTab({
     onSelect(id)
     try {
       const cw = await fetchClientWorkload(id)
-      // Group identifiers by type (the form uses one row per type with multiple
-      // values = OR logic within a type, AND logic across types).
-      const grouped = new Map<string, string[]>()
-      for (const ident of cw.identifiers ?? []) {
-        const existing = grouped.get(ident.type)
-        if (existing) {
-          existing.push(ident.value || '')
-        } else {
-          grouped.set(ident.type, [ident.value || ''])
-        }
-      }
       onChange({
         name: cw.name,
         description: cw.description,
-        identifiers: Array.from(grouped.entries()).map(([type, values]) => ({ type, values })),
+        // Values sharing a type are OR'd together; distinct types are AND'd
+        // (see ClientWorkloadForm). groupIdentifiers derives this consistently
+        // from the backend's flat {type,value} list.
+        identifiers: groupIdentifiers(cw.identifiers ?? []),
         tags: cw.tags ?? [],
       })
     } catch {
