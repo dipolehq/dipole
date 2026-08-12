@@ -121,15 +121,21 @@ func (h *MethodHandler) handleInitialize() (any, error) {
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {
 	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
-		return nil, err
+		return map[string]any{
+			"tools":              nil,
+			"_debug_creds_error": err.Error(),
+			"_debug_scope":       fmt.Sprintf("user=%s tenantID=%s gatewayURL=%s", rCtx.UserID, rCtx.Scope.TenantID, rCtx.Scope.GatewayURL),
+		}, nil
 	}
 
 	var allTools []MCPTool
+	var debugErrors []string
 	for _, cred := range creds {
 		client := h.clients.ClientFor(cred.ServerWorkload)
 
 		tools, err := client.ListTools(ctx, cred.AccessToken)
 		if err != nil {
+			debugErrors = append(debugErrors, fmt.Sprintf("server=%s host=%s:%d err=%v", cred.ServerWorkload.Name, cred.ServerWorkload.Host, cred.ServerWorkload.Port, err))
 			continue
 		}
 
@@ -139,7 +145,39 @@ func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContex
 		}
 	}
 
-	return map[string]any{"tools": allTools}, nil
+	result := map[string]any{"tools": allTools}
+	if len(debugErrors) > 0 {
+		result["_debug_downstream_errors"] = debugErrors
+	}
+	if len(creds) == 0 {
+		result["_debug_zero_creds"] = fmt.Sprintf("user=%s tenantID=%s gatewayURL=%s subdomain=%s", rCtx.UserID, rCtx.Scope.TenantID, rCtx.Scope.GatewayURL, rCtx.Scope.TenantSubdomain)
+	} else {
+		// Surface debug info from right-side auth
+		if creds[0].DebugPolicies > 0 || len(creds[0].DebugSkipped) > 0 {
+			result["_debug_policies_found"] = creds[0].DebugPolicies
+			if len(creds[0].DebugSkipped) > 0 {
+				result["_debug_credential_errors"] = creds[0].DebugSkipped
+			}
+		}
+		// Filter out dummy entries (no token = skipped policy placeholder)
+		var realCreds []ServerCredential
+		for _, c := range creds {
+			if c.AccessToken != "" {
+				realCreds = append(realCreds, c)
+			}
+		}
+		if len(realCreds) == 0 {
+			result["_debug_zero_valid_creds"] = true
+		}
+		servers := make([]string, len(realCreds))
+		for i, c := range realCreds {
+			servers[i] = fmt.Sprintf("%s(%s:%d)", c.ServerWorkload.Name, c.ServerWorkload.Host, c.ServerWorkload.Port)
+		}
+		if len(servers) > 0 {
+			result["_debug_creds_found"] = servers
+		}
+	}
+	return result, nil
 }
 
 func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContext, params json.RawMessage) (any, error) {
