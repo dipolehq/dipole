@@ -32,6 +32,9 @@ func (m *mockRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, 
 func (m *mockRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {
 	return m.policies, m.err
 }
+func (m *mockRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return m.policies, m.err
+}
 
 type mockTrust struct{ attested bool }
 

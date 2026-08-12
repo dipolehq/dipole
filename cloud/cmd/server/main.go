@@ -285,6 +285,7 @@ func buildHTTPServer(
 		repos.SignOnPolicies,
 		repos.LogStreams,
 		repos.GlobalPolicyCompliance,
+		service.NewComplianceService(repos.AccessPolicies),
 		repos.TenantProfiles,
 		registrationSvc,
 		repos.Tenants,

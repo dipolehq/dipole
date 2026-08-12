@@ -109,3 +109,67 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 		"accessTokenLifetimeSeconds": req.AccessTokenLifetimeSeconds,
 	})
 }
+
+func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request) {
+	tenantID := TenantIDFromContext(r.Context())
+
+	p, err := h.globalPolicyCompliance.Get(r.Context(), tenantID)
+	if err != nil || p == nil {
+		respondJSON(w, http.StatusOK, map[string]any{"items": []any{}, "total": 0})
+		return
+	}
+
+	policies, err := h.complianceChecker.ListActiveWithRelations(r.Context(), tenantID)
+	if err != nil {
+		slog.Error("compliance report: list policies failed", "error", err)
+		respondJSON(w, http.StatusOK, map[string]any{"items": []any{}, "total": 0})
+		return
+	}
+
+	type complianceRow struct {
+		ID                 uuid.UUID `json:"id"`
+		PolicyName         string    `json:"policyName"`
+		ClientWorkload     string    `json:"clientWorkload"`
+		TrustProvider      string    `json:"trustProvider"`
+		AccessCondition    string    `json:"accessCondition"`
+		CredentialProvider string    `json:"credentialProvider"`
+		ServerWorkload     string    `json:"serverWorkload"`
+		ResourceSet        string    `json:"resourceSet"`
+	}
+
+	items := make([]complianceRow, 0, len(policies))
+	for _, pol := range policies {
+		tp := p.APTrustProvider
+		if tp == "" {
+			tp = "optional"
+		}
+
+		ac := p.APAccessCondition
+		if ac == "" {
+			ac = "optional"
+		}
+
+		cpName := ""
+		if len(pol.CredentialProviders) > 0 {
+			cpName = pol.CredentialProviders[0].Name
+		}
+
+		rsName := "Default"
+		if pol.Policy.ResourceSetID != nil && *pol.Policy.ResourceSetID != uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff") {
+			rsName = pol.Policy.ResourceSetID.String()
+		}
+
+		items = append(items, complianceRow{
+			ID:                 pol.Policy.ID,
+			PolicyName:         pol.Policy.Name,
+			ClientWorkload:     pol.ClientWorkload.Name,
+			TrustProvider:      tp,
+			AccessCondition:    ac,
+			CredentialProvider: cpName,
+			ServerWorkload:     pol.ServerWorkload.Name,
+			ResourceSet:        rsName,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}

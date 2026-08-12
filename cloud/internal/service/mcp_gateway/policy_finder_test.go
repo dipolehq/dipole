@@ -45,6 +45,10 @@ func (m *mockAccessPolicyRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID,
 	return m.byProtocol, m.byProtocolErr
 }
 
+func (m *mockAccessPolicyRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return m.byProtocol, m.byProtocolErr
+}
+
 func buildMCPPolicy(gatewayAudience string, serverName string, serverHost string, serverPort int) domain.AccessPolicyWithRelations {
 	serverID := uuid.New()
 	cpID := uuid.New()

@@ -50,11 +50,27 @@ async function fetchTracingEntries(): Promise<McpAuthorizationTracingEntry[]> {
 export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAuthorizationTracingTableProps) {
   const qc = useQueryClient()
 
-  const { data: entries = [] } = useQuery({
+  const { data: rawEntries = [] } = useQuery({
     queryKey: ['mcp-tracing'],
     queryFn: fetchTracingEntries,
     refetchInterval: 3000,
   })
+
+  // Sample data for UI development when no live MCP traffic exists
+  const sampleEntries: McpAuthorizationTracingEntry[] = [
+    { id: 's1', timestamp: new Date(Date.now() - 120000).toISOString(), clientIP: '49.37.169.218,172.71.124.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's2', timestamp: new Date(Date.now() - 180000).toISOString(), clientIP: '49.37.169.218,162.158.170.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's3', timestamp: new Date(Date.now() - 300000).toISOString(), clientIP: '103.21.58.44,104.23.21.5', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:58299/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's4', timestamp: new Date(Date.now() - 420000).toISOString(), clientIP: '14.97.201.133,172.70.208.5', accessPolicy: { name: 'Authenticated', status: 'Unknown' }, redirectUri: 'amanbhardwaj0081@gmail.com', clientWorkload: { name: 'Unknown', status: 'Unknown' }, resourceServer: 'Unknown', serverWorkload: { name: 'Unknown', status: 'Unknown' }, severity: 'Error' },
+    { id: 's5', timestamp: new Date(Date.now() - 540000).toISOString(), clientIP: '49.37.169.218,104.22.66.26', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's6', timestamp: new Date(Date.now() - 660000).toISOString(), clientIP: '106.51.72.89,162.158.170.8', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:56686/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's7', timestamp: new Date(Date.now() - 900000).toISOString(), clientIP: '49.37.169.218,104.22.66.26', accessPolicy: { name: 'Missing token', status: 'Unknown' }, redirectUri: '', clientWorkload: { name: 'Unknown', status: 'Unknown' }, resourceServer: 'Unknown', serverWorkload: { name: 'Unknown', status: 'Unknown' }, severity: 'Error' },
+    { id: 's8', timestamp: new Date(Date.now() - 1020000).toISOString(), clientIP: '223.226.151.4,172.71.124.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's9', timestamp: new Date(Date.now() - 1200000).toISOString(), clientIP: '49.37.169.218,162.158.170.8', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:58432/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's10', timestamp: new Date(Date.now() - 1500000).toISOString(), clientIP: '103.21.58.44,104.23.21.5', accessPolicy: { name: 'Authenticated', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Warning' },
+  ]
+
+  const entries = rawEntries.length > 0 ? rawEntries : (import.meta.env.DEV ? sampleEntries : [])
 
   function handleRefresh() {
     qc.invalidateQueries({ queryKey: ['mcp-tracing'] })

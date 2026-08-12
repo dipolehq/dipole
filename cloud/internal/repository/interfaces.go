@@ -67,6 +67,7 @@ type AccessPolicyRepository interface {
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int, resourceSetID *uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
 	FindByAppProtocol(ctx context.Context, tenantID uuid.UUID, protocol string) ([]domain.AccessPolicyWithRelations, error)
+	ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
 }
 
 type AgentControllerRepository interface {
