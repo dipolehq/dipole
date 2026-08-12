@@ -26,7 +26,7 @@ export function ReportingWorkloadEventsPage() {
       const next = new URLSearchParams(prev)
       if (value) next.set(key, value)
       else next.delete(key)
-      next.set('page', '1')
+      if (key !== 'page') next.set('page', '1')
       return next
     }, { replace: true })
   }
@@ -85,6 +85,11 @@ export function ReportingWorkloadEventsPage() {
         <div className="flex items-center gap-2 text-xs text-gray-600">
           <PageSizeSelect value={pageSize} options={REPORTING_PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
           <span>Showing {data?.total ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, data?.total ?? 0)} of {data?.total ?? 0} Results</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setParam('page', String(currentPage - 1))} disabled={currentPage <= 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">←</button>
+          <span className="w-7 h-7 flex items-center justify-center rounded text-xs font-medium bg-orange-500 text-white">{currentPage}</span>
+          <button onClick={() => setParam('page', String(currentPage + 1))} disabled={currentPage >= Math.ceil((data?.total ?? 0) / pageSize)} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">→</button>
         </div>
       </div>
     </div>

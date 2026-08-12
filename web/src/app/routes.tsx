@@ -29,7 +29,7 @@ import {
   CreateCredentialProviderPage,
   CredentialProviderDetailPage,
 } from '@/features/credential-providers'
-import { ReportingAccessAuthPage, ReportingAuditPage, ReportingWorkloadEventsPage, ReportingCompliancePage, ReportingMcpTracingPage } from '@/features/reporting'
+import { ReportingAccessAuthPage, ReportingAuditPage, ReportingWorkloadEventsPage, ReportingCompliancePage, ReportingMcpTracingPage, ReportingMcpLogsPage } from '@/features/reporting'
 import {
   EdgeAgentControllersPage,
   EdgeAgentProxiesPage,
@@ -105,6 +105,7 @@ export function AppRoutes() {
         <Route path="/reporting/workload-events" element={<ReportingWorkloadEventsPage />} />
         <Route path="/reporting/compliance" element={<ReportingCompliancePage />} />
         <Route path="/reporting/mcp-tracing" element={<ReportingMcpTracingPage />} />
+        <Route path="/reporting/mcp-logs" element={<ReportingMcpLogsPage />} />
         <Route path="/edge-components" element={<EdgeAgentControllersPage />} />
         <Route path="/edge-components/agent-controllers" element={<EdgeAgentControllersPage />} />
         <Route path="/edge-components/agent-proxies" element={<EdgeAgentProxiesPage />} />
