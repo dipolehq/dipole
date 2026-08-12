@@ -121,8 +121,8 @@ function NavItem({ item }: { item: NavItemConfig }) {
         className={({ isActive }) =>
           `flex items-center gap-2.5 px-3 py-[7px] rounded-[6px] text-[13px] font-medium transition-all duration-200 select-none ${
             isActive
-              ? 'bg-white/10 text-white'
-              : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+              ? 'bg-gray-100 text-gray-900'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
           }`
         }
       >
@@ -140,8 +140,8 @@ function NavItem({ item }: { item: NavItemConfig }) {
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center justify-between px-3 py-[7px] rounded-[6px] text-[13px] font-medium transition-all duration-200 select-none w-full ${
           isChildActive
-            ? 'text-white'
-            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+            ? 'text-gray-900'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
         }`}
       >
         <div className="flex items-center gap-2.5">
@@ -162,7 +162,7 @@ function NavItem({ item }: { item: NavItemConfig }) {
       >
         <div className="overflow-hidden min-h-0 relative flex flex-col gap-0.5 mt-0.5">
           <div
-            className="absolute top-0 bottom-0 border-l border-white/10"
+            className="absolute top-0 bottom-0 border-l border-gray-200"
             style={{ left: '19px' }}
           />
           {item.children!.map((child) => (
@@ -173,8 +173,8 @@ function NavItem({ item }: { item: NavItemConfig }) {
               className={({ isActive }) =>
                 `flex items-center ml-[30px] mr-2 px-2.5 py-[6px] rounded-[6px] text-[12px] font-medium transition-all duration-200 select-none ${
                   isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`
               }
             >
@@ -204,9 +204,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-51 bg-[#28282B] flex flex-col border-r border-white/5">
-      <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-white/10 select-none pointer-events-none">
-        <img src="/dipole_brand_white.svg" alt="Dipole" className="h-7" />
+    <aside className="fixed left-0 top-0 h-screen w-51 bg-white flex flex-col border-r border-gray-200">
+      <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-gray-200 select-none pointer-events-none">
+        <img src="/brand_black.svg" alt="Dipole" className="h-17 translate-x-1" />
       </div>
 
       <div className="px-3 mt-5 mb-3">
@@ -214,7 +214,7 @@ export function Sidebar() {
       </div>
 
       <div className="px-3 mb-3">
-        <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+        <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
           Resource Set
         </div>
         <WorkspaceSwitcher />
@@ -223,7 +223,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {NAV_SECTIONS.map((section, sectionIdx) => (
           <div key={section.title} className={sectionIdx > 0 ? 'mt-5' : 'mt-2'}>
-            <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+            <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
               {section.title}
             </div>
             <div className="flex flex-col gap-0.5">
@@ -235,17 +235,17 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-3 border-t border-white/10 h-[52px] flex items-center relative group">
-        <button className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[6px] text-[13px] text-gray-300 hover:bg-white/5 transition-colors">
+      <div className="px-3 border-t border-gray-200 h-[52px] flex items-center relative group">
+        <button className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[6px] text-[13px] text-gray-600 hover:bg-gray-50 transition-colors">
           <User size={16} strokeWidth={1.5} className="shrink-0" />
           <span className="truncate">{getUserDisplayName()}</span>
         </button>
 
         <div className="absolute bottom-full left-0 right-0 px-3 pb-2 hidden group-hover:block z-50">
-          <div className="bg-[#2a2a2d] rounded-lg shadow-xl border border-white/10 py-1.5">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 py-1.5">
             <button
               onClick={() => navigate('/profile')}
-              className="w-full text-left px-4 py-2 text-[13px] text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+              className="w-full text-left px-4 py-2 text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
             >
               Profile
             </button>
@@ -255,7 +255,7 @@ export function Sidebar() {
                 sessionStorage.removeItem('dipole_user')
                 window.location.href = '/login'
               }}
-              className="w-full text-left px-4 py-2 text-[13px] text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+              className="w-full text-left px-4 py-2 text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
             >
               Sign out
             </button>

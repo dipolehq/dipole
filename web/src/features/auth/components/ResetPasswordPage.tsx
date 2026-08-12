@@ -48,7 +48,7 @@ export function ResetPasswordPage() {
       <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
         <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
           <div className="flex flex-col items-center mb-6">
-            <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
+            <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mb-3" />
             <h1 className="text-lg font-semibold text-gray-900">Password Reset</h1>
           </div>
 
@@ -74,7 +74,7 @@ export function ResetPasswordPage() {
     <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
       <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
         <div className="flex flex-col items-center mb-8">
-          <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
+          <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mb-3" />
           <h1 className="text-lg font-semibold text-gray-900">Set New Password</h1>
           <p className="text-sm text-gray-500 mt-1 text-center">
             Enter your new password below.

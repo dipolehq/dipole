@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
           <div className="w-[440px] bg-white rounded-xl shadow-lg p-8 text-center">
-            <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mx-auto mb-4" />
+            <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mx-auto mb-4" />
             <h1 className="text-lg font-semibold text-gray-900 mb-2">Something went wrong</h1>
             <p className="text-sm text-gray-500 mb-6">
               An unexpected error occurred. Please reload the page to continue.

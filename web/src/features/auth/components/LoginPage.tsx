@@ -125,7 +125,7 @@ export function LoginPage() {
       <div className="h-screen w-screen bg-[#050505] overflow-hidden">
         <div className="fixed inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
           <div className="flex items-center gap-6 mb-6 -mt-16 select-none">
-            <img src="/dipole_logo.svg" alt="Dipole" className="h-32 w-32" draggable={false} />
+            <img src="/logo_white.svg" alt="Dipole" className="h-32 w-32" draggable={false} />
             <span className="text-white text-8xl tracking-tight" style={{ fontFamily: 'Tomorrow, sans-serif', fontWeight: 700 }}>Dipole</span>
           </div>
 
@@ -147,7 +147,7 @@ export function LoginPage() {
     <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
       <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
         <div className="flex flex-col items-center mb-8">
-          <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
+          <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mb-3" />
           <h1 className="text-lg font-semibold text-gray-900">
             {tenants.length > 0 ? 'Select Tenant' : mfaToken ? 'Verification Required' : 'Sign In to Dipole'}
           </h1>

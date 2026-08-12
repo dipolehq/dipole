@@ -43,7 +43,7 @@ export function SignupPage() {
     <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
       <div className="w-[420px] bg-white rounded-xl shadow-lg p-8">
         <div className="flex flex-col items-center mb-8">
-          <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
+          <img src="/logo_white.svg" alt="Dipole" className="h-12 w-12 mb-3" />
           <h1 className="text-lg font-semibold text-gray-900">Create Your Account</h1>
           <p className="text-sm text-gray-500 mt-1">Get started with Dipole — free for up to 5 workloads.</p>
         </div>
