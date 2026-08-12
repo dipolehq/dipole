@@ -45,13 +45,13 @@ type TokenResponse struct {
 }
 
 type TokenConfig struct {
-	Audience         string
-	Subject          string
-	Lifetime         time.Duration
-	Algorithm        string
-	CustomClaims     map[string]any
-	RefreshEnabled   bool
-	RefreshAbsExpiry time.Duration
+	Audience           string
+	Subject            string
+	Lifetime           time.Duration
+	Algorithm          string
+	CustomClaims       map[string]any
+	RefreshEnabled     bool
+	RefreshAbsExpiry   time.Duration
 	ClientWorkloadID   uuid.UUID
 	ClientWorkloadName string
 }

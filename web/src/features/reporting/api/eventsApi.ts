@@ -7,6 +7,7 @@ export interface EventQueryParams {
   eventType?: string
   startDate?: string
   endDate?: string
+  source?: string
 }
 
 interface AuthEventDTO {
@@ -96,6 +97,7 @@ function buildEventQuery(params: EventQueryParams): string {
   if (params.eventType) q.set('eventType', params.eventType)
   if (params.startDate) q.set('startDate', params.startDate)
   if (params.endDate) q.set('endDate', params.endDate)
+  if (params.source) q.set('source', params.source)
   return q.toString()
 }
 

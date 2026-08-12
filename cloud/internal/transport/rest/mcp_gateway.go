@@ -28,7 +28,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 	"github.com/google/uuid"
 )
@@ -74,6 +76,7 @@ type MCPGatewayServer struct {
 	consentHandler ConsentCallbackHandler
 	resolver       *TenantHostResolver
 	tracingBus     *gw.TracingBus
+	authEmitter    *events.AuthEventEmitter
 	logger         *slog.Logger
 }
 
@@ -84,6 +87,7 @@ func NewMCPGatewayServer(
 	logger *slog.Logger,
 	tracingBus *gw.TracingBus,
 	resolver *TenantHostResolver,
+	authEmitter *events.AuthEventEmitter,
 ) *MCPGatewayServer {
 	return &MCPGatewayServer{
 		auth:           auth,
@@ -91,6 +95,7 @@ func NewMCPGatewayServer(
 		consentHandler: consentHandler,
 		resolver:       resolver,
 		tracingBus:     tracingBus,
+		authEmitter:    authEmitter,
 		logger:         logger,
 	}
 }
@@ -148,11 +153,13 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`", error="invalid_token"`)
 		s.emitTracing(r, scope.TenantID, "", "", "Error", "Invalid token: "+err.Error())
+		s.emitMCPAuthEvent(r, scope.TenantID, "", "", false, err.Error())
 		writeGatewayError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	s.emitTracing(r, scope.TenantID, authResult.UserID, "", "Info", "Authenticated")
+	s.emitMCPAuthEvent(r, scope.TenantID, authResult.UserID, authResult.ClientWorkloadName, true, "")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -284,6 +291,56 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 		"bearer_methods_supported": []string{"header"},
 	}
 	writeJSON(w, http.StatusOK, metadata)
+}
+
+func (s *MCPGatewayServer) emitMCPAuthEvent(r *http.Request, tenantID uuid.UUID, userID string, clientWorkloadName string, allowed bool, denyReason string) {
+	if s.authEmitter == nil {
+		return
+	}
+
+	clientIP := r.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+
+	result := &domain.EvaluationResult{Allowed: allowed, DenyReason: denyReason}
+
+	var clientWL *domain.ClientWorkload
+	if clientWorkloadName != "" {
+		clientWL = &domain.ClientWorkload{Name: clientWorkloadName}
+	}
+
+	var serverWL *domain.ServerWorkload
+	serverWL = &domain.ServerWorkload{Name: "MCP Identity Gateway"}
+
+	evalCtx := &events.EvaluationContext{
+		TenantID:       tenantID,
+		SourceIP:       clientIP,
+		TargetHost:     r.Host,
+		TargetPort:     443,
+		Result:         result,
+		ClientWorkload: clientWL,
+		ServerWorkload: serverWL,
+		Source:         "mcp_gateway",
+	}
+
+	// Include user identity in the payload via a synthetic trust result
+	if userID != "" {
+		evalCtx.TrustProviders = []domain.TrustProvider{
+			{Name: "User Identity (SSO)", Type: "oidc_id_token"},
+		}
+		result.TrustResults = []domain.TrustProviderResult{
+			{ProviderName: "User Identity (SSO)", Attested: allowed},
+		}
+	}
+
+	go func() {
+		if err := s.authEmitter.Emit(r.Context(), evalCtx); err != nil {
+			if s.logger != nil {
+				s.logger.Debug("failed to emit MCP left-side auth event", "error", err)
+			}
+		}
+	}()
 }
 
 func (s *MCPGatewayServer) emitTracing(r *http.Request, tenantID uuid.UUID, userID string, resource string, severity string, detail string) {

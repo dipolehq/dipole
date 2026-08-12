@@ -17,6 +17,7 @@ type AuthEvent struct {
 	Timestamp     time.Time       `json:"timestamp"`
 	Payload       json.RawMessage `json:"payload"`
 	ResourceSetID *uuid.UUID      `json:"resourceSetId"`
+	Source        string          `json:"source"`
 }
 
 type WorkloadEvent struct {
@@ -64,6 +65,7 @@ type EventQueryOptions struct {
 	ClientWorkloadIDs []string
 	ServerWorkloadIDs []string
 	UserID            string
+	Source            string
 }
 
 type DashboardEventData struct {

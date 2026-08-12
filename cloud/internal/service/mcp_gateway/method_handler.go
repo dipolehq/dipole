@@ -14,11 +14,19 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
+	"github.com/google/uuid"
 )
 
 const toolPrefixSeparator = "__"
 
 var ErrMethodNotFound = errors.New("method not found")
+
+type AuthEventEmitterInterface interface {
+	Emit(ctx context.Context, eval *events.EvaluationContext) error
+}
 
 func sanitizeToolName(name string) string {
 	name = strings.ToLower(name)
@@ -92,16 +100,18 @@ type RequestContext struct {
 // restart to appear and a server name shared across tenants resolved to the
 // wrong endpoint.
 type MethodHandler struct {
-	rightAuth *RightSideAuth
-	clients   MCPClientFactory
-	emitter   *GatewayEventEmitter
+	rightAuth   *RightSideAuth
+	clients     MCPClientFactory
+	emitter     *GatewayEventEmitter
+	authEmitter AuthEventEmitterInterface
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter, authEmitter AuthEventEmitterInterface) *MethodHandler {
 	return &MethodHandler{
-		rightAuth: rightAuth,
-		clients:   clients,
-		emitter:   emitter,
+		rightAuth:   rightAuth,
+		clients:     clients,
+		emitter:     emitter,
+		authEmitter: authEmitter,
 	}
 }
 
@@ -185,6 +195,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 	// that policy, so an unauthorised name can never yield a client.
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
+		h.emitRightSideAuthEvent(ctx, rCtx, serverName, toolName, false, err.Error())
 		return nil, err
 	}
 
@@ -202,6 +213,8 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 		h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
 		h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
 	}
+
+	h.emitRightSideAuthEvent(ctx, rCtx, cred.ServerWorkload.Name, toolName, true, "")
 
 	return result, nil
 }
@@ -267,4 +280,40 @@ func parsePrefixedToolName(prefixed string) (serverName, toolName string, err er
 		return "", "", fmt.Errorf("invalid prefixed tool name: %s", prefixed)
 	}
 	return serverName, toolName, nil
+}
+
+func (h *MethodHandler) emitRightSideAuthEvent(ctx context.Context, rCtx *RequestContext, serverName string, toolName string, allowed bool, denyReason string) {
+	if h.authEmitter == nil {
+		return
+	}
+
+	result := &domain.EvaluationResult{Allowed: allowed, DenyReason: denyReason}
+
+	// The "client" in right-side auth is the Gateway itself acting on behalf of the user.
+	clientWL := &domain.ClientWorkload{Name: "MCP Identity Gateway"}
+	serverWL := &domain.ServerWorkload{Name: serverName}
+
+	evalCtx := &events.EvaluationContext{
+		TenantID:       rCtx.Scope.TenantID,
+		SourceIP:       rCtx.UserID,
+		TargetHost:     serverName,
+		TargetPort:     443,
+		Result:         result,
+		ClientWorkload: clientWL,
+		ServerWorkload: serverWL,
+		Source:         "mcp_gateway",
+	}
+
+	// Include user + tool info in the payload via a synthetic policy
+	if rCtx.UserID != "" || toolName != "" {
+		policyName := "Gateway → " + serverName
+		evalCtx.Policy = &domain.AccessPolicy{
+			ID:   uuid.New(),
+			Name: policyName,
+		}
+	}
+
+	go func() {
+		_ = h.authEmitter.Emit(ctx, evalCtx)
+	}()
 }

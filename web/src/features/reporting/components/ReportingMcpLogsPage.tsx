@@ -40,6 +40,7 @@ export function ReportingMcpLogsPage() {
         perPage: pageSize,
         severity,
         eventType: 'access.authorization',
+        source: 'mcp_gateway',
       }),
   })
 

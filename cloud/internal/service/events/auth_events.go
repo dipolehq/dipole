@@ -40,6 +40,7 @@ type EvaluationContext struct {
 	CredentialProvider       *domain.CredentialProvider
 	CandidateClientWorkloads []domain.ClientWorkload
 	CandidateServerWorkloads []domain.ServerWorkload
+	Source                   string
 }
 
 func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) error {
@@ -47,6 +48,11 @@ func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) er
 	now := time.Now().UTC()
 
 	severity := determineSeverity(eval.Result)
+
+	source := eval.Source
+	if source == "" {
+		source = "edge_proxy"
+	}
 
 	// access.request
 	requestPayload := buildRequestPayload(eval)
@@ -60,6 +66,7 @@ func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) er
 		Timestamp:     now,
 		Payload:       requestPayload,
 		ResourceSetID: eval.ResourceSetID,
+		Source:        source,
 	}); err != nil {
 		return err
 	}
@@ -76,6 +83,7 @@ func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) er
 		Timestamp:     now,
 		Payload:       authPayload,
 		ResourceSetID: eval.ResourceSetID,
+		Source:        source,
 	}); err != nil {
 		return err
 	}
@@ -97,6 +105,7 @@ func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) er
 			Timestamp:     now,
 			Payload:       credPayload,
 			ResourceSetID: eval.ResourceSetID,
+			Source:        source,
 		}); err != nil {
 			return err
 		}
@@ -118,6 +127,7 @@ func (e *AuthEventEmitter) Emit(ctx context.Context, eval *EvaluationContext) er
 		Timestamp:     now,
 		Payload:       discoveryPayload,
 		ResourceSetID: eval.ResourceSetID,
+		Source:        source,
 	}); err != nil {
 		return err
 	}

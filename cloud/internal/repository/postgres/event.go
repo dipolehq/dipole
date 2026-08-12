@@ -18,10 +18,15 @@ func (r *EventRepo) InsertAuthEvent(ctx context.Context, tenantID uuid.UUID, e *
 	e.ID = uuid.New()
 	e.TenantID = tenantID
 
+	source := e.Source
+	if source == "" {
+		source = "edge_proxy"
+	}
+
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO access_authorization_events (id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		e.ID, tenantID, e.EventType, e.ContextID, e.Severity, e.ClientIP, e.Timestamp, e.Payload, e.ResourceSetID)
+		`INSERT INTO access_authorization_events (id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		e.ID, tenantID, e.EventType, e.ContextID, e.Severity, e.ClientIP, e.Timestamp, e.Payload, e.ResourceSetID, source)
 	if err != nil {
 		return fmt.Errorf("insert auth event: %w", err)
 	}
@@ -71,7 +76,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 	offsetParam := fmt.Sprintf("$%d", len(args))
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id
+		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source
 		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
@@ -82,7 +87,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 	var results []domain.AuthEvent
 	for rows.Next() {
 		var e domain.AuthEvent
-		if err := rows.Scan(&e.ID, &e.TenantID, &e.EventType, &e.ContextID, &e.Severity, &e.ClientIP, &e.Timestamp, &e.Payload, &e.ResourceSetID); err != nil {
+		if err := rows.Scan(&e.ID, &e.TenantID, &e.EventType, &e.ContextID, &e.Severity, &e.ClientIP, &e.Timestamp, &e.Payload, &e.ResourceSetID, &e.Source); err != nil {
 			return nil, 0, fmt.Errorf("scan auth event: %w", err)
 		}
 		results = append(results, e)
@@ -172,6 +177,11 @@ func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (s
 		n++
 		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
 		args = append(args, opts.EventType)
+	}
+	if opts.Source != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("source = $%d", n))
+		args = append(args, opts.Source)
 	}
 	if opts.StartDate != nil {
 		n++

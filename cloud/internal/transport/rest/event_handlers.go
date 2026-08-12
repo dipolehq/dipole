@@ -44,6 +44,9 @@ func (h *EventHandlers) QueryAuthorizationEvents(w http.ResponseWriter, r *http.
 	if et := r.URL.Query().Get("eventType"); et != "" && et != "All" {
 		opts.EventType = et
 	}
+	if src := r.URL.Query().Get("source"); src != "" {
+		opts.Source = src
+	}
 
 	items, total, err := h.repo.QueryAuthEvents(r.Context(), tenantID, opts)
 	if err != nil {

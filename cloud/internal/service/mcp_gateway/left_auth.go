@@ -44,8 +44,8 @@ type LeftSideAuth struct {
 }
 
 type AuthResult struct {
-	UserID string
-	Claims map[string]any
+	UserID             string
+	Claims             map[string]any
 	ClientWorkloadName string
 }
 
