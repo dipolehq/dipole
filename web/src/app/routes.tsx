@@ -29,16 +29,25 @@ import {
   CreateCredentialProviderPage,
   CredentialProviderDetailPage,
 } from '@/features/credential-providers'
-import { ReportingPage } from '@/features/reporting'
+import { ReportingAccessAuthPage, ReportingAuditPage, ReportingWorkloadEventsPage, ReportingCompliancePage, ReportingMcpTracingPage } from '@/features/reporting'
 import {
-  EdgeComponentsPage,
+  EdgeAgentControllersPage,
+  EdgeAgentProxiesPage,
+  EdgeDeployPage,
+  EdgeTlsDecryptPage,
   CreateAgentControllerPage,
   AgentControllerDetailPage,
 } from '@/features/edge-components'
 import { HelpPage } from '@/features/help'
 import { ProfilePage } from '@/features/profile'
 import {
-  AdministrationPage,
+  AdminUsersPage,
+  AdminRolesPage,
+  AdminResourceSetsPage,
+  AdminIdentityProvidersPage,
+  AdminLogStreamsPage,
+  AdminSignOnPolicyPage,
+  AdminGlobalPolicyCompliancePage,
   CreateUserPage,
   UserDetailPage,
   CreateRolePage,
@@ -91,8 +100,16 @@ export function AppRoutes() {
         <Route path="/server-workloads" element={<ServerWorkloadsPage />} />
         <Route path="/server-workloads/new" element={<CreateServerWorkloadPage />} />
         <Route path="/server-workloads/:id" element={<ServerWorkloadDetailPage />} />
-        <Route path="/reporting" element={<ReportingPage />} />
-        <Route path="/edge-components" element={<EdgeComponentsPage />} />
+        <Route path="/reporting/access-authorization" element={<ReportingAccessAuthPage />} />
+        <Route path="/reporting/audit" element={<ReportingAuditPage />} />
+        <Route path="/reporting/workload-events" element={<ReportingWorkloadEventsPage />} />
+        <Route path="/reporting/compliance" element={<ReportingCompliancePage />} />
+        <Route path="/reporting/mcp-tracing" element={<ReportingMcpTracingPage />} />
+        <Route path="/edge-components" element={<EdgeAgentControllersPage />} />
+        <Route path="/edge-components/agent-controllers" element={<EdgeAgentControllersPage />} />
+        <Route path="/edge-components/agent-proxies" element={<EdgeAgentProxiesPage />} />
+        <Route path="/edge-components/deploy" element={<EdgeDeployPage />} />
+        <Route path="/edge-components/tls-decrypt" element={<EdgeTlsDecryptPage />} />
         <Route
           path="/edge-components/agent_controllers/new"
           element={<CreateAgentControllerPage />}
@@ -101,7 +118,13 @@ export function AppRoutes() {
           path="/edge-components/agent_controllers/:id"
           element={<AgentControllerDetailPage />}
         />
-        <Route path="/administration" element={<AdministrationPage />} />
+        <Route path="/administration/users" element={<AdminUsersPage />} />
+        <Route path="/administration/roles" element={<AdminRolesPage />} />
+        <Route path="/administration/resource-sets" element={<AdminResourceSetsPage />} />
+        <Route path="/administration/identity-providers" element={<AdminIdentityProvidersPage />} />
+        <Route path="/administration/log-streams" element={<AdminLogStreamsPage />} />
+        <Route path="/administration/sign-on-policy" element={<AdminSignOnPolicyPage />} />
+        <Route path="/administration/global-policy-compliance" element={<AdminGlobalPolicyCompliancePage />} />
         <Route path="/administration/new" element={<CreateUserPage />} />
         <Route path="/administration/users/new" element={<CreateUserPage />} />
         <Route path="/administration/users/:id" element={<UserDetailPage />} />

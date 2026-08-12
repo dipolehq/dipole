@@ -1,1 +1,6 @@
 export { ReportingPage } from './components/ReportingPage'
+export { ReportingAccessAuthPage } from './components/ReportingAccessAuthPage'
+export { ReportingAuditPage } from './components/ReportingAuditPage'
+export { ReportingWorkloadEventsPage } from './components/ReportingWorkloadEventsPage'
+export { ReportingCompliancePage } from './components/ReportingCompliancePage'
+export { ReportingMcpTracingPage } from './components/ReportingMcpTracingPage'
