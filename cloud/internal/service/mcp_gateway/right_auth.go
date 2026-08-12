@@ -17,7 +17,6 @@ package mcp_gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,8 +35,6 @@ var (
 type ServerCredential struct {
 	AccessToken    string
 	ServerWorkload ServerInfo
-	DebugSkipped   []string
-	DebugPolicies  int
 }
 
 // ServerInfo describes a downstream MCP server, carrying everything needed both
@@ -141,25 +138,15 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 	}
 
 	var creds []ServerCredential
-	var skipped []string
 	for _, policy := range policies {
 		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
-			skipped = append(skipped, fmt.Sprintf("policy=%s server=%s credType=%s err=%v", policy.PolicyID, policy.ServerWorkload.Name, policy.CredentialType, err))
 			continue
 		}
 		creds = append(creds, ServerCredential{
 			AccessToken:    token,
 			ServerWorkload: policy.ServerWorkload,
-			DebugSkipped:   skipped,
-			DebugPolicies:  len(policies),
 		})
-	}
-	if len(creds) == 0 && len(skipped) > 0 {
-		return []ServerCredential{{
-			DebugSkipped:  skipped,
-			DebugPolicies: len(policies),
-		}}, nil
 	}
 	return creds, nil
 }
@@ -175,7 +162,7 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 	}
 
 	for _, policy := range policies {
-		if policy.ServerWorkload.Name != serverName {
+		if toolPrefix(policy.ServerWorkload) != serverName {
 			continue
 		}
 		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)

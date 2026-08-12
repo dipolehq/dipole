@@ -20,6 +20,30 @@ const toolPrefixSeparator = "__"
 
 var ErrMethodNotFound = errors.New("method not found")
 
+func sanitizeToolName(name string) string {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, " ", "_")
+	var b strings.Builder
+	prevUnderscore := false
+	for _, c := range name {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
+			b.WriteRune(c)
+			prevUnderscore = false
+		} else if c == '_' {
+			if !prevUnderscore {
+				b.WriteRune(c)
+			}
+			prevUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func toolPrefix(server ServerInfo) string {
+	short := strings.ReplaceAll(server.ID.String(), "-", "")[:8]
+	return sanitizeToolName(server.Name) + "_" + short
+}
+
 type MCPTool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
@@ -121,63 +145,25 @@ func (h *MethodHandler) handleInitialize() (any, error) {
 func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContext) (any, error) {
 	creds, err := h.rightAuth.GetAllServerCredentials(ctx, rCtx.UserID, rCtx.Scope)
 	if err != nil {
-		return map[string]any{
-			"tools":              nil,
-			"_debug_creds_error": err.Error(),
-			"_debug_scope":       fmt.Sprintf("user=%s tenantID=%s gatewayURL=%s", rCtx.UserID, rCtx.Scope.TenantID, rCtx.Scope.GatewayURL),
-		}, nil
+		return nil, err
 	}
 
 	var allTools []MCPTool
-	var debugErrors []string
 	for _, cred := range creds {
 		client := h.clients.ClientFor(cred.ServerWorkload)
 
 		tools, err := client.ListTools(ctx, cred.AccessToken)
 		if err != nil {
-			debugErrors = append(debugErrors, fmt.Sprintf("server=%s host=%s:%d err=%v", cred.ServerWorkload.Name, cred.ServerWorkload.Host, cred.ServerWorkload.Port, err))
 			continue
 		}
 
 		for _, tool := range tools {
-			tool.Name = cred.ServerWorkload.Name + toolPrefixSeparator + tool.Name
+			tool.Name = toolPrefix(cred.ServerWorkload) + toolPrefixSeparator + tool.Name
 			allTools = append(allTools, tool)
 		}
 	}
 
-	result := map[string]any{"tools": allTools}
-	if len(debugErrors) > 0 {
-		result["_debug_downstream_errors"] = debugErrors
-	}
-	if len(creds) == 0 {
-		result["_debug_zero_creds"] = fmt.Sprintf("user=%s tenantID=%s gatewayURL=%s subdomain=%s", rCtx.UserID, rCtx.Scope.TenantID, rCtx.Scope.GatewayURL, rCtx.Scope.TenantSubdomain)
-	} else {
-		// Surface debug info from right-side auth
-		if creds[0].DebugPolicies > 0 || len(creds[0].DebugSkipped) > 0 {
-			result["_debug_policies_found"] = creds[0].DebugPolicies
-			if len(creds[0].DebugSkipped) > 0 {
-				result["_debug_credential_errors"] = creds[0].DebugSkipped
-			}
-		}
-		// Filter out dummy entries (no token = skipped policy placeholder)
-		var realCreds []ServerCredential
-		for _, c := range creds {
-			if c.AccessToken != "" {
-				realCreds = append(realCreds, c)
-			}
-		}
-		if len(realCreds) == 0 {
-			result["_debug_zero_valid_creds"] = true
-		}
-		servers := make([]string, len(realCreds))
-		for i, c := range realCreds {
-			servers[i] = fmt.Sprintf("%s(%s:%d)", c.ServerWorkload.Name, c.ServerWorkload.Host, c.ServerWorkload.Port)
-		}
-		if len(servers) > 0 {
-			result["_debug_creds_found"] = servers
-		}
-	}
-	return result, nil
+	return map[string]any{"tools": allTools}, nil
 }
 
 func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContext, params json.RawMessage) (any, error) {
@@ -207,14 +193,14 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 	result, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
 	if err != nil {
 		if h.emitter != nil {
-			h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 500)
+			h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 500)
 		}
 		return nil, err
 	}
 
 	if h.emitter != nil {
-		h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID)
-		h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", serverName, cred.ServerWorkload.ID, 200)
+		h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
+		h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
 	}
 
 	return result, nil
