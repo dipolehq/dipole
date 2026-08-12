@@ -162,7 +162,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: service.NewHTTPOIDCClient()})
 	mcpIdPService := mcpsvc.NewIdPService(mcpIdPResolver)
 	mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
-	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
+	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, repos.ClientWorkloads, encKey)
 	mcpTokenService := mcpsvc.NewTokenService(mcpCodeStore, issuer, mcpTokenConfigResolver)
 	mcpAuthorizeService := mcpsvc.NewAuthorizeService(mcpDCR, mcpCodeStore, mcpPolicyFinder, conditionEval, mcpIdPService)
 

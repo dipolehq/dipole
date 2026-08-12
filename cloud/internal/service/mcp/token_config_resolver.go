@@ -26,13 +26,15 @@ import (
 type PolicyTokenConfigResolver struct {
 	policyRepo repository.AccessPolicyRepository
 	cpRepo     repository.CredentialProviderRepository
+	cwRepo     repository.ClientWorkloadRepository
 	encKey     []byte
 }
 
-func NewPolicyTokenConfigResolver(policyRepo repository.AccessPolicyRepository, cpRepo repository.CredentialProviderRepository, encKey []byte) *PolicyTokenConfigResolver {
+func NewPolicyTokenConfigResolver(policyRepo repository.AccessPolicyRepository, cpRepo repository.CredentialProviderRepository, cwRepo repository.ClientWorkloadRepository, encKey []byte) *PolicyTokenConfigResolver {
 	return &PolicyTokenConfigResolver{
 		policyRepo: policyRepo,
 		cpRepo:     cpRepo,
+		cwRepo:     cwRepo,
 		encKey:     encKey,
 	}
 }
@@ -85,14 +87,30 @@ func (r *PolicyTokenConfigResolver) ResolveTokenConfig(policyID uuid.UUID, tenan
 		refreshAbsExpiry = 24 * time.Hour
 	}
 
+	// Resolve the Client Workload name for embedding in the issued token.
+	// Best-effort: a lookup failure here must never block token issuance —
+	// the MCP client identity is a nice-to-have for observability, not a
+	// security decision (that already happened when the policy matched the
+	// redirect_uri at /authorize time).
+	var clientWorkloadID uuid.UUID
+	var clientWorkloadName string
+	if r.cwRepo != nil {
+		if cw, cwErr := r.cwRepo.GetByID(ctx, tenantID, policy.ClientWorkloadID); cwErr == nil && cw != nil {
+			clientWorkloadID = cw.ID
+			clientWorkloadName = cw.Name
+		}
+	}
+
 	return &TokenConfig{
-		Audience:         cfg.Audience,
-		Subject:          cfg.Subject,
-		Lifetime:         lifetime,
-		Algorithm:        algorithm,
-		CustomClaims:     cfg.CustomClaims,
-		RefreshEnabled:   cfg.RefreshEnabled,
-		RefreshAbsExpiry: refreshAbsExpiry,
+		Audience:           cfg.Audience,
+		Subject:            cfg.Subject,
+		Lifetime:           lifetime,
+		Algorithm:          algorithm,
+		CustomClaims:       cfg.CustomClaims,
+		RefreshEnabled:     cfg.RefreshEnabled,
+		RefreshAbsExpiry:   refreshAbsExpiry,
+		ClientWorkloadID:   clientWorkloadID,
+		ClientWorkloadName: clientWorkloadName,
 	}, nil
 }
 
