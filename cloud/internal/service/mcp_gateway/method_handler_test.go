@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -47,10 +49,19 @@ func (unreachableMCPClient) ReadResource(context.Context, string, string) (*MCPR
 	return nil, errors.New("unreachable MCP server")
 }
 
+type mockDecrypter struct {
+	token string
+}
+
+func (d *mockDecrypter) DecryptCredential(_ []byte, _ string) (string, error) {
+	return d.token, nil
+}
+
 type mockMCPClient struct {
 	tools      []MCPTool
 	resources  []MCPResource
 	callResult any
+	callErr    error
 	lastToken  string
 	lastTool   string
 }
@@ -63,6 +74,9 @@ func (c *mockMCPClient) ListTools(_ context.Context, token string) ([]MCPTool, e
 func (c *mockMCPClient) CallTool(_ context.Context, token string, toolName string, _ json.RawMessage) (any, error) {
 	c.lastToken = token
 	c.lastTool = toolName
+	if c.callErr != nil {
+		return nil, c.callErr
+	}
 	return c.callResult, nil
 }
 
@@ -171,22 +185,26 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 	for _, tool := range tools {
 		names[tool.Name] = true
 	}
-	if !names["jira__create_issue"] {
-		t.Error("missing jira__create_issue")
+
+	jiraPrefix := toolPrefix(ServerInfo{ID: jiraID, Name: "jira"})
+	slackPrefix := toolPrefix(ServerInfo{ID: slackID, Name: "slack"})
+
+	if !names[jiraPrefix+"__create_issue"] {
+		t.Errorf("missing %s__create_issue", jiraPrefix)
 	}
-	if !names["jira__search_issues"] {
-		t.Error("missing jira__search_issues")
+	if !names[jiraPrefix+"__search_issues"] {
+		t.Errorf("missing %s__search_issues", jiraPrefix)
 	}
-	if !names["slack__send_message"] {
-		t.Error("missing slack__send_message")
+	if !names[slackPrefix+"__send_message"] {
+		t.Errorf("missing %s__send_message", slackPrefix)
 	}
-	if !names["slack__list_channels"] {
-		t.Error("missing slack__list_channels")
+	if !names[slackPrefix+"__list_channels"] {
+		t.Errorf("missing %s__list_channels", slackPrefix)
 	}
 
 	// Verify annotations preserved
 	for _, tool := range tools {
-		if tool.Name == "jira__search_issues" {
+		if tool.Name == jiraPrefix+"__search_issues" {
 			if tool.Annotations == nil || tool.Annotations["readOnlyHint"] != true {
 				t.Error("annotations not preserved on jira__search_issues")
 			}
@@ -214,7 +232,8 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 	handler := NewMethodHandler(rightAuth, clients, nil)
 
 	// Call jira tool
-	params := json.RawMessage(`{"name": "jira__create_issue", "arguments": {"project": "PROJ"}}`)
+	jiraPrefix := toolPrefix(ServerInfo{ID: jiraID, Name: "jira"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": "%s__create_issue", "arguments": {"project": "PROJ"}}`, jiraPrefix))
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -227,7 +246,8 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 	}
 
 	// Call github tool
-	params = json.RawMessage(`{"name": "github__create_pr", "arguments": {"title": "fix"}}`)
+	githubPrefix := toolPrefix(ServerInfo{ID: githubID, Name: "github"})
+	params = json.RawMessage(fmt.Sprintf(`{"name": "%s__create_pr", "arguments": {"title": "fix"}}`, githubPrefix))
 	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -263,6 +283,180 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
 	if err == nil {
 		t.Fatal("expected error for tool name without prefix")
+	}
+}
+
+func TestSanitizeToolName_NoConsecutiveUnderscores(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"Customer Database", "customer_database"},
+		{"foo  bar", "foo_bar"},
+		{"foo__bar", "foo_bar"},
+		{"foo---bar", "foo---bar"},
+		{"foo@#$bar", "foobar"},
+		{"  leading spaces", "leading_spaces"},
+		{"trailing spaces  ", "trailing_spaces"},
+		{"MCP Server (v2)", "mcp_server_v2"},
+		{"already_clean", "already_clean"},
+		{"UPPER-case-MIX", "upper-case-mix"},
+	}
+	for _, tc := range cases {
+		got := sanitizeToolName(tc.input)
+		if got != tc.want {
+			t.Errorf("sanitizeToolName(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+		if strings.Contains(got, "__") {
+			t.Errorf("sanitizeToolName(%q) = %q contains '__'", tc.input, got)
+		}
+	}
+}
+
+func TestToolPrefix_UniqueForDifferentIDs(t *testing.T) {
+	id1 := uuid.MustParse("a36a9b13-2d72-442f-bb0f-1bb567f63680")
+	id2 := uuid.MustParse("72c91e44-1a3b-4f8c-9d2e-0a1b2c3d4e5f")
+
+	p1 := toolPrefix(ServerInfo{ID: id1, Name: "Customer Database"})
+	p2 := toolPrefix(ServerInfo{ID: id2, Name: "Customer Database"})
+
+	if p1 == p2 {
+		t.Errorf("same sanitized name with different IDs must produce different prefixes: %q vs %q", p1, p2)
+	}
+	if !strings.HasPrefix(p1, "customer_database_") {
+		t.Errorf("prefix should start with sanitized name: %q", p1)
+	}
+}
+
+type recordingEventSink struct {
+	events []*MCPWorkloadEvent
+}
+
+func (s *recordingEventSink) Emit(_ uuid.UUID, event *MCPWorkloadEvent) {
+	s.events = append(s.events, event)
+}
+
+func TestToolsCall_EmitsAuditEventWithHumanReadableServerName(t *testing.T) {
+	serverID := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	tenantID := uuid.New()
+
+	client := &mockMCPClient{callResult: map[string]any{"ok": true}}
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "Customer Database MCP Server"}, CredentialType: "api_key"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	clients := mapClientFactory{"Customer Database MCP Server": client}
+
+	sink := &recordingEventSink{}
+	emitter := NewGatewayEventEmitter(sink)
+	handler := NewMethodHandler(rightAuth, clients, emitter)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Customer Database MCP Server"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__list_customers"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(sink.events) != 2 {
+		t.Fatalf("expected 2 events (request+response), got %d", len(sink.events))
+	}
+	for _, ev := range sink.events {
+		if ev.Workload.Server.Name != "Customer Database MCP Server" {
+			t.Errorf("expected audit event server name to be the human-readable name, got %q (must not leak the internal sanitized routing token)", ev.Workload.Server.Name)
+		}
+		if ev.Workload.Server.ID != serverID.String() {
+			t.Errorf("expected server ID %q, got %q", serverID, ev.Workload.Server.ID)
+		}
+	}
+}
+
+func TestToolsCall_FailurePath_EmitsAuditEventWithHumanReadableServerName(t *testing.T) {
+	serverID := uuid.MustParse("66666666-7777-8888-9999-000000000000")
+	tenantID := uuid.New()
+
+	client := &mockMCPClient{callErr: errors.New("downstream failed")}
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "Payments API"}, CredentialType: "api_key"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	clients := mapClientFactory{"Payments API": client}
+
+	sink := &recordingEventSink{}
+	emitter := NewGatewayEventEmitter(sink)
+	handler := NewMethodHandler(rightAuth, clients, emitter)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Payments API"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__charge"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
+	if err == nil {
+		t.Fatal("expected error from downstream failure")
+	}
+
+	if len(sink.events) != 1 {
+		t.Fatalf("expected 1 event (failure response only), got %d", len(sink.events))
+	}
+	if sink.events[0].Workload.Server.Name != "Payments API" {
+		t.Errorf("expected audit event server name to be the human-readable name, got %q", sink.events[0].Workload.Server.Name)
+	}
+	if sink.events[0].Application.MCP.HTTPResponseCode != 500 {
+		t.Errorf("expected response code 500, got %d", sink.events[0].Application.MCP.HTTPResponseCode)
+	}
+}
+
+func TestToolsListAndCall_RoundTrip(t *testing.T) {
+	serverID := uuid.MustParse("deadbeef-1234-5678-abcd-ef0123456789")
+	tenantID := uuid.New()
+
+	client := &mockMCPClient{
+		tools:      []MCPTool{{Name: "query_data", Description: "Query"}},
+		callResult: map[string]any{"rows": 42},
+	}
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "My  Server!"}, CredentialType: "api_key"},
+		},
+	}
+
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	clients := mapClientFactory{"My  Server!": client}
+	handler := NewMethodHandler(rightAuth, clients, nil)
+
+	// Step 1: tools/list
+	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/list", nil)
+	if err != nil {
+		t.Fatalf("tools/list error: %v", err)
+	}
+	resp := result.(map[string]any)
+	tools := resp["tools"].([]MCPTool)
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+
+	// The exposed name must not contain spaces or special chars
+	exposedName := tools[0].Name
+	for _, c := range exposedName {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			t.Fatalf("exposed tool name %q contains invalid char %q", exposedName, string(c))
+		}
+	}
+
+	// Step 2: tools/call with the exact name from tools/list
+	callParams := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, exposedName))
+	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/call", callParams)
+	if err != nil {
+		t.Fatalf("tools/call with name from tools/list failed: %v", err)
+	}
+	if client.lastTool != "query_data" {
+		t.Errorf("expected downstream tool 'query_data', got %q", client.lastTool)
+	}
+	if client.lastToken != "secret" {
+		t.Errorf("expected token 'secret', got %q", client.lastToken)
 	}
 }
 

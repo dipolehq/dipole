@@ -338,7 +338,7 @@ func TestRightAuth_GetCredentialByServerName_Found(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 
-	cred, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", testScope(tenantID), "slack")
+	cred, err := rightAuth.GetCredentialByServerName(context.Background(), "alice@corp.com", testScope(tenantID), toolPrefix(ServerInfo{ID: slackID, Name: "slack"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
