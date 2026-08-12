@@ -450,6 +450,33 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		data.PolicyFailures = append(data.PolicyFailures, pf)
 	}
 
+	// Trust provider attestation results (last 24h).
+	attRows, err := r.pool.Query(ctx,
+		`SELECT result, COUNT(*) FROM (
+			SELECT jsonb_array_elements(payload->'trustProviders')->>'result' AS result
+			FROM access_authorization_events
+			WHERE tenant_id = $1 AND event_type = 'access.authorization'
+			  AND timestamp >= NOW() - INTERVAL '24 hours'
+			  AND payload->'trustProviders' IS NOT NULL
+			  AND jsonb_array_length(payload->'trustProviders') > 0
+		) sub
+		WHERE result IS NOT NULL
+		GROUP BY result
+		ORDER BY COUNT(*) DESC`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard attestation results: %w", err)
+	}
+	defer attRows.Close()
+	for attRows.Next() {
+		var tc domain.DashboardTypeCount
+		if err := attRows.Scan(&tc.Type, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan attestation result: %w", err)
+		}
+		data.AttestationResults = append(data.AttestationResults, tc)
+	}
+
 	return data, nil
 }
 

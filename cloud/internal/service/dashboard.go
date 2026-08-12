@@ -16,14 +16,15 @@ import (
 )
 
 type DashboardStats struct {
-	Counts                   EntityCounts      `json:"counts"`
-	RecentEvents             RecentEventStats  `json:"recentEvents"`
-	TopClientWorkloads       []TopWorkload     `json:"topClientWorkloads"`
-	TopServerWorkloads       []TopWorkload     `json:"topServerWorkloads"`
-	UnmanagedServerWorkloads []TopWorkload     `json:"unmanagedServerWorkloads"`
-	CredentialUsageByType    []CredentialUsage `json:"credentialUsageByType"`
-	ConnectionsByProtocol    []ProtocolCount   `json:"connectionsByProtocol"`
-	MostConditionFailures    []PolicyFailures  `json:"mostConditionFailures"`
+	Counts                   EntityCounts        `json:"counts"`
+	RecentEvents             RecentEventStats    `json:"recentEvents"`
+	TopClientWorkloads       []TopWorkload       `json:"topClientWorkloads"`
+	TopServerWorkloads       []TopWorkload       `json:"topServerWorkloads"`
+	UnmanagedServerWorkloads []TopWorkload       `json:"unmanagedServerWorkloads"`
+	CredentialUsageByType    []CredentialUsage   `json:"credentialUsageByType"`
+	ConnectionsByProtocol    []ProtocolCount     `json:"connectionsByProtocol"`
+	MostConditionFailures    []PolicyFailures    `json:"mostConditionFailures"`
+	AttestationResults       []AttestationResult `json:"attestationResults"`
 }
 
 type EntityCounts struct {
@@ -87,6 +88,11 @@ type PolicyFailures struct {
 	PolicyID   string `json:"policyId"`
 	PolicyName string `json:"policyName"`
 	Failures   int    `json:"failures"`
+}
+
+type AttestationResult struct {
+	Result string `json:"result"`
+	Count  int    `json:"count"`
 }
 
 type DashboardService struct {
@@ -196,6 +202,11 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, tim
 	for _, pf := range eventData.PolicyFailures {
 		stats.MostConditionFailures = append(stats.MostConditionFailures, PolicyFailures{
 			PolicyID: pf.PolicyID, PolicyName: pf.PolicyName, Failures: pf.Count,
+		})
+	}
+	for _, ar := range eventData.AttestationResults {
+		stats.AttestationResults = append(stats.AttestationResults, AttestationResult{
+			Result: ar.Type, Count: ar.Count,
 		})
 	}
 

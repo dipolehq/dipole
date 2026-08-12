@@ -26,6 +26,7 @@ export interface DashboardStatsDTO {
   credentialUsageByType: { type: string; count: number }[]
   connectionsByProtocol: { protocol: string; count: number }[]
   mostConditionFailures: { policyId: string; policyName: string; failures: number }[]
+  attestationResults: { result: string; count: number }[]
 }
 
 export interface DashboardData {
@@ -98,7 +99,7 @@ function mapToFrontend(dto: DashboardStatsDTO): DashboardData {
     credentialUsage,
     protocolUsage,
     denialReasons,
-    attestationResults: [],
+    attestationResults: (dto.attestationResults ?? []).map((a) => a.count),
   }
 }
 

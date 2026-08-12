@@ -28,7 +28,15 @@ export function DashboardPage() {
     placeholderData: (prev) => prev,
   })
 
+  const { data: decisionsData, refetch: refetchDecisions } = useQuery({
+    queryKey: ['dashboard', 'decisions', decisionsTimeRange],
+    queryFn: () => fetchDashboardStats(decisionsTimeRange),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  })
+
   const dashboardData = data ?? fallbackData
+  const decisionsSource = decisionsData ?? fallbackData
   const { stats } = dashboardData
 
   return (
@@ -62,7 +70,7 @@ export function DashboardPage() {
       </div>
 
       <WorkloadEventsChart data={dashboardData.workloadEvents} onTimeRangeChange={setWorkloadTimeRange} timeRange={workloadTimeRange} onRefresh={() => refetch()} />
-      <AccessDecisionsChart data={dashboardData.accessDecisions} onTimeRangeChange={setDecisionsTimeRange} timeRange={decisionsTimeRange} onRefresh={() => refetch()} />
+      <AccessDecisionsChart data={decisionsSource.accessDecisions} onTimeRangeChange={setDecisionsTimeRange} timeRange={decisionsTimeRange} onRefresh={() => refetchDecisions()} />
 
       <div className="grid grid-cols-2 gap-4">
         <ConnectionsChart title="Client Workloads" subtitle="Most Connections" data={dashboardData.clientConnections} />

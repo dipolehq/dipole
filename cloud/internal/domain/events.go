@@ -77,6 +77,7 @@ type DashboardEventData struct {
 	CredentialUsage      []DashboardTypeCount
 	ProtocolUsage        []DashboardTypeCount
 	PolicyFailures       []DashboardPolicyFailure
+	AttestationResults   []DashboardTypeCount
 }
 
 type DashboardTimePoint struct {
