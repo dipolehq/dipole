@@ -148,7 +148,7 @@ func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContex
 		return nil, err
 	}
 
-	var allTools []MCPTool
+	allTools := make([]MCPTool, 0)
 	for _, cred := range creds {
 		client := h.clients.ClientFor(cred.ServerWorkload)
 
@@ -212,7 +212,7 @@ func (h *MethodHandler) handleResourcesList(ctx context.Context, rCtx *RequestCo
 		return nil, err
 	}
 
-	var allResources []MCPResource
+	allResources := make([]MCPResource, 0)
 	for _, cred := range creds {
 		client := h.clients.ClientFor(cred.ServerWorkload)
 
