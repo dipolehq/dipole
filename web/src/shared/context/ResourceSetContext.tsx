@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient, setActiveResourceSet } from '@/shared/lib/api-client'
+import { queryClient } from '@/shared/lib/query-client'
 
 export interface ResourceSet {
   id: string
@@ -38,9 +39,14 @@ export function ResourceSetProvider({ children }: { children: ReactNode }) {
   })
 
   // Sync the active Resource Set to the API client module and sessionStorage.
+  // Invalidate all cached queries so pages refetch with the new scope header.
   useEffect(() => {
     setActiveResourceSet(current.id)
     sessionStorage.setItem('dipole_resource_set', JSON.stringify(current))
+    // Invalidate all queries except the resource-sets list itself (avoid circular refetch).
+    queryClient.invalidateQueries({
+      predicate: (query) => query.queryKey[0] !== 'resource-sets',
+    })
   }, [current.id])
 
   const hasToken = !!sessionStorage.getItem('dipole_token')

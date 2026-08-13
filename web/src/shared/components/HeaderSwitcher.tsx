@@ -141,6 +141,7 @@ function TenantSwitcherInline() {
       )
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+      sessionStorage.removeItem('dipole_resource_set')
       setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
       window.location.replace('/')
     } catch {

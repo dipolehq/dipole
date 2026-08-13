@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type EventRepo struct {
@@ -62,7 +63,7 @@ func (r *EventRepo) InsertAuditLog(ctx context.Context, tenantID uuid.UUID, l *d
 }
 
 func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error) {
-	where, args := buildAuthEventFilters(tenantID, opts)
+	where, args := buildAuthEventFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_authorization_events WHERE `+where, args...).Scan(&total)
@@ -96,7 +97,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 }
 
 func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error) {
-	where, args := buildWorkloadEventFilters(tenantID, opts)
+	where, args := buildWorkloadEventFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workload_events WHERE `+where, args...).Scan(&total)
@@ -130,7 +131,7 @@ func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID,
 }
 
 func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error) {
-	where, args := buildAuditLogFilters(tenantID, opts)
+	where, args := buildAuditLogFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE `+where, args...).Scan(&total)
@@ -163,7 +164,7 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 	return results, total, nil
 }
 
-func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildAuthEventFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
@@ -198,10 +199,12 @@ func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (s
 		args = append(args, *opts.EndDate)
 	}
 
+	appendResourceSetFilter(ctx, &clauses, &args, &n)
+
 	return strings.Join(clauses, " AND "), args
 }
 
-func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildWorkloadEventFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
@@ -241,10 +244,12 @@ func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions
 		args = append(args, opts.ServerWorkloadIDs)
 	}
 
+	appendResourceSetFilter(ctx, &clauses, &args, &n)
+
 	return strings.Join(clauses, " AND "), args
 }
 
-func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildAuditLogFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
@@ -274,6 +279,9 @@ func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (st
 		args = append(args, *opts.EndDate)
 	}
 
+	// Note: audit_logs does not have a resource_set_id column — it's tenant-wide.
+	// No resource set filter applied here.
+
 	return strings.Join(clauses, " AND "), args
 }
 
@@ -282,6 +290,19 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 
 	interval, truncInterval := resolveTimeGranularity(timeRange)
 
+	// Build resource-set filter fragment for dashboard queries.
+	// All dashboard queries use $1 = tenantID. If scope is present, $2 = resource_set_id.
+	rsClause := ""
+	weRsClause := "" // For workload_events queries with table alias "we"
+	aeRsClause := "" // For access_authorization_events queries with table alias "ae"
+	baseArgs := []interface{}{tenantID}
+	if s := scope.FromContext(ctx); s != nil {
+		rsClause = " AND resource_set_id = $2"
+		weRsClause = " AND we.resource_set_id = $2"
+		aeRsClause = " AND ae.resource_set_id = $2"
+		baseArgs = append(baseArgs, s.ResourceSetID)
+	}
+
 	// Aggregate counts for the time range from access_authorization_events.
 	err := r.pool.QueryRow(ctx,
 		`SELECT
@@ -289,8 +310,8 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval,
-		tenantID,
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+rsClause,
+		baseArgs...,
 	).Scan(&data.TotalLast6h, &data.AuthorizedLast6h, &data.DeniedLast6h)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard event counts: %w", err)
@@ -304,10 +325,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Warning') AS warning,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS error
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND timestamp >= NOW() - `+interval+`
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - `+interval+rsClause+`
 		 GROUP BY bucket
 		 ORDER BY bucket`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard time series: %w", err)
@@ -330,10 +351,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+`
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+rsClause+`
 		 GROUP BY bucket
 		 ORDER BY bucket`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard decision series: %w", err)
@@ -354,11 +375,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		`SELECT we.client_workload_id::text, COALESCE(cw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
 		 LEFT JOIN client_workloads cw ON cw.id = we.client_workload_id AND cw.tenant_id = we.tenant_id
-		 WHERE we.tenant_id = $1 AND we.client_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE we.tenant_id = $1 AND we.client_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'`+weRsClause+`
 		 GROUP BY we.client_workload_id, cw.name
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard top clients: %w", err)
@@ -379,11 +400,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		`SELECT we.server_workload_id::text, COALESCE(sw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
 		 LEFT JOIN server_workloads sw ON sw.id = we.server_workload_id AND sw.tenant_id = we.tenant_id
-		 WHERE we.tenant_id = $1 AND we.server_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE we.tenant_id = $1 AND we.server_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'`+weRsClause+`
 		 GROUP BY we.server_workload_id, sw.name
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard top servers: %w", err)
@@ -405,10 +426,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		 FROM access_authorization_events
 		 WHERE tenant_id = $1 AND event_type = 'access.credential' AND severity = 'Info'
 		   AND timestamp >= NOW() - INTERVAL '24 hours'
-		   AND payload->'credentialProvider'->>'type' IS NOT NULL
+		   AND payload->'credentialProvider'->>'type' IS NOT NULL`+rsClause+`
 		 GROUP BY cp_type
 		 ORDER BY COUNT(*) DESC`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard credential usage: %w", err)
@@ -428,10 +449,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	rows, err = r.pool.Query(ctx,
 		`SELECT split_part(event_type, '.', 1) AS protocol, COUNT(*)
 		 FROM workload_events
-		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '24 hours'`+rsClause+`
 		 GROUP BY protocol
 		 ORDER BY COUNT(*) DESC`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard protocol usage: %w", err)
@@ -453,11 +474,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		 FROM access_authorization_events ae
 		 WHERE ae.tenant_id = $1 AND ae.event_type = 'access.authorization' AND ae.severity = 'Error'
 		   AND ae.timestamp >= NOW() - INTERVAL '24 hours'
-		   AND ae.payload->'accessPolicy'->>'id' IS NOT NULL
+		   AND ae.payload->'accessPolicy'->>'id' IS NOT NULL`+aeRsClause+`
 		 GROUP BY policy_id, ae.payload->'accessPolicy'->>'name'
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard policy failures: %w", err)
@@ -480,12 +501,12 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			WHERE tenant_id = $1 AND event_type = 'access.authorization'
 			  AND timestamp >= NOW() - INTERVAL '24 hours'
 			  AND payload->'trustProviders' IS NOT NULL
-			  AND jsonb_array_length(payload->'trustProviders') > 0
+			  AND jsonb_array_length(payload->'trustProviders') > 0`+rsClause+`
 		) sub
 		WHERE result IS NOT NULL
 		GROUP BY result
 		ORDER BY COUNT(*) DESC`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard attestation results: %w", err)

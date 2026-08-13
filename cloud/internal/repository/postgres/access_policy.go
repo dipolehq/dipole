@@ -67,22 +67,36 @@ func (r *AccessPolicyRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id u
 
 func (r *AccessPolicyRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessPolicy, int, error) {
 	search := escapeILIKE(opts.Search)
+	countArgs := []interface{}{tenantID, search}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM access_policies
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
-		tenantID, search).Scan(&total)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count access policies: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID, search}
+	n = 2
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, client_workload_id, server_workload_id, tags, resource_set_id, created_at, updated_at
 		 FROM access_policies
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, search, opts.PerPage, offset)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
+		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list access policies: %w", err)
 	}
@@ -244,6 +258,15 @@ func (r *AccessPolicyRepo) FindByAppProtocol(ctx context.Context, tenantID uuid.
 }
 
 func (r *AccessPolicyRepo) ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	args := []interface{}{tenantID}
+	n := 1
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+	// rsFilter returns " AND resource_set_id = $2" or "" — need to qualify with "ap."
+	apRsFilter := ""
+	if rsFilter != "" {
+		apRsFilter = fmt.Sprintf(" AND ap.resource_set_id = $%d", n)
+	}
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.is_active, ap.client_workload_id, ap.server_workload_id, ap.tags, ap.resource_set_id, ap.created_at, ap.updated_at,
 		        cw.id, cw.name, cw.identifiers, cw.tags,
@@ -251,9 +274,9 @@ func (r *AccessPolicyRepo) ListActiveWithRelations(ctx context.Context, tenantID
 		 FROM access_policies ap
 		 JOIN client_workloads cw ON ap.client_workload_id = cw.id
 		 JOIN server_workloads sw ON ap.server_workload_id = sw.id
-		 WHERE ap.tenant_id = $1 AND ap.is_active = true
+		 WHERE ap.tenant_id = $1 AND ap.is_active = true`+apRsFilter+`
 		 ORDER BY ap.created_at ASC`,
-		tenantID)
+		args...)
 	if err != nil {
 		return nil, fmt.Errorf("list active policies with relations: %w", err)
 	}

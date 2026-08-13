@@ -15,16 +15,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const (
-	ctxTenantID    contextKey = "tenant_id"
-	ctxUserEmail   contextKey = "user_email"
-	ctxRequestID   contextKey = "request_id"
-	ctxResourceSet contextKey = "resource_set_id"
+	ctxTenantID  contextKey = "tenant_id"
+	ctxUserEmail contextKey = "user_email"
+	ctxRequestID contextKey = "request_id"
 )
 
 func TenantIDFromContext(ctx context.Context) uuid.UUID {
@@ -40,10 +40,9 @@ func UserEmailFromContext(ctx context.Context) string {
 	}
 	return ""
 }
-
 func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
-	if id, ok := ctx.Value(ctxResourceSet).(*uuid.UUID); ok {
-		return id
+	if s := scope.FromContext(ctx); s != nil {
+		return &s.ResourceSetID
 	}
 	return nil
 }
@@ -70,9 +69,11 @@ func AuthMiddleware(auth APIAuthenticator) func(http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), ctxTenantID, tenantID)
 			ctx = context.WithValue(ctx, ctxUserEmail, email)
 
-			// If the token is scoped to a Resource Set, enforce it (override any header).
 			if tokenResourceSet != nil {
-				ctx = context.WithValue(ctx, ctxResourceSet, tokenResourceSet)
+				ctx = scope.WithScope(ctx, &scope.RequestScope{
+					TenantID:      tenantID,
+					ResourceSetID: *tokenResourceSet,
+				})
 			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -91,14 +92,27 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 
 func ResourceSetMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip if scope was already set by AuthMiddleware (token-scoped).
+		if scope.FromContext(r.Context()) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		tenantID := TenantIDFromContext(r.Context())
+
+		// Read resource set from header; fall back to Default if not provided.
+		rsID := scope.DefaultResourceSetID
 		if rsHeader := r.Header.Get("X-Dipole-ResourceSet"); rsHeader != "" {
 			if parsed, err := uuid.Parse(rsHeader); err == nil {
-				ctx := context.WithValue(r.Context(), ctxResourceSet, &parsed)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
+				rsID = parsed
 			}
 		}
-		next.ServeHTTP(w, r)
+
+		ctx := scope.WithScope(r.Context(), &scope.RequestScope{
+			TenantID:      tenantID,
+			ResourceSetID: rsID,
+		})
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -223,6 +237,7 @@ func extractAPIToken(r *http.Request) string {
 func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string) http.Handler {
 	rateLimiter := NewRateLimiter(100, 30)
 	protected := rateLimiter.Middleware(mux)
+	protected = ResourceSetMiddleware(protected)
 	protected = AuthMiddleware(authenticator)(protected)
 	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if IsPublicPath(r.URL.Path) {
@@ -231,7 +246,7 @@ func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowed
 		}
 		protected.ServeHTTP(w, r)
 	})
-	handler := RequestIDMiddleware(CORSMiddleware(allowedOrigins)(ResourceSetMiddleware(routed)))
+	handler := RequestIDMiddleware(CORSMiddleware(allowedOrigins)(routed))
 	if proxySecret != "" {
 		handler = ProxySecretMiddleware(proxySecret)(handler)
 	}

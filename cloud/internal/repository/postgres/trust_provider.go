@@ -57,23 +57,37 @@ func (r *TrustProviderRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id 
 }
 
 func (r *TrustProviderRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error) {
+	countArgs := []interface{}{tenantID, opts.Search}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM trust_providers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
-		tenantID, opts.Search).Scan(&total)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count trust providers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID, opts.Search}
+	n = 2
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config, match_rules, edge_sdk_client_id, edge_sdk_audience, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM policy_trust_providers ptp WHERE ptp.trust_provider_id = trust_providers.id) AS policy_count
 		 FROM trust_providers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, opts.Search, opts.PerPage, offset)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
+		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list trust providers: %w", err)
 	}
