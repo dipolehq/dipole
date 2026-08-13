@@ -206,8 +206,8 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-51 bg-white flex flex-col border-r border-gray-200">
-      <div className="px-4 flex items-center gap-2 h-[60px] shrink-0 border-b border-gray-200 select-none pointer-events-none">
-        <img src="/brand_black.svg" alt="Dipole" className="h-17 translate-x-1" />
+      <div className="pl-6 flex items-center h-[44px] shrink-0 border-b border-gray-200 select-none pointer-events-none">
+        <img src="/brand_black.svg" alt="Dipole" className="h-8" />
       </div>
 
       <div className="px-3 mt-5 mb-3">
@@ -236,7 +236,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-3 border-t border-gray-200 h-[52px] flex items-center relative group">
+      <div className="px-3 border-t border-gray-200 h-10 flex items-center relative group">
         <button className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[6px] text-[13px] text-gray-600 hover:bg-gray-50 transition-colors">
           <User size={16} strokeWidth={1.5} className="shrink-0" />
           <span className="truncate">{getUserDisplayName()}</span>
