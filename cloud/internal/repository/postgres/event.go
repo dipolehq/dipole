@@ -77,7 +77,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source
-		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query auth events: %w", err)
@@ -111,7 +111,7 @@ func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID,
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, connection_id, event_type, policy_id, client_workload_id, server_workload_id, outcome, severity, timestamp, payload, resource_set_id
-		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query workload events: %w", err)
@@ -145,7 +145,7 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, actor_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp
-		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query audit logs: %w", err)
@@ -168,7 +168,11 @@ func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (s
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)
@@ -202,7 +206,11 @@ func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)
@@ -241,7 +249,11 @@ func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (st
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)

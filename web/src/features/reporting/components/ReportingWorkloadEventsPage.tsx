@@ -1,96 +1,111 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
-import { Search, Filter } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { type ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { Dropdown } from '@/shared/components/Dropdown'
-import { TimespanPicker } from '@/shared/components/TimespanPicker'
-import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
+import { LogTable } from '@/shared/components/ui/LogTable'
 import { fetchWorkloadEvents } from '@/features/reporting/api/eventsApi'
-import { SEVERITY_OPTIONS, WORKLOAD_PROTOCOL_OPTIONS, REPORTING_PAGE_SIZE_OPTIONS } from '@/shared/constants/reporting'
+
+const PAGE_SIZE = 50
+
+interface WorkloadEventRow {
+  id: string
+  timestamp: string
+  connectionId: string
+  eventType: string
+  clientWorkloadName: string
+  serverWorkloadName: string
+  severity: string
+  payload: Record<string, unknown>
+}
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString('en-IN', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+}
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const colors: Record<string, string> = { Info: 'text-green-600', Warning: 'text-orange-500', Error: 'text-red-500' }
+  return <span className={`text-xs font-medium ${colors[severity] ?? 'text-gray-600'}`}>{severity}</span>
+}
+
+function ExpandedDetail({ row }: { row: WorkloadEventRow }) {
+  return (
+    <div className="grid grid-cols-[40%_60%] bg-gray-100 max-h-[550px]">
+      <div className="p-5 border-r border-gray-200 overflow-y-auto max-h-[550px]">
+        <table className="text-xs">
+          <tbody>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Timestamp</td><td className="text-gray-700">{row.timestamp}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Connection ID</td><td className="text-gray-700 break-all">{row.connectionId}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Event Type</td><td className="text-gray-700">{row.eventType}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Client Workload</td><td className="text-gray-700">{row.clientWorkloadName || '—'}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Server Workload</td><td className="text-gray-700">{row.serverWorkloadName || '—'}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Severity</td><td className="text-gray-700">{row.severity}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="p-4 overflow-y-auto max-h-[550px]">
+        <pre className="text-[11px] text-gray-700 font-mono whitespace-pre-wrap leading-relaxed">
+          {JSON.stringify(row.payload, null, 2)}
+        </pre>
+      </div>
+    </div>
+  )
+}
 
 export function ReportingWorkloadEventsPage() {
-  const [params, setParams] = useSearchParams()
-
-  const searchQuery = params.get('search') || ''
-  const pageSize = Number(params.get('perPage')) || REPORTING_PAGE_SIZE_OPTIONS[0]
-  const currentPage = Number(params.get('page')) || 1
-  const timeRange = params.get('timeRange') || '1d'
-  const severity = params.get('severity') || ''
-  const appProtocol = params.get('appProtocol') || ''
-  const mcpUser = params.get('mcpUser') || ''
-
-  function setParam(key: string, value: string) {
-    setParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) next.set(key, value)
-      else next.delete(key)
-      if (key !== 'page') next.set('page', '1')
-      return next
-    }, { replace: true })
-  }
-
-  const [showFilter, setShowFilter] = useState(false)
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [severity, setSeverity] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['events', 'workload', currentPage, pageSize, severity, appProtocol],
-    queryFn: () => fetchWorkloadEvents({ page: currentPage, perPage: pageSize, severity, eventType: appProtocol }),
+    queryKey: ['events', 'workload', page, PAGE_SIZE, severity],
+    queryFn: () => fetchWorkloadEvents({ page, perPage: PAGE_SIZE, severity, eventType: '' }),
+    placeholderData: keepPreviousData,
   })
+
+  const rows: WorkloadEventRow[] = useMemo(() => (data?.items ?? []).map((item) => ({
+    id: item.id,
+    timestamp: item.timestamp,
+    connectionId: item.connectionId ?? '',
+    eventType: item.eventType ?? '',
+    clientWorkloadName: item.clientWorkloadName ?? '',
+    serverWorkloadName: item.serverWorkloadName ?? '',
+    severity: item.severity ?? '',
+    payload: item.payload ?? {},
+  })), [data])
+
+  const columns: ColumnDef<WorkloadEventRow, unknown>[] = useMemo(() => [
+    { accessorKey: 'timestamp', header: 'Timestamp', cell: ({ row }) => <span className="text-gray-700 whitespace-nowrap">{formatTimestamp(row.getValue('timestamp'))}</span>, size: 200 },
+    { accessorKey: 'connectionId', header: 'Connection ID', cell: ({ row }) => <span className="text-gray-700 font-mono text-[11px] whitespace-nowrap">{row.getValue('connectionId')}</span>, size: 300 },
+    { accessorKey: 'eventType', header: 'Event Type', cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('eventType')}</span> },
+    { accessorKey: 'clientWorkloadName', header: 'Client Workload', cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('clientWorkloadName') || '—'}</span> },
+    { accessorKey: 'serverWorkloadName', header: 'Server Workload', cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('serverWorkloadName') || '—'}</span> },
+    { accessorKey: 'severity', header: 'Severity', cell: ({ row }) => <SeverityBadge severity={row.getValue('severity')} />, size: 80 },
+  ], [])
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-          <div className="relative">
-            <button type="button" onClick={() => setShowFilter(!showFilter)} className={`flex items-center gap-1.5 px-4 py-2 border rounded-md text-sm font-medium transition-colors ${showFilter ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-border text-gray-600 hover:border-gray-400'}`}>
-              <Filter size={14} /> Filter
-            </button>
-            {showFilter && (
-              <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-white border border-border rounded-lg shadow-lg z-50">
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
-                    <TimespanPicker value={timeRange} onChange={(v) => setParam('timeRange', v)} />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
-                    <Dropdown options={SEVERITY_OPTIONS.map((s) => ({ value: s.value, label: s.label }))} value={severity} onChange={(v) => setParam('severity', v)} placeholder="Severity" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Application Protocol</label>
-                    <Dropdown options={WORKLOAD_PROTOCOL_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} value={appProtocol} onChange={(v) => setParam('appProtocol', v)} placeholder="Protocol" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">User (MCP only)</label>
-                    <input type="text" value={mcpUser} onChange={(e) => setParam('mcpUser', e.target.value)} placeholder="User email" className="w-full px-3 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <WorkloadEventsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} appProtocol={appProtocol} mcpUser={mcpUser} data={data?.items} />
-      </div>
-
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={REPORTING_PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
-          <span>Showing {data?.total ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, data?.total ?? 0)} of {data?.total ?? 0} Results</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setParam('page', String(currentPage - 1))} disabled={currentPage <= 1} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">←</button>
-          <span className="w-7 h-7 flex items-center justify-center rounded text-xs font-medium bg-orange-500 text-white">{currentPage}</span>
-          <button onClick={() => setParam('page', String(currentPage + 1))} disabled={currentPage >= Math.ceil((data?.total ?? 0) / pageSize)} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">→</button>
-        </div>
+      <div className="flex-1 min-h-0">
+        <LogTable
+          columns={columns}
+          data={rows}
+          total={data?.total ?? 0}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          onSearch={(q) => { setSearch(q); setPage(1) }}
+          searchValue={search}
+          searchPlaceholder="Filter by connection or workload..."
+          severity={severity}
+          onSeverityChange={(v) => { setSeverity(v); setPage(1) }}
+          renderExpanded={(row) => <ExpandedDetail row={row} />}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['events', 'workload'] })}
+          emptyMessage="No workload events found."
+        />
       </div>
     </div>
   )

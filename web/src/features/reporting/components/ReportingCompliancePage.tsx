@@ -1,62 +1,157 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Search, Filter } from 'lucide-react'
+import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { type ColumnDef } from '@tanstack/react-table'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { Dropdown } from '@/shared/components/Dropdown'
-import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
-import { COMPLIANCE_STATUS_OPTIONS, RESOURCE_SET_OPTIONS } from '@/shared/constants/reporting'
+import { DataTable } from '@/shared/components/ui/DataTable'
+import { apiClient } from '@/shared/lib/api-client'
+
+type ComplianceLevel = 'required' | 'recommended' | 'optional' | 'compliant'
+
+interface ComplianceRow {
+  id: string
+  policyName: string
+  clientWorkload: string
+  trustProvider: ComplianceLevel
+  accessCondition: ComplianceLevel
+  credentialProvider: string
+  serverWorkload: string
+  resourceSet: string
+  /** Derived field for faceted filtering */
+  status: string
+}
+
+async function fetchComplianceReport(): Promise<ComplianceRow[]> {
+  const res = await apiClient.get<{ items: ComplianceRow[]; total: number }>('/global-policy-compliance/report')
+  return (res.items ?? []).map((item) => ({
+    ...item,
+    status: deriveStatus(item.trustProvider, item.accessCondition),
+  }))
+}
+
+function deriveStatus(tp: ComplianceLevel, ac: ComplianceLevel): string {
+  if (tp === 'required' || ac === 'required') return 'Missing Required'
+  if (tp === 'recommended' || ac === 'recommended') return 'Missing Recommended'
+  return 'Compliant'
+}
+
+function ComplianceBadge({ level }: { level: ComplianceLevel }) {
+  const config: Record<ComplianceLevel, { label: string; color: string }> = {
+    required: { label: 'Required', color: 'text-red-500' },
+    recommended: { label: 'Recommended', color: 'text-orange-500' },
+    optional: { label: 'Optional', color: 'text-blue-500' },
+    compliant: { label: '—', color: 'text-gray-400' },
+  }
+  const c = config[level] ?? config.optional
+  return <span className={`text-xs font-medium ${c.color}`}>{c.label}</span>
+}
 
 export function ReportingCompliancePage() {
-  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const searchQuery = params.get('search') || ''
-  const complianceStatus = params.get('complianceStatus') || ''
-  const resourceSet = params.get('resourceSet') || ''
+  const { data: items = [] } = useQuery({
+    queryKey: ['compliance-report'],
+    queryFn: fetchComplianceReport,
+  })
 
-  function setParam(key: string, value: string) {
-    setParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) next.set(key, value)
-      else next.delete(key)
-      return next
-    }, { replace: true })
-  }
-
-  const [showFilter, setShowFilter] = useState(false)
+  const columns: ColumnDef<ComplianceRow, unknown>[] = useMemo(() => [
+    {
+      id: '_action',
+      header: () => (
+        <button
+          type="button"
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['compliance-report'] })}
+          className="text-gray-400 hover:text-orange-500 transition-colors"
+          title="Refresh"
+        >
+          <RefreshCw size={15} strokeWidth={2.5} />
+        </button>
+      ),
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); navigate(`/access-policies/${row.original.id}`) }}
+          className="text-gray-400 hover:text-orange-500 transition-colors"
+          title="View policy"
+        >
+          <ExternalLink size={14} />
+        </button>
+      ),
+      size: 40,
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
+      accessorKey: 'policyName',
+      header: 'Policy Name',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('policyName')}</span>,
+    },
+    {
+      accessorKey: 'clientWorkload',
+      header: 'Client Workload',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('clientWorkload')}</span>,
+    },
+    {
+      accessorKey: 'trustProvider',
+      header: 'Trust Provider',
+      cell: ({ row }) => <ComplianceBadge level={row.getValue('trustProvider')} />,
+      size: 130,
+    },
+    {
+      accessorKey: 'accessCondition',
+      header: 'Access Condition',
+      cell: ({ row }) => <ComplianceBadge level={row.getValue('accessCondition')} />,
+      size: 140,
+    },
+    {
+      accessorKey: 'credentialProvider',
+      header: 'Credential Provider',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('credentialProvider')}</span>,
+    },
+    {
+      accessorKey: 'serverWorkload',
+      header: 'Server Workload',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('serverWorkload')}</span>,
+    },
+    {
+      accessorKey: 'resourceSet',
+      header: 'Resource Set',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('resourceSet')}</span>,
+      size: 120,
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => {
+        const status = row.getValue('status') as string
+        const colors: Record<string, string> = {
+          'Compliant': 'text-green-600',
+          'Missing Required': 'text-red-500',
+          'Missing Recommended': 'text-orange-500',
+        }
+        return <span className={`text-xs font-medium ${colors[status] ?? 'text-gray-600'}`}>{status}</span>
+      },
+      size: 140,
+    },
+  ], [queryClient, navigate])
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-          <div className="relative">
-            <button type="button" onClick={() => setShowFilter(!showFilter)} className={`flex items-center gap-1.5 px-4 py-2 border rounded-md text-sm font-medium transition-colors ${showFilter ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-border text-gray-600 hover:border-gray-400'}`}>
-              <Filter size={14} /> Filter
-            </button>
-            {showFilter && (
-              <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-white border border-border rounded-lg shadow-lg z-50">
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Resource Set</label>
-                    <Dropdown options={RESOURCE_SET_OPTIONS.map((r) => ({ value: r.value, label: r.label }))} value={resourceSet} onChange={(v) => setParam('resourceSet', v)} placeholder="Resource Set" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">Compliance Status</label>
-                    <Dropdown options={COMPLIANCE_STATUS_OPTIONS.map((c) => ({ value: c.value, label: c.label }))} value={complianceStatus} onChange={(v) => setParam('complianceStatus', v)} placeholder="Status" />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <GlobalPolicyComplianceTable searchQuery={searchQuery} complianceStatus={complianceStatus} resourceSet={resourceSet} />
+      <div className="flex-1 min-h-0">
+        <DataTable
+          columns={columns}
+          data={items}
+          searchPlaceholder="Filter by policy, workload, or provider..."
+          searchKeys={['policyName', 'clientWorkload', 'serverWorkload', 'credentialProvider', 'resourceSet']}
+          facetedFilters={[{ columnId: 'status', label: 'Status' }]}
+          onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
+          emptyMessage="No policies found."
+        />
       </div>
     </div>
   )

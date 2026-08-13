@@ -54,13 +54,14 @@ type AuditLog struct {
 }
 
 type EventQueryOptions struct {
-	Page              int
-	PerPage           int
-	OrderBy           string
-	Search            string
-	StartDate         *time.Time
-	EndDate           *time.Time
-	Severity          string
+	Page      int
+	PerPage   int
+	OrderBy   string
+	Search    string
+	StartDate *time.Time
+	EndDate   *time.Time
+	Severity string
+	Severities        []string
 	EventType         string
 	ClientWorkloadIDs []string
 	ServerWorkloadIDs []string

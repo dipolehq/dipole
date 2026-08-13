@@ -184,7 +184,7 @@ export function DataTable<TData>({
                     <TableHead
                       key={header.id}
                       style={{ width: header.getSize() !== 150 ? `${header.getSize()}px` : undefined }}
-                      className="h-11"
+                      className="h-11 whitespace-nowrap"
                     >
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <div

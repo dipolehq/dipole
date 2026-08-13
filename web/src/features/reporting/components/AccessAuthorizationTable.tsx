@@ -1,40 +1,18 @@
-import { useState } from 'react'
-import { ChevronDown, RefreshCw } from 'lucide-react'
+import { useMemo } from 'react'
+import { type ColumnDef } from '@tanstack/react-table'
+import { LogTable } from '@/shared/components/ui/LogTable'
 
-interface AccessAuthorizationEventMeta {
-  clientIP: string
+interface AuthEventRow {
+  id: string
   timestamp: string
-  eventType: 'access.request' | 'access.authorization' | 'access.discovery' | 'access.credential'
-  eventId: string
-  resourceSetId: string
+  clientIp: string
   contextId: string
-  severity: 'Info' | 'Warning' | 'Error'
+  clientWorkloadName: string
+  serverWorkloadName: string
+  severity: string
+  eventType: string
+  payload: Record<string, unknown>
 }
-
-interface AccessAuthorizationEvent {
-  meta: AccessAuthorizationEventMeta
-  outcome?: { result: string; reason?: string }
-  clientRequest?: {
-    version: string
-    network: {
-      sourceIP: string
-      sourcePort: number
-      transportProtocol: string
-      proxyPort: number
-      targetHost: string
-      targetPort: number
-    }
-  }
-  clientWorkload?: { id: string; name: string; result: string; matches?: string[] }
-  serverWorkload?: { id: string; name: string; result: string; matches?: string[] }
-  accessPolicy?: { id: string; name: string; result: string; matches?: string[] }
-  trustProviders?: { id: string; name: string; result: string; reason?: string; attribute?: string; expectedValue?: string; actualValue?: string }[]
-  accessConditions?: { id: string; name: string; result: string; reason?: string; attribute?: string; expectedValue?: string; actualValue?: string }[]
-  credentialProvider?: { id: string; name: string; result: string; type?: string; maxAge?: number; reason?: string }
-}
-
-// Will be wired to real API later
-// const accessAuthorizationEventsData: AccessAuthorizationEvent[] = []
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso)
@@ -50,193 +28,115 @@ function SeverityBadge({ severity }: { severity: string }) {
     Warning: 'text-orange-500',
     Error: 'text-red-500',
   }
-  return (
-    <span className={`text-xs font-medium ${colors[severity] ?? 'text-gray-600'}`}>
-      {severity}
-    </span>
-  )
+  return <span className={`text-xs font-medium ${colors[severity] ?? 'text-gray-600'}`}>{severity}</span>
 }
 
-interface AccessAuthorizationTableProps {
-  searchQuery: string
-  timeRange: string
-  severity: string
-  eventType: string
-  data?: { id: string; eventType: string; contextId: string; severity: string; clientIp: string; timestamp: string; payload: Record<string, unknown>; clientWorkloadName?: string; serverWorkloadName?: string }[]
-}
-
-export function AccessAuthorizationTable({ searchQuery, severity, eventType, data = [] }: AccessAuthorizationTableProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-
-  // Map API data to component's internal shape
-  const events: AccessAuthorizationEvent[] = data.map((item) => ({
-    meta: {
-      clientIP: item.clientIp,
-      timestamp: item.timestamp,
-      eventType: item.eventType as AccessAuthorizationEventMeta['eventType'],
-      eventId: item.id,
-      resourceSetId: '',
-      contextId: item.contextId,
-      severity: item.severity as AccessAuthorizationEventMeta['severity'],
-    },
-    clientWorkload: item.clientWorkloadName ? { id: '', name: item.clientWorkloadName, result: '' } : undefined,
-    serverWorkload: item.serverWorkloadName ? { id: '', name: item.serverWorkloadName, result: '' } : undefined,
-    ...(item.payload as Record<string, unknown>),
-  }))
-
-  // Filter events
-  const filtered = events.filter((e) => {
-    if (severity && e.meta.severity.toLowerCase() !== severity) return false
-    if (eventType && e.meta.eventType !== eventType) return false
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      const matches =
-        e.meta.clientIP.toLowerCase().includes(q) ||
-        e.meta.contextId.toLowerCase().includes(q) ||
-        (e.clientWorkload?.name.toLowerCase().includes(q) ?? false) ||
-        (e.serverWorkload?.name.toLowerCase().includes(q) ?? false) ||
-        e.meta.eventType.toLowerCase().includes(q)
-      if (!matches) return false
-    }
-    return true
-  })
-
-  function toggleRow(eventId: string) {
-    setExpandedId(expandedId === eventId ? null : eventId)
-  }
-
-  return (
-    <table className="w-full text-xs table-fixed">
-      <colgroup>
-        <col className="w-[4%]" />
-        <col className="w-[17%]" />
-        <col className="w-[10%]" />
-        <col className="w-[28%]" />
-        <col className="w-[16%]" />
-        <col className="w-[18%]" />
-        <col className="w-[8%]" />
-      </colgroup>
-      <thead className="sticky top-0 bg-gray-50 z-10">
-        <tr className="border-b border-border">
-          <th className="px-3 py-2.5 leading-none">
-            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
-              <RefreshCw size={15} strokeWidth={2.5} />
-            </button>
-          </th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Timestamp</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client IP</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Context ID</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client Workload</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Server Workload</th>
-          <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Severity</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-border">
-        {filtered.length === 0 && (
-          <tr>
-            <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">
-              No access authorization events found.
-            </td>
-          </tr>
-        )}
-        {filtered.map((event) => (
-          <EventRow
-            key={event.meta.eventId}
-            event={event}
-            isExpanded={expandedId === event.meta.eventId}
-            onToggle={() => toggleRow(event.meta.eventId)}
-          />
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-function EventRow({ event, isExpanded, onToggle }: { event: AccessAuthorizationEvent; isExpanded: boolean; onToggle: () => void }) {
-  return (
-    <>
-      <tr
-        className="hover:bg-gray-50 transition-colors cursor-pointer"
-        onClick={onToggle}
-      >
-        <td className="px-4 py-3 text-center">
-          <ChevronDown
-            size={14}
-            className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          />
-        </td>
-        <td className="px-4 py-3 text-gray-700 whitespace-nowrap truncate">
-          {formatTimestamp(event.meta.timestamp)}
-        </td>
-        <td className="px-4 py-3 text-gray-700 truncate">
-          {event.meta.clientIP}
-        </td>
-        <td className="px-4 py-3 text-gray-700 truncate">
-          {event.meta.contextId}
-        </td>
-        <td className="px-4 py-3 text-gray-700 truncate">
-          {event.clientWorkload?.name ?? '—'}
-        </td>
-        <td className="px-4 py-3 text-gray-700 truncate">
-          {event.serverWorkload?.name ?? '—'}
-        </td>
-        <td className="px-4 py-3">
-          <SeverityBadge severity={event.meta.severity} />
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr>
-          <td colSpan={7} className="p-0">
-            <ExpandedDetail event={event} />
-          </td>
-        </tr>
-      )}
-    </>
-  )
-}
-
-function ExpandedDetail({ event }: { event: AccessAuthorizationEvent }) {
+function ExpandedDetail({ row }: { row: AuthEventRow }) {
   return (
     <div className="grid grid-cols-[40%_60%] bg-gray-100 max-h-[550px]">
-      {/* Left panel — summary */}
       <div className="p-5 border-r border-gray-200 overflow-y-auto max-h-[550px]">
         <table className="text-xs">
           <tbody>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Timestamp</td>
-              <td className="text-gray-700">{event.meta.timestamp}</td>
-            </tr>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Client IP</td>
-              <td className="text-gray-700">{event.meta.clientIP}</td>
-            </tr>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Context ID</td>
-              <td className="text-gray-700 break-all">{event.meta.contextId}</td>
-            </tr>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Event Type</td>
-              <td className="text-gray-700">{event.meta.eventType}</td>
-            </tr>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Client Workload</td>
-              <td className="text-gray-700 break-all">{event.clientWorkload?.id ?? '—'}</td>
-            </tr>
-            <tr className="h-7">
-              <td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Server Workload</td>
-              <td className="text-gray-700 break-all">{event.serverWorkload?.id ?? '—'}</td>
-            </tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Timestamp</td><td className="text-gray-700">{row.timestamp}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Client IP</td><td className="text-gray-700">{row.clientIp}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Context ID</td><td className="text-gray-700 break-all">{row.contextId}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Event Type</td><td className="text-gray-700">{row.eventType}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Client Workload</td><td className="text-gray-700">{row.clientWorkloadName || '—'}</td></tr>
+            <tr className="h-7"><td className="font-semibold text-gray-900 pr-6 whitespace-nowrap align-middle">Server Workload</td><td className="text-gray-700">{row.serverWorkloadName || '—'}</td></tr>
           </tbody>
         </table>
       </div>
-      {/* Right panel — JSON */}
       <div className="p-4 overflow-y-auto max-h-[550px]">
         <pre className="text-[11px] text-gray-700 font-mono whitespace-pre-wrap leading-relaxed">
-          {JSON.stringify(event, null, 2)}
+          {JSON.stringify(row.payload, null, 2)}
         </pre>
       </div>
     </div>
   )
 }
 
+interface AccessAuthorizationTableProps {
+  data?: { id: string; eventType: string; contextId: string; severity: string; clientIp: string; timestamp: string; payload: Record<string, unknown>; clientWorkloadName?: string; serverWorkloadName?: string }[]
+  total: number
+  page: number
+  pageSize: number
+  onPageChange: (page: number) => void
+  onSearch?: (query: string) => void
+  searchValue?: string
+  onRefresh?: () => void
+  severity?: string
+  onSeverityChange?: (value: string) => void
+}
 
+export function AccessAuthorizationTable({ data = [], total, page, pageSize, onPageChange, onSearch, searchValue, onRefresh, severity, onSeverityChange }: AccessAuthorizationTableProps) {
+  const rows: AuthEventRow[] = useMemo(() => data.map((item) => ({
+    id: item.id,
+    timestamp: item.timestamp,
+    clientIp: item.clientIp,
+    contextId: item.contextId,
+    clientWorkloadName: item.clientWorkloadName ?? (item.payload?.clientWorkload as Record<string, string>)?.name ?? '',
+    serverWorkloadName: item.serverWorkloadName ?? (item.payload?.serverWorkload as Record<string, string>)?.name ?? '',
+    severity: item.severity,
+    eventType: item.eventType,
+    payload: item.payload,
+  })), [data])
+
+  const columns: ColumnDef<AuthEventRow, unknown>[] = useMemo(() => [
+    {
+      accessorKey: 'timestamp',
+      header: 'Timestamp',
+      cell: ({ row }) => <span className="text-gray-700 whitespace-nowrap truncate block">{formatTimestamp(row.getValue('timestamp'))}</span>,
+      size: 200,
+    },
+    {
+      accessorKey: 'clientIp',
+      header: 'Client IP',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('clientIp')}</span>,
+      
+    },
+    {
+      accessorKey: 'contextId',
+      header: 'Context ID',
+      cell: ({ row }) => <span className="text-gray-700 font-mono text-[11px] whitespace-nowrap">{row.getValue('contextId')}</span>,
+      size: 300,
+      
+    },
+    {
+      accessorKey: 'clientWorkloadName',
+      header: 'Client Workload',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('clientWorkloadName') || '—'}</span>,
+      
+    },
+    {
+      accessorKey: 'serverWorkloadName',
+      header: 'Server Workload',
+      cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('serverWorkloadName') || '—'}</span>,
+      
+    },
+    {
+      accessorKey: 'severity',
+      header: 'Severity',
+      cell: ({ row }) => <SeverityBadge severity={row.getValue('severity')} />,
+      size: 80,
+    },
+  ], [])
+
+  return (
+    <LogTable
+      columns={columns}
+      data={rows}
+      total={total}
+      page={page}
+      pageSize={pageSize}
+      onPageChange={onPageChange}
+      onSearch={onSearch}
+      searchValue={searchValue}
+      searchPlaceholder="Filter by IP, context, or workload..."
+      severity={severity}
+      onSeverityChange={onSeverityChange}
+      renderExpanded={(row) => <ExpandedDetail row={row} />}
+      onRefresh={onRefresh}
+      emptyMessage="No access authorization events found."
+    />
+  )
+}

@@ -11,6 +11,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
@@ -86,6 +87,7 @@ func (h *EventHandlers) QueryWorkloadEvents(w http.ResponseWriter, r *http.Reque
 		PerPage:           opts.PerPage,
 		Search:            opts.Search,
 		Severity:          opts.Severity,
+		Severities:        opts.Severities,
 		EventType:         opts.EventType,
 		StartDate:         opts.StartDate,
 		EndDate:           opts.EndDate,
@@ -136,8 +138,8 @@ func parseEventQueryOpts(r *http.Request) domain.EventQueryOptions {
 	if page < 1 {
 		page = 1
 	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 100
+	if perPage < 1 {
+		perPage = 50
 	}
 
 	opts := domain.EventQueryOptions{
@@ -147,7 +149,12 @@ func parseEventQueryOpts(r *http.Request) domain.EventQueryOptions {
 	}
 
 	if sev := q.Get("severity"); sev != "" && sev != "All" {
-		opts.Severity = sev
+		values := strings.Split(sev, ",")
+		if len(values) > 1 {
+			opts.Severities = values
+		} else {
+			opts.Severity = values[0]
+		}
 	}
 
 	now := time.Now().UTC()
