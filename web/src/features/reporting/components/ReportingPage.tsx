@@ -208,7 +208,7 @@ export function ReportingPage() {
       {/* Table — full bleed */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {selectedLogType === 'access_authorization' ? (
-          <AccessAuthorizationTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} eventType={eventType} data={authEventsQuery.data?.items} />
+          <AccessAuthorizationTable data={authEventsQuery.data?.items} total={authEventsQuery.data?.total ?? 0} page={1} pageSize={50} onPageChange={() => {}} />
         ) : selectedLogType === 'audit_logs' ? (
           <AuditLogsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} category={category} data={auditLogsQuery.data?.items} />
         ) : selectedLogType === 'global_policy_compliance' ? (

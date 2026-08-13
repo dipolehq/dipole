@@ -84,7 +84,7 @@ export function LogStreamDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Log Stream not found.</p>
-          <button onClick={() => navigate('/administration?tab=log_streams')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/log-streams')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -129,14 +129,14 @@ export function LogStreamDetailPage() {
         setApiKey((config.apiKey as string) ?? ''); setAuthToken((config.authToken as string) ?? ''); setSourceName((config.sourceName as string) ?? '')
       }
       setIsEditing(false)
-    } else { navigate('/administration?tab=log_streams') }
+    } else { navigate('/administration/log-streams') }
   }
 
   async function handleDelete() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration?tab=log_streams')
+      navigate('/administration/log-streams')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete log stream'))
     }

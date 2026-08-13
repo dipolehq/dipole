@@ -91,7 +91,7 @@ export function RoleDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Role not found.</p>
-          <button onClick={() => navigate('/administration?tab=roles')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/roles')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -137,7 +137,7 @@ export function RoleDetailPage() {
       }
       setIsEditing(false)
     } else {
-      navigate('/administration?tab=roles')
+      navigate('/administration/roles')
     }
   }
 
@@ -145,7 +145,7 @@ export function RoleDetailPage() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration?tab=roles')
+      navigate('/administration/roles')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete role'))
     }

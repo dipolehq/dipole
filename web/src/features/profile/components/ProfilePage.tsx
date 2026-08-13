@@ -8,6 +8,18 @@ import { apiClient } from '@/shared/lib/api-client'
 import { MFAConfigTab } from '@/features/profile/components/MFAConfigTab'
 import { APITokensSection } from '@/features/profile/components/APITokensSection'
 
+function getUserRole(): string {
+  try {
+    const token = sessionStorage.getItem('dipole_token')
+    if (!token) return ''
+    const parts = token.split('.')
+    const segment = parts[1]
+    if (!segment) return ''
+    const payload = JSON.parse(atob(segment.replace(/-/g, '+').replace(/_/g, '/')))
+    return payload.role_name || ''
+  } catch { return '' }
+}
+
 const COUNTRY_CODE_OPTIONS = [
   { value: '+91', label: '+91 (India)' },
   { value: '+1', label: '+1 (US/Canada)' },
@@ -163,7 +175,7 @@ function ProfileContent({
 
                   <div className="border border-border rounded-lg p-5">
                     <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignments</h4>
-                    <FloatingInput label="Role" value="SuperAdmin" disabled />
+                    <FloatingInput label="Role" value={getUserRole()} disabled />
                   </div>
                 </div>
 

@@ -84,14 +84,14 @@ export function CreateIdentityProviderPage() {
         type: idpType,
         config,
       })
-      navigate('/administration?tab=identity_providers')
+      navigate('/administration/identity-providers')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create identity provider'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration?tab=identity_providers')
+    navigate('/administration/identity-providers')
   }
 
   return (

@@ -335,6 +335,7 @@ func buildHTTPServer(
 
 	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
 	loginSvc.SetMFA(repos.UserMFA, encKey)
+	loginSvc.SetRoles(repos.Roles)
 	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)

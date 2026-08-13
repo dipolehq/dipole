@@ -17,8 +17,6 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { WorkspaceSwitcher } from '@/shared/components/WorkspaceSwitcher'
-import { TenantSwitcher } from '@/shared/components/TenantSwitcher'
 
 interface NavChild {
   label: string
@@ -210,18 +208,7 @@ export function Sidebar() {
         <img src="/brand_black.svg" alt="Dipole" className="h-8" />
       </div>
 
-      <div className="px-3 mt-5 mb-3">
-        <TenantSwitcher />
-      </div>
-
-      <div className="px-3 mb-3">
-        <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-          Resource Set
-        </div>
-        <WorkspaceSwitcher />
-      </div>
-
-      <nav className="flex-1 px-3 py-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {NAV_SECTIONS.map((section, sectionIdx) => (
           <div key={section.title} className={sectionIdx > 0 ? 'mt-5' : 'mt-2'}>
             <div className="px-3 mb-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">

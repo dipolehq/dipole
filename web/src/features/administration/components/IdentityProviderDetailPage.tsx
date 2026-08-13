@@ -78,7 +78,7 @@ export function IdentityProviderDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Identity Provider not found.</p>
-          <button onClick={() => navigate('/administration?tab=identity_providers')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/identity-providers')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -138,14 +138,14 @@ export function IdentityProviderDetailPage() {
         setMappings((config.mappings as typeof mappings) ?? [])
       }
       setIsEditing(false)
-    } else { navigate('/administration?tab=identity_providers') }
+    } else { navigate('/administration/identity-providers') }
   }
 
   async function handleDelete() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration?tab=identity_providers')
+      navigate('/administration/identity-providers')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete identity provider'))
     }

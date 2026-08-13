@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { StatCard } from '@/features/dashboard/components/StatCard'
 import { WorkloadEventsChart } from '@/features/dashboard/components/WorkloadEventsChart'
@@ -40,18 +39,11 @@ export function DashboardPage() {
   const { stats } = dashboardData
 
   return (
-    <div className="px-4 py-3 space-y-4 h-full overflow-y-auto">
-      <div className="flex items-center justify-between min-h-[36px]">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <Link
-            to="/help"
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
-          >
-            Getting Started
-          </Link>
-        </div>
       </div>
+      <div className="px-4 py-3 space-y-4 flex-1 overflow-y-auto">
 
       <div className="grid grid-cols-5 gap-4">
         {STAT_CARDS.map((card) => {
@@ -114,6 +106,7 @@ export function DashboardPage() {
           colors={ATTESTATION_RESULTS_CONFIG.colors}
         />
       </div>
+    </div>
     </div>
   )
 }
