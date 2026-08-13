@@ -1,62 +1,131 @@
-
-import { Link } from 'react-router-dom'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { type ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { UsersTable } from '@/features/administration/components/UsersTable'
+import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useUsers } from '@/features/administration/hooks/useUsers'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
+import { apiClient } from '@/shared/lib/api-client'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+interface UserRow {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  role: string
+  status: 'Active' | 'Inactive'
+}
+
+const statusFilterFn = (row: { getValue: (id: string) => unknown }, _columnId: string, filterValue: string[]) => {
+  if (!filterValue?.length) return true
+  return filterValue.includes(row.getValue('status') as string)
+}
 
 export function AdminUsersPage() {
-  const [params, setParams] = useSearchParams()
-  const searchQuery = params.get('search') || ''
-  const pageSize = Number(params.get('perPage')) || 10
-  const currentPage = Number(params.get('page')) || 1
+  const navigate = useNavigate()
 
-  function setParam(key: string, value: string) {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(key, value); else next.delete(key); next.set('page', '1'); return next }, { replace: true })
-  }
-  function setPage(p: number) {
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
-  }
-
-  const { data, isLoading } = useUsers(currentPage, pageSize, searchQuery)
+  const { data, isLoading } = useUsers(1, 500, '')
   const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'names'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=500'),
+    staleTime: 60_000,
+  })
+  const roleNames = useMemo(() => new Map((rolesData?.items ?? []).map((r) => [r.id, r.name])), [rolesData])
+
+  const tableData: UserRow[] = useMemo(
+    () =>
+      items.map((user) => ({
+        id: user.id,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        email: user.email ?? '',
+        phone: user.phone ?? '—',
+        role: user.roleId ? roleNames.get(user.roleId) ?? '—' : '—',
+        status: user.isActive ? 'Active' : 'Inactive',
+      })),
+    [items, roleNames],
+  )
+
+  const columns: ColumnDef<UserRow, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'firstName',
+        header: 'First Name',
+        cell: ({ row }) => (
+          <Link
+            to={`/administration/users/${row.original.id}`}
+            className="font-medium text-gray-900 hover:text-blue-700 transition-colors truncate block"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.getValue('firstName')}
+          </Link>
+        ),
+        size: 140,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'lastName',
+        header: 'Last Name',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('lastName')}</span>,
+        size: 140,
+      },
+      {
+        accessorKey: 'email',
+        header: 'Email',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('email')}</span>,
+        size: 260,
+      },
+      {
+        accessorKey: 'phone',
+        header: 'Phone',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('phone')}</span>,
+        size: 140,
+      },
+      {
+        accessorKey: 'role',
+        header: 'Role',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('role')}</span>,
+        size: 140,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) =>
+          row.getValue('status') === 'Active' ? (
+            <span className="text-green-600 font-medium">Active</span>
+          ) : (
+            <span className="text-red-500 font-medium">Inactive</span>
+          ),
+        size: 70,
+        filterFn: statusFilterFn,
+      },
+    ],
+    [],
+  )
+
+  const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
+
+  if (isLoading) return <div className="flex-1" />
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-          <Link to="/administration/users/new" className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">
-            <Plus size={14} /> New
-          </Link>
-        </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <UsersTable items={items} isLoading={isLoading} />
-      </div>
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
-          <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">←</button>
-          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-            <button key={i + 1} onClick={() => setPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
-          ))}
-          <button onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">→</button>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={tableData}
+        searchPlaceholder="Filter by name or email..."
+        searchKeys={['firstName', 'lastName', 'email']}
+        facetedFilters={facetedFilters}
+        actionLabel="New User"
+        onAction={() => navigate('/administration/users/new')}
+        onRowClick={(row) => navigate(`/administration/users/${row.id}`)}
+        emptyMessage="No users found."
+      />
     </div>
   )
 }

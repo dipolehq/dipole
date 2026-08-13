@@ -1,62 +1,126 @@
-
-import { Link } from 'react-router-dom'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { type ColumnDef } from '@tanstack/react-table'
+import { ArrowLeftRight, MonitorSmartphone, CheckCircle, Clock, Key, Server } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { ResourceSetsTable } from '@/features/administration/components/ResourceSetsTable'
+import { DataTable } from '@/shared/components/ui/DataTable'
 import { useResourceSets } from '@/features/administration/hooks/useResourceSets'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+interface ResourceSetRow {
+  id: string
+  name: string
+  description: string
+  resourceSetId: string
+  modifiedAt: string
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function ResourceIcons() {
+  const items = [
+    { icon: ArrowLeftRight, count: 0 },
+    { icon: MonitorSmartphone, count: 0 },
+    { icon: CheckCircle, count: 0 },
+    { icon: Clock, count: 0 },
+    { icon: Key, count: 0 },
+    { icon: Server, count: 0 },
+  ]
+  return (
+    <div className="flex items-center gap-5">
+      {items.map((item, i) => (
+        <div key={i} className="flex items-center gap-1 text-gray-500">
+          <item.icon size={14} strokeWidth={2} />
+          <span className="text-[11px]">{item.count}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function AdminResourceSetsPage() {
-  const [params, setParams] = useSearchParams()
-  const searchQuery = params.get('search') || ''
-  const pageSize = Number(params.get('perPage')) || 10
-  const currentPage = Number(params.get('page')) || 1
+  const navigate = useNavigate()
 
-  function setParam(key: string, value: string) {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(key, value); else next.delete(key); next.set('page', '1'); return next }, { replace: true })
-  }
-  function setPage(p: number) {
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
-  }
-
-  const { data, isLoading } = useResourceSets(currentPage, pageSize, searchQuery)
+  const { data, isLoading } = useResourceSets(1, 500, '')
   const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const tableData: ResourceSetRow[] = useMemo(
+    () =>
+      items.map((item) => ({
+        id: item.id,
+        name: item.name ?? '',
+        description: item.description ?? '',
+        resourceSetId: item.id ?? '',
+        modifiedAt: item.updatedAt ?? item.createdAt ?? '',
+      })),
+    [items],
+  )
+
+  const columns: ColumnDef<ResourceSetRow, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <Link
+            to={`/administration/resource_sets/${row.original.id}`}
+            className="font-medium text-gray-900 hover:text-blue-700 transition-colors truncate block"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.getValue('name')}
+          </Link>
+        ),
+        size: 140,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'description',
+        header: 'Description',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('description')}</span>,
+        size: 200,
+      },
+      {
+        accessorKey: 'resourceSetId',
+        header: 'ID',
+        cell: ({ row }) => <span className="text-gray-500 font-mono text-[11px] truncate block">{row.getValue('resourceSetId')}</span>,
+        size: 240,
+      },
+      {
+        id: 'resources',
+        header: 'Resources',
+        cell: () => <ResourceIcons />,
+        size: 280,
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'modifiedAt',
+        header: 'Modified At',
+        cell: ({ row }) => <span className="text-gray-700 whitespace-nowrap">{formatDate(row.getValue('modifiedAt'))}</span>,
+        size: 160,
+      },
+    ],
+    [],
+  )
+
+  if (isLoading) return <div className="flex-1" />
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-          <Link to="/administration/resource_sets/new" className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">
-            <Plus size={14} /> New
-          </Link>
-        </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <ResourceSetsTable items={items} isLoading={isLoading} />
-      </div>
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
-          <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">←</button>
-          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-            <button key={i + 1} onClick={() => setPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
-          ))}
-          <button onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">→</button>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={tableData}
+        searchPlaceholder="Filter by name..."
+        searchKeys={['name', 'description']}
+        actionLabel="New Resource Set"
+        onAction={() => navigate('/administration/resource_sets/new')}
+        onRowClick={(row) => navigate(`/administration/resource_sets/${row.id}`)}
+        emptyMessage="No resource sets found."
+      />
     </div>
   )
 }

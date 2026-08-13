@@ -1,62 +1,106 @@
-
-import { Link } from 'react-router-dom'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { type ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { IdentityProvidersTable } from '@/features/administration/components/IdentityProvidersTable'
+import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useIdentityProviders } from '@/features/administration/hooks/useIdentityProviders'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+interface IdpRow {
+  id: string
+  name: string
+  type: string
+  description: string
+  status: 'Active' | 'Inactive'
+}
+
+const statusFilterFn = (row: { getValue: (id: string) => unknown }, _columnId: string, filterValue: string[]) => {
+  if (!filterValue?.length) return true
+  return filterValue.includes(row.getValue('status') as string)
+}
 
 export function AdminIdentityProvidersPage() {
-  const [params, setParams] = useSearchParams()
-  const searchQuery = params.get('search') || ''
-  const pageSize = Number(params.get('perPage')) || 10
-  const currentPage = Number(params.get('page')) || 1
+  const navigate = useNavigate()
 
-  function setParam(key: string, value: string) {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(key, value); else next.delete(key); next.set('page', '1'); return next }, { replace: true })
-  }
-  function setPage(p: number) {
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
-  }
-
-  const { data, isLoading } = useIdentityProviders(currentPage, pageSize, searchQuery)
+  const { data, isLoading } = useIdentityProviders(1, 500, '')
   const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const tableData: IdpRow[] = useMemo(
+    () =>
+      items.map((item) => ({
+        id: item.id,
+        name: item.name ?? '',
+        type: item.type ?? '',
+        description: item.description ?? '',
+        status: item.isActive !== false ? 'Active' : 'Inactive',
+      })),
+    [items],
+  )
+
+  const columns: ColumnDef<IdpRow, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <Link
+            to={`/administration/identity_providers/${row.original.id}`}
+            className="font-medium text-gray-900 hover:text-blue-700 transition-colors truncate block"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.getValue('name')}
+          </Link>
+        ),
+        size: 200,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'type',
+        header: 'Type',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('type')}</span>,
+        size: 140,
+      },
+      {
+        accessorKey: 'description',
+        header: 'Description',
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('description')}</span>,
+        size: 360,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) =>
+          row.getValue('status') === 'Active' ? (
+            <span className="text-green-600 font-medium">Active</span>
+          ) : (
+            <span className="text-red-500 font-medium">Inactive</span>
+          ),
+        size: 70,
+        filterFn: statusFilterFn,
+      },
+    ],
+    [],
+  )
+
+  const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
+
+  if (isLoading) return <div className="flex-1" />
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-          <Link to="/administration/identity_providers/new" className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">
-            <Plus size={14} /> New
-          </Link>
-        </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <IdentityProvidersTable items={items} isLoading={isLoading} />
-      </div>
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
-          <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">←</button>
-          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-            <button key={i + 1} onClick={() => setPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
-          ))}
-          <button onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">→</button>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={tableData}
+        searchPlaceholder="Filter by name or type..."
+        searchKeys={['name', 'type']}
+        facetedFilters={facetedFilters}
+        actionLabel="New Provider"
+        onAction={() => navigate('/administration/identity_providers/new')}
+        onRowClick={(row) => navigate(`/administration/identity_providers/${row.id}`)}
+        emptyMessage="No identity providers found."
+      />
     </div>
   )
 }
