@@ -392,7 +392,7 @@ function ColumnVisibilityToggle<TData>({ table }: { table: ReturnType<typeof use
               .map((column) => (
                 <label
                   key={column.id}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer capitalize"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                 >
                   <input
                     type="checkbox"
@@ -400,7 +400,7 @@ function ColumnVisibilityToggle<TData>({ table }: { table: ReturnType<typeof use
                     onChange={(e) => column.toggleVisibility(e.target.checked)}
                     className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
                   />
-                  {column.id}
+                  {typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id}
                 </label>
               ))}
           </div>

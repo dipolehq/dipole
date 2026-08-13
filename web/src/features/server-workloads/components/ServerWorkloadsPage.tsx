@@ -48,34 +48,38 @@ export function ServerWorkloadsPage() {
         cell: ({ row }) => (
           <Link
             to={`/server-workloads/${row.original.id}`}
-            className="font-medium text-gray-900 hover:text-blue-700 transition-colors"
+            className="font-medium text-gray-900 hover:text-blue-700 transition-colors truncate block"
             onClick={(e) => e.stopPropagation()}
           >
             {row.getValue('name')}
           </Link>
         ),
-        size: 200,
+        size: 160,
         enableHiding: false,
       },
       {
         accessorKey: 'type',
         header: 'Protocol',
-        cell: ({ row }) => <span className="text-gray-700">{row.getValue('type')}</span>,
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('type')}</span>,
+        size: 220,
       },
       {
         accessorKey: 'description',
         header: 'Description',
-        cell: ({ row }) => <span className="text-gray-700">{row.getValue('description')}</span>,
+        cell: ({ row }) => <span className="text-gray-700 truncate block">{row.getValue('description')}</span>,
+        size: 320,
       },
       {
         accessorKey: 'tags',
         header: 'Tags',
         cell: ({ row }) => <span className="text-gray-700">{row.getValue('tags')}</span>,
+        size: 60,
       },
       {
         accessorKey: 'policies',
         header: 'Policies',
         cell: ({ row }) => <span className="text-gray-700">{row.getValue('policies')}</span>,
+        size: 70,
       },
       {
         accessorKey: 'status',
@@ -86,7 +90,7 @@ export function ServerWorkloadsPage() {
           ) : (
             <span className="text-red-500 font-medium">Inactive</span>
           ),
-        size: 100,
+        size: 70,
         filterFn: statusFilterFn,
       },
     ],
