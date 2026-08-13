@@ -129,7 +129,7 @@ export function CredentialProviderForm({
                     onClick={() =>
                       update({ customClaims: values.customClaims.filter((_, i) => i !== idx) })
                     }
-                    className="text-orange-400 hover:text-red-500 text-sm"
+                    className="text-gray-400 hover:text-gray-600 text-sm"
                   >
                     ×
                   </button>
@@ -146,7 +146,7 @@ export function CredentialProviderForm({
                   ],
                 })
               }
-              className="mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium"
+              className="mt-3 text-xs text-gray-500 hover:text-gray-700 font-medium"
             >
               + New Claim
             </button>

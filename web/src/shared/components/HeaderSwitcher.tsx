@@ -88,7 +88,7 @@ function ResourceSetSwitcher() {
                 }`}
               >
                 <span className="truncate">{rs.name}</span>
-                {current.id === rs.id && <Check size={14} className="text-orange-500 shrink-0" />}
+                {current.id === rs.id && <Check size={14} className="text-gray-600 shrink-0" />}
               </button>
             ))}
             <div className="border-t border-gray-100 mt-1 pt-1">
@@ -187,7 +187,7 @@ function TenantSwitcherInline() {
                   <div className="truncate">{t.name}</div>
                   <div className="text-[11px] text-gray-400 truncate">{t.subdomain}</div>
                 </div>
-                {t.id === currentTenantId && <Check size={14} className="text-orange-500 shrink-0" />}
+                {t.id === currentTenantId && <Check size={14} className="text-gray-600 shrink-0" />}
               </button>
             ))}
           </div>

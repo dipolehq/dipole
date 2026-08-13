@@ -17,7 +17,7 @@ export function PageHeader() {
         {segments.map((segment, idx) => (
           <span key={idx}>
             {idx < segments.length - 1 ? (
-              <Link to={segment.path} className="text-gray-400 hover:text-orange-500 transition-colors">{segment.label}</Link>
+              <Link to={segment.path} className="text-gray-400 hover:text-gray-600 transition-colors">{segment.label}</Link>
             ) : (
               <span className="text-gray-900">{segment.label}</span>
             )}

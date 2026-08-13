@@ -28,7 +28,7 @@ export function TimeRangeDropdown({ defaultValue = '6h', onChange }: TimeRangeDr
     <div ref={ref} className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 transition-colors"
+        className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-700 transition-colors"
       >
         <span>{selectedLabel}</span>
         <ChevronDown size={12} />

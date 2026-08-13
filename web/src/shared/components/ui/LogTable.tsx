@@ -139,7 +139,7 @@ export function LogTable<TData>({
                       <button
                         type="button"
                         onClick={onRefresh}
-                        className="text-gray-400 hover:text-orange-500 transition-colors"
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
                         title="Refresh"
                       >
                         <RefreshCw size={15} strokeWidth={2.5} />
@@ -323,7 +323,7 @@ function SeverityFilter({ severity, onChange }: { severity: string; onChange: (v
                       type="checkbox"
                       checked={selected.includes(value)}
                       onChange={(e) => handleChange(value, e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-400"
                     />
                     <span className="text-sm text-gray-700">{value}</span>
                   </label>

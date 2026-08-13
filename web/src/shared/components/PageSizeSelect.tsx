@@ -37,7 +37,7 @@ export function PageSizeSelect({ value, options, onChange }: PageSizeSelectProps
               }}
               className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
                 value === size
-                  ? 'text-orange-600 font-medium bg-orange-50'
+                  ? 'text-gray-700 font-medium bg-gray-50'
                   : 'text-gray-600 hover:bg-gray-50'
               }`}
             >

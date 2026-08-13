@@ -485,7 +485,7 @@ function StaticHeadersSection({ value, onChange, disabled = false }: StaticHeade
               <button
                 type="button"
                 onClick={() => removeHeader(idx)}
-                className="text-orange-400 hover:text-red-500 text-sm"
+                className="text-gray-400 hover:text-gray-600 text-sm"
               >
                 ×
               </button>
@@ -496,7 +496,7 @@ function StaticHeadersSection({ value, onChange, disabled = false }: StaticHeade
       <button
         type="button"
         onClick={addHeader}
-        className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+        className="text-xs text-gray-500 hover:text-gray-700 font-medium"
       >
         + Add Header
       </button>

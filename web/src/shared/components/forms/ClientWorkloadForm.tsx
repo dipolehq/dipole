@@ -73,9 +73,9 @@ export function ClientWorkloadForm({
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="space-y-5">
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+      <div className="space-y-6">
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
           <div className="space-y-4">
             {statusSlot}
             <FloatingInput
@@ -95,8 +95,8 @@ export function ClientWorkloadForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Client Identification</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Client Identification</h4>
           <div className="space-y-3">
             {values.identifiers.map((ident, idx) => (
               <div key={idx}>
@@ -136,7 +136,7 @@ export function ClientWorkloadForm({
                       </div>
                       <button
                         onClick={() => addOrValue(idx)}
-                        className="text-orange-500 hover:text-orange-600 text-sm font-bold"
+                        className="text-gray-500 hover:text-gray-700 text-sm font-bold"
                         title="Add OR value"
                       >
                         +
@@ -148,7 +148,7 @@ export function ClientWorkloadForm({
                               ? removeOrValue(idx, valIdx)
                               : removeIdentifier(idx)
                           }
-                          className="text-orange-400 hover:text-red-500 text-sm"
+                          className="text-gray-400 hover:text-gray-600 text-sm"
                         >
                           ×
                         </button>
@@ -161,14 +161,14 @@ export function ClientWorkloadForm({
           </div>
           <button
             onClick={addIdentifier}
-            className="mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium"
+            className="mt-3 text-xs text-gray-500 hover:text-gray-700 font-medium"
           >
             + Additional Client Identifier
           </button>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Tags</h4>
           <TagsField
             value={values.tags}
             onChange={(tags) => update({ tags })}

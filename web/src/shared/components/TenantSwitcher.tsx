@@ -86,7 +86,7 @@ export function TenantSwitcher() {
               disabled={switching}
               className={`w-full text-left px-4 py-2 text-xs transition-colors ${
                 t.id === currentTenantId
-                  ? 'text-orange-500 font-medium bg-gray-50'
+                  ? 'text-gray-600 font-medium bg-gray-50'
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >

@@ -160,7 +160,7 @@ function GeoIPConditionForm({
                 </div>
                 <button
                   onClick={() => removeCountry(idx)}
-                  className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                  className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
                 >
                   ×
                 </button>
@@ -179,7 +179,7 @@ function GeoIPConditionForm({
                   </div>
                   <button
                     onClick={() => removeSubdivision(idx, subIdx)}
-                    className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                    className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
                   >
                     ×
                   </button>
@@ -187,7 +187,7 @@ function GeoIPConditionForm({
               ))}
               <button
                 onClick={() => addSubdivision(idx)}
-                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+                className="text-gray-500 hover:text-gray-700 text-lg font-bold"
               >
                 +
               </button>
@@ -198,7 +198,7 @@ function GeoIPConditionForm({
       <div className="text-center">
         <button
           onClick={addCountry}
-          className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+          className="text-xs text-gray-500 hover:text-gray-700 font-medium"
         >
           + Add Country
         </button>
@@ -240,7 +240,7 @@ function TimeConditionForm({
                       days.map((d, i) => (i === idx ? { ...d, startTime: e.target.value } : d)),
                     )
                   }
-                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
                 <span className="text-xs text-gray-400">to</span>
                 <input
@@ -251,7 +251,7 @@ function TimeConditionForm({
                       days.map((d, i) => (i === idx ? { ...d, endTime: e.target.value } : d)),
                     )
                   }
-                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
                 <button
                   onClick={() =>
@@ -267,7 +267,7 @@ function TimeConditionForm({
                 onClick={() =>
                   onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: true } : d)))
                 }
-                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+                className="text-gray-500 hover:text-gray-700 text-lg font-bold"
               >
                 +
               </button>

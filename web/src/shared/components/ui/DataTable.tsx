@@ -351,7 +351,7 @@ function FacetedFilter<TData>({
                       type="checkbox"
                       checked={filterValue.includes(value)}
                       onChange={(e) => handleChange(value, e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-400"
                     />
                     <span className="flex grow justify-between gap-2 text-sm text-gray-700">
                       {value}
@@ -398,7 +398,7 @@ function ColumnVisibilityToggle<TData>({ table }: { table: ReturnType<typeof use
                     type="checkbox"
                     checked={column.getIsVisible()}
                     onChange={(e) => column.toggleVisibility(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                    className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-400"
                   />
                   {typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id}
                 </label>

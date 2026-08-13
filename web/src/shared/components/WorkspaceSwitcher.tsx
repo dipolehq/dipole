@@ -38,7 +38,7 @@ export function WorkspaceSwitcher() {
             >
               <span className="flex-1 text-[12px] text-gray-700 truncate">{rs.name}</span>
               {current.id === rs.id && (
-                <Check size={13} className="text-orange-500 shrink-0" />
+                <Check size={13} className="text-gray-600 shrink-0" />
               )}
             </button>
           ))}

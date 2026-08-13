@@ -59,7 +59,7 @@ export function TagsField({ value, onChange, disabled = false }: TagsFieldProps)
               <button
                 type="button"
                 onClick={() => removeTag(idx)}
-                className="text-gray-400 hover:text-red-500 text-sm"
+                className="text-gray-400 hover:text-gray-600 text-sm"
               >
                 ×
               </button>
@@ -70,7 +70,7 @@ export function TagsField({ value, onChange, disabled = false }: TagsFieldProps)
       <button
         type="button"
         onClick={addTag}
-        className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+        className="text-xs text-gray-500 hover:text-gray-700 font-medium"
       >
         + New Tag
       </button>
