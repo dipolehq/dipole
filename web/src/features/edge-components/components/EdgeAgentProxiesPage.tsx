@@ -1,58 +1,134 @@
-
-import { useSearchParams } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { type ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { AgentProxiesTable } from '@/features/edge-components/components/AgentProxiesTable'
+import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useAgentProxies } from '@/features/edge-components/hooks/useAgentProxies'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+interface ProxyRow {
+  id: string
+  proxyId: string
+  controllerId: string
+  lastSeen: string
+  registered: string
+  status: string
+}
+
+const statusFilterFn = (row: { getValue: (id: string) => unknown }, _columnId: string, filterValue: string[]) => {
+  if (!filterValue?.length) return true
+  return filterValue.includes(row.getValue('status') as string)
+}
+
+function formatTime(iso: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    Healthy: 'text-green-600',
+    Registered: 'text-blue-600',
+    Disconnected: 'text-red-500',
+  }
+  return <span className={`font-medium ${colors[status] ?? 'text-gray-600'}`}>{status}</span>
+}
+
+function getProxyStatus(status: string, lastHealthAt: string): string {
+  if (!lastHealthAt) return status || 'Registered'
+  const diffMs = Date.now() - new Date(lastHealthAt).getTime()
+  if (diffMs < 90_000) return 'Healthy'
+  if (diffMs < 300_000) return 'Registered'
+  return 'Disconnected'
+}
 
 export function EdgeAgentProxiesPage() {
-  const [params, setParams] = useSearchParams()
-  const searchQuery = params.get('search') || ''
-  const pageSize = Number(params.get('perPage')) || 10
-  const currentPage = Number(params.get('page')) || 1
-
-  function setParam(key: string, value: string) {
-    setParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(key, value); else next.delete(key); next.set('page', '1'); return next }, { replace: true })
-  }
-  function setPage(p: number) {
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
-  }
-
-  const { data, isLoading } = useAgentProxies(currentPage, pageSize, searchQuery)
+  const { data, isLoading } = useAgentProxies(1, 500, '')
   const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const tableData: ProxyRow[] = useMemo(
+    () =>
+      items.map((proxy) => ({
+        id: proxy.id,
+        proxyId: proxy.id ?? '',
+        controllerId: proxy.controllerId ?? proxy.agentControllerId ?? '',
+        lastSeen: proxy.lastHealthAt ?? '',
+        registered: proxy.createdAt ?? '',
+        status: getProxyStatus(proxy.status ?? '', proxy.lastHealthAt ?? ''),
+      })),
+    [items],
+  )
+
+  const columns: ColumnDef<ProxyRow, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'proxyId',
+        header: 'Proxy ID',
+        cell: ({ row }) => (
+          <span className="font-mono text-gray-700 text-[11px] truncate block">
+            {row.getValue('proxyId')}
+          </span>
+        ),
+        size: 280,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'controllerId',
+        header: 'Controller ID',
+        cell: ({ row }) => (
+          <span className="font-mono text-gray-500 text-[11px] truncate block">
+            {row.getValue('controllerId')}
+          </span>
+        ),
+        size: 280,
+      },
+      {
+        accessorKey: 'lastSeen',
+        header: 'Last Seen',
+        cell: ({ row }) => <span className="text-gray-700 whitespace-nowrap">{formatTime(row.getValue('lastSeen'))}</span>,
+        size: 120,
+      },
+      {
+        accessorKey: 'registered',
+        header: 'Registered',
+        cell: ({ row }) => <span className="text-gray-700 whitespace-nowrap">{formatTime(row.getValue('registered'))}</span>,
+        size: 120,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => <StatusBadge status={row.getValue('status') as string} />,
+        size: 100,
+        filterFn: statusFilterFn,
+      },
+    ],
+    [],
+  )
+
+  const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
+
+  if (isLoading) return <div className="flex-1" />
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setParam('search', e.target.value)} className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-          </div>
-        </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <AgentProxiesTable items={items} isLoading={isLoading} />
-      </div>
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => setParam('perPage', String(v))} />
-          <span>Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, total)} of {total} Results</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">←</button>
-          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-            <button key={i + 1} onClick={() => setPage(i + 1)} className={`w-7 h-7 rounded text-xs font-medium ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>{i + 1}</button>
-          ))}
-          <button onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-2 py-1 text-xs text-gray-500 disabled:opacity-30">→</button>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={tableData}
+        searchPlaceholder="Filter by ID..."
+        searchKeys={['proxyId', 'controllerId']}
+        facetedFilters={facetedFilters}
+        emptyMessage="No agent proxies found."
+      />
     </div>
   )
 }
