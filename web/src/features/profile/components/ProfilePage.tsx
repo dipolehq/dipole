@@ -347,7 +347,7 @@ function PasswordChangeForm() {
     setError('')
 
     if (!currentPassword) { setError('Current password is required.'); return }
-    if (newPassword.length < 6) { setError('New password must be at least 6 characters.'); return }
+    if (newPassword.length < 8) { setError('New password must be at least 8 characters.'); return }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return }
 
     setLoading(true)

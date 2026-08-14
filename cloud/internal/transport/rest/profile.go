@@ -211,8 +211,8 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "currentPassword and newPassword are required")
 		return
 	}
-	if len(req.NewPassword) < 6 {
-		respondBadRequest(w, "new password must be at least 6 characters")
+	if len(req.NewPassword) < 8 {
+		respondBadRequest(w, "new password must be at least 8 characters")
 		return
 	}
 

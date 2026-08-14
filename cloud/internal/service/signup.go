@@ -90,8 +90,8 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	if req.LastName == "" {
 		return nil, fmt.Errorf("last name is required")
 	}
-	if len(req.Password) < 6 {
-		return nil, fmt.Errorf("password must be at least 6 characters")
+	if len(req.Password) < 8 {
+		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
 
 	subdomain, err := s.generateUniqueSubdomain(ctx)
