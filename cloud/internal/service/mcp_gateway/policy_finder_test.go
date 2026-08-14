@@ -216,3 +216,7 @@ func TestDBPolicyFinder_FindPolicyForServer_SkipsNonMCPProtocol(t *testing.T) {
 }
 
 func (m *mockAccessPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockAccessPolicyRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}

@@ -157,3 +157,7 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 }
 
 func (m *mockPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockPolicyRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}

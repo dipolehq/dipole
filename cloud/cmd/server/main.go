@@ -199,6 +199,9 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus, caService)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
+	grpcHandler.SetLeafSigner(caService)
+	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
+	grpcHandler.SetProxyAuthenticator(repos.AgentProxies)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

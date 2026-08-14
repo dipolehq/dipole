@@ -230,3 +230,7 @@ func TestResolveTokenConfig_NilClientWorkloadRepo_StillSucceeds(t *testing.T) {
 func (m *mockPolicyRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
 func (m *mockCPRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int     { return 0 }
 func (m *mockCWRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int     { return 0 }
+
+func (m *mockPolicyRepoForResolver) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}

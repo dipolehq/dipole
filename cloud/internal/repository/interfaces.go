@@ -74,6 +74,7 @@ type AccessPolicyRepository interface {
 	FindByAppProtocol(ctx context.Context, tenantID uuid.UUID, protocol string) ([]domain.AccessPolicyWithRelations, error)
 	ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
 	CountInactive(ctx context.Context, tenantID uuid.UUID) int
+	IsHostnameAuthorizedForTLS(ctx context.Context, tenantID uuid.UUID, hostname string) (bool, error)
 }
 
 type AgentControllerRepository interface {

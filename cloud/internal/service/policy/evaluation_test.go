@@ -418,3 +418,7 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 }
 
 func (m *mockRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
+}

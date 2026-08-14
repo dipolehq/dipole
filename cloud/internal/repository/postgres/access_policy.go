@@ -543,3 +543,21 @@ func (r *AccessPolicyRepo) CountInactive(ctx context.Context, tenantID uuid.UUID
 		tenantID).Scan(&count)
 	return count
 }
+
+func (r *AccessPolicyRepo) IsHostnameAuthorizedForTLS(ctx context.Context, tenantID uuid.UUID, hostname string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM access_policies ap
+			JOIN server_workloads sw ON sw.id = ap.server_workload_id AND sw.tenant_id = $1
+			WHERE ap.tenant_id = $1
+			  AND ap.is_active = true
+			  AND sw.host = $2
+			  AND sw.tls = true
+		)`,
+		tenantID, hostname).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check hostname authorization: %w", err)
+	}
+	return exists, nil
+}
