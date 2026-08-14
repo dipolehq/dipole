@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2, Plus, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
@@ -8,12 +9,8 @@ import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
+import { apiClient } from '@/shared/lib/api-client'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
-
-const ROLE_OPTIONS = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-]
 
 export function IdentityProviderDetailPage() {
   const navigate = useNavigate()
@@ -25,12 +22,20 @@ export function IdentityProviderDetailPage() {
   const saveMutation = useSaveIdentityProvider(id ?? '')
   const deleteMutation = useDeleteIdentityProvider()
 
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=100'),
+    staleTime: 60_000,
+  })
+  const roleOptions = (rolesData?.items ?? []).map((r) => ({ value: r.name, label: r.name }))
+
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [idpStatus, setIdpStatus] = useState('active')
   const [idpType, setIdpType] = useState<IdpType>('saml_2.0')
   const [metadataUrl, setMetadataUrl] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
@@ -46,6 +51,7 @@ export function IdentityProviderDetailPage() {
     const config = (idp.config ?? {}) as Record<string, unknown>
     setName(idp.name)
     setDescription(idp.description)
+    setIdpStatus(idp.isActive ? 'active' : 'inactive')
     setIdpType(idp.type as IdpType)
     setMetadataUrl((config.metadataUrl as string) ?? '')
     setBaseUrl((config.baseUrl as string) ?? '')
@@ -76,7 +82,7 @@ export function IdentityProviderDetailPage() {
 
   const disabled = !isEditing
   const displayName = name || 'Untitled'
-  const statusValue = idp?.isActive ? 'active' : 'inactive'
+  const statusValue = idpStatus
 
   function handleAddMapping() { setMappings([...mappings, { attributeName: '', attributeValue: '', role: '' }]) }
   function handleRemoveMapping(index: number) { setMappings(mappings.filter((_, i) => i !== index)) }
@@ -105,7 +111,7 @@ export function IdentityProviderDetailPage() {
       await saveMutation.mutateAsync({
         name,
         description,
-        isActive: true,
+        isActive: idpStatus === 'active',
         type: idpType,
         config,
       })
@@ -126,6 +132,7 @@ export function IdentityProviderDetailPage() {
       const config = (idp.config ?? {}) as Record<string, unknown>
       setName(idp.name)
       setDescription(idp.description)
+      setIdpStatus(idp.isActive ? 'active' : 'inactive')
       setIdpType(idp.type as IdpType)
       setMetadataUrl((config.metadataUrl as string) ?? '')
       setBaseUrl((config.baseUrl as string) ?? '')
@@ -282,7 +289,7 @@ export function IdentityProviderDetailPage() {
                             <tr key={index}>
                               <td className="px-4 py-2"><input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} disabled={disabled} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
                               <td className="px-4 py-2"><input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} disabled={disabled} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
-                              <td className="px-4 py-2"><FloatingDropdown label="Role" options={ROLE_OPTIONS} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} disabled={disabled} /></td>
+                              <td className="px-4 py-2"><FloatingDropdown label="Role" options={roleOptions} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} disabled={disabled} /></td>
                               <td className="px-2 py-2">{!disabled && <button type="button" onClick={() => handleRemoveMapping(index)} className="text-gray-500 hover:text-gray-700 transition-colors"><X size={14} /></button>}</td>
                             </tr>
                           ))}

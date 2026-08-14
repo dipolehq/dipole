@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
@@ -7,16 +8,19 @@ import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { useCreateIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, oidcCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
+import { apiClient } from '@/shared/lib/api-client'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
-
-const ROLE_OPTIONS = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-]
 
 export function CreateIdentityProviderPage() {
   const navigate = useNavigate()
   const createMutation = useCreateIdentityProvider()
+
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=100'),
+    staleTime: 60_000,
+  })
+  const roleOptions = (rolesData?.items ?? []).map((r) => ({ value: r.name, label: r.name }))
   const [error, setError] = useState<string | null>(null)
 
   // The redirect/ACS/JWKS URLs below are per tenant, and the customer must
@@ -239,7 +243,7 @@ export function CreateIdentityProviderPage() {
                               <input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" />
                             </td>
                             <td className="px-4 py-2">
-                              <FloatingDropdown label="Role" options={ROLE_OPTIONS} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} />
+                              <FloatingDropdown label="Role" options={roleOptions} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} />
                             </td>
                             <td className="px-2 py-2">
                               <button type="button" onClick={() => handleRemoveMapping(index)} className="text-gray-500 hover:text-gray-700 transition-colors">

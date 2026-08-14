@@ -1,22 +1,18 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { useClickOutside } from '@/shared/hooks/useClickOutside'
 import { useRole, useSaveRole, useDeleteRole } from '@/features/administration/hooks/useRoles'
 import { apiErrorMessage } from '@/features/administration/api/rolesApi'
+import { apiClient } from '@/shared/lib/api-client'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
-]
-
-const RESOURCE_SET_OPTIONS = [
-  { value: 'default', label: 'Default' },
-  { value: 'production', label: 'Production' },
-  { value: 'staging', label: 'Staging' },
 ]
 
 type PermissionLevel = 'no_access' | 'read_only' | 'read_write'
@@ -36,6 +32,13 @@ export function RoleDetailPage() {
   const saveMutation = useSaveRole(id ?? '')
   const deleteMutation = useDeleteRole()
 
+  const { data: resourceSetsData } = useQuery({
+    queryKey: ['resource-sets', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/resource-sets?perPage=100'),
+    staleTime: 60_000,
+  })
+  const resourceSetOptions = (resourceSetsData?.items ?? []).map((rs) => ({ value: rs.id, label: rs.name }))
+
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -46,20 +49,17 @@ export function RoleDetailPage() {
   const [permissions, setPermissions] = useState<Record<string, PermissionLevel>>(
     Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, 'no_access' as PermissionLevel]))
   )
-  const [initialized, setInitialized] = useState(false)
 
-  if (role && !initialized) {
-    setStatus(role.isActive ? 'active' : 'inactive')
-    setName(role.name)
-    setDescription(role.description)
-    const perms = (role.permissions ?? {}) as Record<string, string>
-    setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access'])))
-    setInitialized(true)
-  }
-
-  if (initialized && role && role.id !== id) {
-    setInitialized(false)
-  }
+  useEffect(() => {
+    if (role) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStatus(role.isActive ? 'active' : 'inactive')
+      setName(role.name)
+      setDescription(role.description)
+      const perms = (role.permissions ?? {}) as Record<string, string>
+      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access'])))
+    }
+  }, [role])
 
   if (!id || (!isLoading && role === null)) {
     return (
@@ -92,6 +92,7 @@ export function RoleDetailPage() {
         description,
         isActive: status === 'active',
         permissions: permissions as Record<string, string>,
+        resourceSetIds: resourceSets,
       })
       setIsEditing(false)
     } catch (err) {
@@ -113,7 +114,8 @@ export function RoleDetailPage() {
 
   async function handleDelete() {
     try {
-      await deleteMutation.mutateAsync(id!)
+      if (!id) return
+      await deleteMutation.mutateAsync(id)
       navigate('/administration/roles')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete role'))
@@ -178,7 +180,7 @@ export function RoleDetailPage() {
 
                 <div>
                   <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Resource Set Assignments</h4>
-                  <ResourceSetMultiSelect options={RESOURCE_SET_OPTIONS} selected={resourceSets} onChange={setResourceSets} disabled={disabled} />
+                  <ResourceSetMultiSelect options={resourceSetOptions} selected={resourceSets} onChange={setResourceSets} disabled={disabled} />
                 </div>
 
                 <div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { identityIssuerUrl } from '@/shared/lib/platform-urls'
+import { identityIssuerUrl, dipoleAwsAccountId } from '@/shared/lib/platform-urls'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
@@ -136,11 +136,11 @@ export function CreateLogStreamPage() {
                     <FloatingInput label="S3 Path Prefix" value={s3Prefix} onChange={setS3Prefix} />
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Source AWS Account ID</label>
-                      <div className="text-xs text-gray-700 font-mono">123456789012</div>
+                      <div className="text-xs text-gray-700 font-mono">{dipoleAwsAccountId()}</div>
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Destination Bucket Policy (Recommended)</label>
-                      <pre className="px-3 py-3 border border-border rounded-md text-[11px] text-gray-700 bg-gray-50 font-mono whitespace-pre-wrap">{`{\n  "Version": "2012-10-17",\n  "Statement": [\n    {\n      "Sid": "DipoleLogStream",\n      "Effect": "Allow",\n      "Principal": {\n        "AWS": "arn:aws:iam::123456789012:root"\n      },\n      "Action": ["s3:PutObject"],\n      "Resource": ["arn:aws:s3:::${s3Bucket || '*'}/*"]\n    }\n  ]\n}`}</pre>
+                      <pre className="px-3 py-3 border border-border rounded-md text-[11px] text-gray-700 bg-gray-50 font-mono whitespace-pre-wrap">{`{\n  "Version": "2012-10-17",\n  "Statement": [\n    {\n      "Sid": "DipoleLogStream",\n      "Effect": "Allow",\n      "Principal": {\n        "AWS": "arn:aws:iam::${dipoleAwsAccountId()}:root"\n      },\n      "Action": ["s3:PutObject"],\n      "Resource": ["arn:aws:s3:::${s3Bucket || '*'}/*"]\n    }\n  ]\n}`}</pre>
                     </div>
                   </div>
                 </div>

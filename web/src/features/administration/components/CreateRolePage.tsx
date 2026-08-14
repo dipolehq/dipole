@@ -1,27 +1,17 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { useClickOutside } from '@/shared/hooks/useClickOutside'
 import { useCreateRole } from '@/features/administration/hooks/useRoles'
 import { apiErrorMessage } from '@/features/administration/api/rolesApi'
+import { apiClient } from '@/shared/lib/api-client'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
-]
-
-const RESOURCE_SET_OPTIONS = [
-  { value: 'default', label: 'Default' },
-  { value: 'production', label: 'Production' },
-  { value: 'staging', label: 'Staging' },
-]
-
-const COPY_FROM_ROLE_OPTIONS = [
-  { value: 'none', label: 'None' },
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
 ]
 
 type PermissionLevel = 'no_access' | 'read_only' | 'read_write'
@@ -36,6 +26,24 @@ const PERMISSION_ENTITIES = [
 export function CreateRolePage() {
   const navigate = useNavigate()
   const createMutation = useCreateRole()
+
+  // Fetch resource sets and existing roles from the backend
+  const { data: resourceSetsData } = useQuery({
+    queryKey: ['resource-sets', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/resource-sets?perPage=100'),
+    staleTime: 60_000,
+  })
+  const resourceSetOptions = (resourceSetsData?.items ?? []).map((rs) => ({ value: rs.id, label: rs.name }))
+
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string; permissions?: Record<string, string> }[] }>('/roles?perPage=100'),
+    staleTime: 60_000,
+  })
+  const copyFromRoleOptions = [
+    { value: 'none', label: 'None' },
+    ...(rolesData?.items ?? []).map((r) => ({ value: r.id, label: r.name })),
+  ]
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('active')
   const [name, setName] = useState('')
@@ -50,12 +58,13 @@ export function CreateRolePage() {
     setPermissions({ ...permissions, [entity]: level })
   }
 
-  function handleCopyFromRole(roleName: string) {
-    setCopyFromRole(roleName)
-    if (roleName === 'SuperAdmin') {
-      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, 'read_write' as PermissionLevel])))
-    } else if (roleName === 'Auditor') {
-      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, 'read_only' as PermissionLevel])))
+  function handleCopyFromRole(roleId: string) {
+    setCopyFromRole(roleId)
+    if (roleId === 'none') return
+    const role = rolesData?.items?.find((r) => r.id === roleId)
+    if (role?.permissions) {
+      const perms = role.permissions as Record<string, string>
+      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access'])))
     }
   }
 
@@ -67,6 +76,7 @@ export function CreateRolePage() {
         description,
         isActive: status === 'active',
         permissions: permissions as Record<string, string>,
+        resourceSetIds: resourceSets,
       })
       navigate('/administration/roles')
     } catch (err) {
@@ -114,13 +124,13 @@ export function CreateRolePage() {
 
               <div>
                 <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Resource Set Assignments</h4>
-                <ResourceSetMultiSelect options={RESOURCE_SET_OPTIONS} selected={resourceSets} onChange={setResourceSets} />
+                <ResourceSetMultiSelect options={resourceSetOptions} selected={resourceSets} onChange={setResourceSets} />
               </div>
 
               <div>
                 <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Permissions</h4>
                 <div className="mb-4">
-                  <FloatingDropdown label="Copy from existing Role" options={COPY_FROM_ROLE_OPTIONS} value={copyFromRole} onChange={handleCopyFromRole} />
+                  <FloatingDropdown label="Copy from existing Role" options={copyFromRoleOptions} value={copyFromRole} onChange={handleCopyFromRole} />
                 </div>
                 <PermissionsTable permissions={permissions} onChange={handlePermissionChange} />
               </div>

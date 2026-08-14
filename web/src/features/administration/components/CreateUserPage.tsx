@@ -49,7 +49,7 @@ export function CreateUserPage() {
         firstName,
         lastName,
         email,
-        phone,
+        phone: phone ? `${countryCode}${phone}` : '',
         isActive: status === 'active',
         roleId: selectedRole || undefined,
       })

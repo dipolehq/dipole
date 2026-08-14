@@ -25,6 +25,7 @@ function SignOnPolicyForm({ data, queryClient }: { data: SignOnPolicyData; query
   const [requireSSO, setRequireSSO] = useState(data.requireSso)
   const [requireMFA, setRequireMFA] = useState(data.requireMfa)
   const [isEditing, setIsEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -34,9 +35,11 @@ function SignOnPolicyForm({ data, queryClient }: { data: SignOnPolicyData; query
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sign-on-policy'] })
+      setError(null)
       setIsEditing(false)
     },
     onError: () => {
+      setError('Failed to save sign-on policy')
       setRequireSSO(data.requireSso)
       setRequireMFA(data.requireMfa)
       setIsEditing(false)
@@ -67,6 +70,12 @@ function SignOnPolicyForm({ data, queryClient }: { data: SignOnPolicyData; query
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Content box */}
       <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">

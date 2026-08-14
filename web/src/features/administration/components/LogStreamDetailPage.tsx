@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { identityIssuerUrl } from '@/shared/lib/platform-urls'
+import { identityIssuerUrl, dipoleAwsAccountId } from '@/shared/lib/platform-urls'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
@@ -24,6 +24,7 @@ export function LogStreamDetailPage() {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [lsStatus, setLsStatus] = useState('active')
   const [eventType, setEventType] = useState<LogStreamEventType>('access_authorization')
   const [destinationType, setDestinationType] = useState<LogStreamDestinationType>('aws_s3')
   const [s3Region, setS3Region] = useState('')
@@ -46,6 +47,7 @@ export function LogStreamDetailPage() {
     const config = (ls.config ?? {}) as Record<string, unknown>
     setName(ls.name)
     setDescription(ls.description)
+    setLsStatus(ls.isActive ? 'active' : 'inactive')
     setEventType(ls.eventType as LogStreamEventType)
     setDestinationType(ls.destinationType as LogStreamDestinationType)
     setS3Region((config.s3BucketRegion as string) ?? '')
@@ -84,7 +86,7 @@ export function LogStreamDetailPage() {
 
   const disabled = !isEditing
   const displayName = name || 'Untitled'
-  const statusValue = ls?.isActive ? 'active' : 'inactive'
+  const statusValue = lsStatus
 
   async function handleSave() {
     setError(null)
@@ -99,7 +101,7 @@ export function LogStreamDetailPage() {
       config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.authToken = authToken; config.sourceName = sourceName
     }
     try {
-      await saveMutation.mutateAsync({ name, description, isActive: true, eventType, destinationType, config })
+      await saveMutation.mutateAsync({ name, description, isActive: lsStatus === 'active', eventType, destinationType, config })
       setIsEditing(false)
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to save log stream'))
@@ -116,6 +118,7 @@ export function LogStreamDetailPage() {
     if (ls) {
       const config = (ls.config ?? {}) as Record<string, unknown>
       setName(ls.name); setDescription(ls.description)
+      setLsStatus(ls.isActive ? 'active' : 'inactive')
       setEventType(ls.eventType as LogStreamEventType); setDestinationType(ls.destinationType as LogStreamDestinationType)
       setS3Region((config.s3BucketRegion as string) ?? ''); setS3Bucket((config.s3BucketName as string) ?? ''); setS3Prefix((config.s3PathPrefix as string) ?? '')
       setGcsBucket((config.gcsBucketName as string) ?? ''); setGcsPathPrefix((config.gcsPathPrefix as string) ?? ''); setGcsAudience((config.gcsAudience as string) ?? '')
@@ -203,7 +206,7 @@ export function LogStreamDetailPage() {
                       <FloatingInput label="S3 Path Prefix" value={s3Prefix} onChange={setS3Prefix} disabled={disabled} />
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Source AWS Account ID</label>
-                        <div className="text-xs text-gray-700 font-mono">123456789012</div>
+                        <div className="text-xs text-gray-700 font-mono">{dipoleAwsAccountId()}</div>
                       </div>
                     </div>
                   </div>

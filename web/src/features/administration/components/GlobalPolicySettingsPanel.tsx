@@ -40,6 +40,7 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
   const [acTlsHostname, setAcTlsHostname] = useState<EnforcementLevel>(data.acTlsHostname as EnforcementLevel)
   const [tokenLifetime, setTokenLifetime] = useState(String(data.accessTokenLifetimeSeconds))
   const [isEditing, setIsEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -52,9 +53,11 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['global-policy-compliance'] })
+      setError(null)
       setIsEditing(false)
     },
     onError: () => {
+      setError('Failed to save global policy compliance settings')
       setApTrustProvider(data.apTrustProvider as EnforcementLevel)
       setApAccessCondition(data.apAccessCondition as EnforcementLevel)
       setAcTrustProvider(data.acTrustProvider as EnforcementLevel)
@@ -98,6 +101,12 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
         </div>
       </div>
 
+      {error && (
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Content box */}
       <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
         <div className="grid grid-cols-[1fr_380px] h-full">
@@ -127,7 +136,10 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
                       <FloatingInput
                         label="API Access Token Lifetime"
                         value={tokenLifetime}
-                        onChange={setTokenLifetime}
+                        onChange={(v) => {
+                          const n = Number(v)
+                          if (v === '' || (n >= 0 && n <= 2592000)) setTokenLifetime(v)
+                        }}
                         type="number"
                         disabled={disabled}
                       />
