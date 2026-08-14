@@ -58,9 +58,9 @@ export function EdgeAgentProxiesPage() {
       items.map((proxy) => ({
         id: proxy.id,
         proxyId: proxy.id ?? '',
-        controllerId: proxy.controllerId ?? proxy.agentControllerId ?? '',
+        controllerId: proxy.agentControllerId ?? '',
         lastSeen: proxy.lastHealthAt ?? '',
-        registered: proxy.createdAt ?? '',
+        registered: proxy.registeredAt ?? '',
         status: getProxyStatus(proxy.status ?? '', proxy.lastHealthAt ?? ''),
       })),
     [items],

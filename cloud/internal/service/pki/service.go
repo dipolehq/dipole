@@ -96,3 +96,27 @@ func (s *TenantCAService) generateCA(tenantID uuid.UUID) (string, string, error)
 
 	return certPEM, keyPEM, nil
 }
+
+func (s *TenantCAService) GetTenantCACert(ctx context.Context, tenantID uuid.UUID) (string, error) {
+	certPEM, _, err := s.GetOrCreateTenantCA(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	return certPEM, nil
+}
+
+func (s *TenantCAService) IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool {
+	has, _ := s.repo.HasCA(ctx, tenantID)
+	return has
+}
+
+func (s *TenantCAService) GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	return s.repo.GetLeafLifetime(ctx, tenantID)
+}
+
+func (s *TenantCAService) SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error {
+	if lifetimeSeconds < 3600 || lifetimeSeconds > 604800 {
+		return fmt.Errorf("leaf lifetime must be between 3600 (1 hour) and 604800 (7 days)")
+	}
+	return s.repo.SetLeafLifetime(ctx, tenantID, lifetimeSeconds)
+}

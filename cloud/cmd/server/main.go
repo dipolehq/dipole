@@ -197,7 +197,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus, caService)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -271,6 +271,7 @@ func buildHTTPServer(
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
 	tracingBus *mcpgw.TracingBus,
+	caService *pki.TenantCAService,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -326,6 +327,7 @@ func buildHTTPServer(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
 	)).RegisterRoutes(mux)
+	rest.NewTlsDecryptHandler(caService).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)

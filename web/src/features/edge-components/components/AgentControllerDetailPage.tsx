@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -29,17 +29,18 @@ export function AgentControllerDetailPage() {
   const [trustProviderId, setTrustProviderId] = useState('')
   const [allowedTlsHostname, setAllowedTlsHostname] = useState('')
   const [tags, setTags] = useState<FormTag[]>([])
-  const [initialized, setInitialized] = useState(false)
 
-  if (controller && !initialized) {
-    setStatus(controller.isActive ? 'active' : 'inactive')
-    setName(controller.name)
-    setDescription(controller.description ?? '')
-    setTrustProviderId(controller.trustProviderId ?? '')
-    setAllowedTlsHostname(controller.tlsHostname ?? '')
-    setTags((controller.tags ?? []).map((t) => ({ key: t.key, value: t.value })))
-    setInitialized(true)
-  }
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (controller) {
+      setStatus(controller.isActive ? 'active' : 'inactive')
+      setName(controller.name)
+      setDescription(controller.description ?? '')
+      setTrustProviderId(controller.trustProviderId ?? '')
+      setAllowedTlsHostname(controller.tlsHostname ?? '')
+      setTags((controller.tags ?? []).map((t) => ({ key: t.key, value: t.value })))
+    }
+  }, [controller])
 
   const { data: tpData } = useQuery({
     queryKey: ['trust-providers', 'dropdown'],

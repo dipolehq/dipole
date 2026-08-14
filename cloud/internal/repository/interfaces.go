@@ -153,6 +153,9 @@ type AgentProxyRepository interface {
 
 type TenantCARepository interface {
 	GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (storedCertPEM string, storedKeyEncrypted []byte, err error)
+	HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error)
+	GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error)
+	SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error
 }
 
 type RegistrationTokenRepository interface {
