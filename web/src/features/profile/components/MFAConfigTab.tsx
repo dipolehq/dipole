@@ -186,9 +186,9 @@ export function MFAConfigTab() {
   // Main status view
   return (
     <div className="space-y-5">
-      <div className="border border-border rounded-lg p-5">
+      <div>
         <div className="flex items-center justify-between mb-4">
-          <h4 className="text-sm font-semibold text-gray-800">MFA Status</h4>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">MFA Status</h4>
           <span className={`text-xs font-medium px-2 py-0.5 rounded ${status?.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
             {status?.enabled ? 'CONFIGURED' : 'NOT CONFIGURED'}
           </span>
