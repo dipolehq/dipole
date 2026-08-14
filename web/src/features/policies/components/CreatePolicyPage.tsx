@@ -77,13 +77,13 @@ export function CreatePolicyPage() {
 
   function handleNext() {
     if (activeIndex < STEPS.length - 1) {
-      setActiveStep(STEPS[activeIndex + 1].key)
+      setActiveStep(STEPS[activeIndex + 1]!.key)
     }
   }
 
   function handleBack() {
     if (activeIndex > 0) {
-      setActiveStep(STEPS[activeIndex - 1].key)
+      setActiveStep(STEPS[activeIndex - 1]!.key)
     }
   }
 

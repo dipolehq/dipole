@@ -36,6 +36,7 @@ export function LoginPage() {
 
   // Load SSO providers
   useEffect(() => {
+    document.title = 'Dipole | Sign In'
     apiClient.get<{ providers: SSOProvider[] }>('/auth/sso/providers')
       .then((res) => setSsoProviders(res.providers ?? []))
       .catch(() => {})

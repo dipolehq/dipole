@@ -83,12 +83,12 @@ export function PolicyDetailPage() {
 
   // Helpers to update individual fields within localValues
   function updateField<K extends keyof PolicyFormValues>(key: K, value: PolicyFormValues[K]) {
-    setLocalValues((prev) => ({ ...(prev ?? data.values), [key]: value }))
+    setLocalValues((prev) => ({ ...(prev ?? data!.values), [key]: value }))
   }
 
   function handleEdit() {
     setError(null)
-    setLocalValues({ ...data.values })
+    setLocalValues({ ...data!.values })
     setIsEditing(true)
   }
 

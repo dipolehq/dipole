@@ -31,7 +31,7 @@ export const RobotGuard = forwardRef<RobotHandle>(function RobotGuard(_props, re
 
   const robotRef = useRef<HTMLDivElement>(null)
   const lastSaidRef = useRef('')
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const doneRef = useRef(false)
 
   const say = useCallback((text: string) => {

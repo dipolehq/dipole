@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
@@ -9,6 +9,9 @@ import { evaluatePassword } from './password-strength'
 export function SignupPage() {
   const navigate = useNavigate()
   const robotRef = useRef<RobotHandle>(null)
+
+  useEffect(() => { document.title = 'Dipole | Sign Up' }, [])
+
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [companyName, setCompanyName] = useState('')
@@ -110,7 +113,7 @@ export function SignupPage() {
 
         <div className="title-row">
           <img src="/logo_black.svg" alt="Dipole" className="card-logo" draggable={false} />
-          <h1 className="title">Sign Up For Dipole Tenant</h1>
+          <h1 className="title">Sign up for Dipole</h1>
           <img src="/logo_black_mirror.svg" alt="" className="card-logo" draggable={false} />
         </div>
 

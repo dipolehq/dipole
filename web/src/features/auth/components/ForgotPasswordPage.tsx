@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 import { AuthLayout } from './AuthLayout'
@@ -6,6 +6,9 @@ import { type RobotHandle } from './RobotGuard'
 
 export function ForgotPasswordPage() {
   const robotRef = useRef<RobotHandle>(null)
+
+  useEffect(() => { document.title = 'Dipole | Reset Password' }, [])
+
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)

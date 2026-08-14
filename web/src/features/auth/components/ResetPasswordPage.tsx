@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 import { AuthLayout } from './AuthLayout'
@@ -8,6 +8,9 @@ export function ResetPasswordPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const robotRef = useRef<RobotHandle>(null)
+
+  useEffect(() => { document.title = 'Dipole | Reset Password' }, [])
+
   const tokenFromUrl = params.get('token') || ''
 
   const [token, setToken] = useState(tokenFromUrl)
