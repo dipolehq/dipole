@@ -155,3 +155,5 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 		t.Errorf("expected policyID %s, got %s", policyID, result.PolicyID)
 	}
 }
+
+func (m *mockPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }

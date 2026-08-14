@@ -535,3 +535,11 @@ func escapeILIKE(s string) string {
 	s = strings.ReplaceAll(s, `_`, `\_`)
 	return s
 }
+
+func (r *AccessPolicyRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM access_policies WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
+}

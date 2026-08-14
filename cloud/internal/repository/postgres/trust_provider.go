@@ -130,3 +130,11 @@ func (r *TrustProviderRepo) Delete(ctx context.Context, tenantID uuid.UUID, id u
 	}
 	return nil
 }
+
+func (r *TrustProviderRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM trust_providers WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
+}

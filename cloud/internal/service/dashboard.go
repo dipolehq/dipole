@@ -28,19 +28,20 @@ type DashboardStats struct {
 }
 
 type EntityCounts struct {
-	ClientWorkloads     int `json:"clientWorkloads"`
-	ClientInactive      int `json:"clientInactive"`
-	ClientUnmanaged     int `json:"clientUnmanaged"`
-	ServerWorkloads     int `json:"serverWorkloads"`
-	ServerInactive      int `json:"serverInactive"`
-	ServerUnmanaged     int `json:"serverUnmanaged"`
-	TrustProviders      int `json:"trustProviders"`
-	TrustInactive       int `json:"trustInactive"`
-	CredentialProviders int `json:"credentialProviders"`
-	CredentialInactive  int `json:"credentialInactive"`
-	AccessPolicies      int `json:"accessPolicies"`
-	AccessConditions    int `json:"accessConditions"`
-	ConditionInactive   int `json:"conditionInactive"`
+	ClientWorkloads        int `json:"clientWorkloads"`
+	ClientInactive         int `json:"clientInactive"`
+	ClientUnmanaged        int `json:"clientUnmanaged"`
+	ServerWorkloads        int `json:"serverWorkloads"`
+	ServerInactive         int `json:"serverInactive"`
+	ServerUnmanaged        int `json:"serverUnmanaged"`
+	TrustProviders         int `json:"trustProviders"`
+	TrustInactive          int `json:"trustInactive"`
+	CredentialProviders    int `json:"credentialProviders"`
+	CredentialInactive     int `json:"credentialInactive"`
+	AccessPolicies         int `json:"accessPolicies"`
+	AccessPoliciesInactive int `json:"accessPoliciesInactive"`
+	AccessConditions       int `json:"accessConditions"`
+	ConditionInactive      int `json:"conditionInactive"`
 }
 
 type RecentEventStats struct {
@@ -129,14 +130,28 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, tim
 	_, apCount, _ := s.apRepo.List(ctx, tenantID, opts)
 	_, acCount, _ := s.acRepo.List(ctx, tenantID, opts)
 
+	// Get inactive counts
+	cwInactive := s.cwRepo.CountInactive(ctx, tenantID)
+	swInactive := s.swRepo.CountInactive(ctx, tenantID)
+	tpInactive := s.tpRepo.CountInactive(ctx, tenantID)
+	cpInactive := s.cpRepo.CountInactive(ctx, tenantID)
+	apInactive := s.apRepo.CountInactive(ctx, tenantID)
+	acInactive := s.acRepo.CountInactive(ctx, tenantID)
+
 	stats := &DashboardStats{
 		Counts: EntityCounts{
-			ClientWorkloads:     cwCount,
-			ServerWorkloads:     swCount,
-			TrustProviders:      tpCount,
-			CredentialProviders: cpCount,
-			AccessPolicies:      apCount,
-			AccessConditions:    acCount,
+			ClientWorkloads:        cwCount,
+			ClientInactive:         cwInactive,
+			ServerWorkloads:        swCount,
+			ServerInactive:         swInactive,
+			TrustProviders:         tpCount,
+			TrustInactive:          tpInactive,
+			CredentialProviders:    cpCount,
+			CredentialInactive:     cpInactive,
+			AccessPolicies:         apCount,
+			AccessPoliciesInactive: apInactive,
+			AccessConditions:       acCount,
+			ConditionInactive:      acInactive,
 		},
 		RecentEvents: RecentEventStats{
 			Last6h:     EventSummary{Total: 0, Authorized: 0, Denied: 0},

@@ -123,3 +123,11 @@ func (r *CredentialProviderRepo) Delete(ctx context.Context, tenantID uuid.UUID,
 	}
 	return nil
 }
+
+func (r *CredentialProviderRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM credential_providers WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
+}

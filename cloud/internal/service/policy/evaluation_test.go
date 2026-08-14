@@ -416,3 +416,5 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 		t.Error("emitter received allowed result, expected denied")
 	}
 }
+
+func (m *mockRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }

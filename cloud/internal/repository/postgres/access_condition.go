@@ -123,3 +123,11 @@ func (r *AccessConditionRepo) Delete(ctx context.Context, tenantID uuid.UUID, id
 	}
 	return nil
 }
+
+func (r *AccessConditionRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM access_conditions WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
+}

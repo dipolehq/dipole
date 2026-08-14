@@ -214,3 +214,5 @@ func TestDBPolicyFinder_FindPolicyForServer_SkipsNonMCPProtocol(t *testing.T) {
 		t.Fatal("expected nil result for non-MCP protocol policy")
 	}
 }
+
+func (m *mockAccessPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }

@@ -5,9 +5,11 @@ interface ConnectionsChartProps {
   subtitle: string
   data: { name: string; value: number }[]
   barColor?: string
+  timeRange?: string
+  onTimeRangeChange?: (range: string) => void
 }
 
-export function ConnectionsChart({ title, subtitle, data, barColor = 'bg-sky-100' }: ConnectionsChartProps) {
+export function ConnectionsChart({ title, subtitle, data, barColor = 'bg-sky-100', timeRange = '24h', onTimeRangeChange }: ConnectionsChartProps) {
   const max = Math.max(1, ...data.map((d) => d.value))
   const hasData = data.length > 0
 
@@ -17,7 +19,7 @@ export function ConnectionsChart({ title, subtitle, data, barColor = 'bg-sky-100
         <h3 className="text-sm text-gray-600">
           {title} / <span className="font-bold text-gray-900">{subtitle}</span>
         </h3>
-        <TimeRangeDropdown defaultValue="24h" />
+        <TimeRangeDropdown defaultValue={timeRange} onChange={onTimeRangeChange} />
       </div>
       <div className="flex-1 relative overflow-hidden">
         {!hasData && (

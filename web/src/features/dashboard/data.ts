@@ -23,8 +23,8 @@ export const dashboardData = {
   },
   clientConnections: [] as { name: string; value: number }[],
   serverConnections: [] as { name: string; value: number }[],
-  credentialUsage: [] as number[],
-  protocolUsage: [] as number[],
-  denialReasons: [] as number[],
-  attestationResults: [] as number[],
+  credentialUsage: [] as { label: string; value: number }[],
+  protocolUsage: [] as { label: string; value: number }[],
+  denialReasons: [] as { label: string; value: number }[],
+  attestationResults: [] as { label: string; value: number }[],
 }

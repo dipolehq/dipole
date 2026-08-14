@@ -226,3 +226,7 @@ func TestResolveTokenConfig_NilClientWorkloadRepo_StillSucceeds(t *testing.T) {
 		t.Errorf("expected empty ClientWorkloadName with nil cwRepo, got %q", cfg.ClientWorkloadName)
 	}
 }
+
+func (m *mockPolicyRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+func (m *mockCPRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int     { return 0 }
+func (m *mockCWRepoForResolver) CountInactive(_ context.Context, _ uuid.UUID) int     { return 0 }

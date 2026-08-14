@@ -174,3 +174,5 @@ type stubValidator struct {
 func (v *stubValidator) Validate(_ context.Context, _ *domain.TrustProvider, _ *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
 	return v.result, v.err
 }
+
+func (m *mockTrustProviderRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }

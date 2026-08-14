@@ -11,18 +11,18 @@ const TIME_OPTIONS = [
 ] as const
 
 interface TimeRangeDropdownProps {
+  /** Current selected value (controlled) */
   defaultValue?: string
   onChange?: (value: string) => void
 }
 
 export function TimeRangeDropdown({ defaultValue = '6h', onChange }: TimeRangeDropdownProps) {
-  const [selected, setSelected] = useState(defaultValue)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useClickOutside(ref, () => setOpen(false))
 
-  const selectedLabel = TIME_OPTIONS.find((o) => o.value === selected)?.label ?? 'Last 6 Hours'
+  const selectedLabel = TIME_OPTIONS.find((o) => o.value === defaultValue)?.label ?? 'Last 6 Hours'
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -40,12 +40,11 @@ export function TimeRangeDropdown({ defaultValue = '6h', onChange }: TimeRangeDr
             <button
               key={option.value}
               onClick={() => {
-                setSelected(option.value)
                 onChange?.(option.value)
                 setOpen(false)
               }}
               className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                selected === option.value
+                defaultValue === option.value
                   ? 'bg-gray-50 text-gray-900 font-medium'
                   : 'text-gray-600 hover:bg-gray-50'
               }`}

@@ -13,6 +13,7 @@ export interface DashboardStatsDTO {
     credentialProviders: number
     credentialInactive: number
     accessPolicies: number
+    accessPoliciesInactive: number
     accessConditions: number
     conditionInactive: number
   }
@@ -42,10 +43,10 @@ export interface DashboardData {
   workloadEvents: { info: number[]; warning: number[]; error: number[]; timestamps: string[] }
   clientConnections: { name: string; value: number }[]
   serverConnections: { name: string; value: number }[]
-  credentialUsage: number[]
-  protocolUsage: number[]
-  denialReasons: number[]
-  attestationResults: number[]
+  credentialUsage: { label: string; value: number }[]
+  protocolUsage: { label: string; value: number }[]
+  denialReasons: { label: string; value: number }[]
+  attestationResults: { label: string; value: number }[]
 }
 
 function mapToFrontend(dto: DashboardStatsDTO): DashboardData {
@@ -54,7 +55,7 @@ function mapToFrontend(dto: DashboardStatsDTO): DashboardData {
   const stats = {
     clientWorkloads: { count: c.clientWorkloads, active: c.clientWorkloads - c.clientInactive, inactive: c.clientInactive },
     serverWorkloads: { count: c.serverWorkloads, active: c.serverWorkloads - c.serverInactive, inactive: c.serverInactive },
-    accessPolicies: { count: c.accessPolicies, active: c.accessPolicies, inactive: 0 },
+    accessPolicies: { count: c.accessPolicies, active: c.accessPolicies - (c.accessPoliciesInactive ?? 0), inactive: c.accessPoliciesInactive ?? 0 },
     accessConditions: { count: c.accessConditions, active: c.accessConditions - c.conditionInactive, inactive: c.conditionInactive },
     trustProviders: { count: c.trustProviders, active: c.trustProviders - c.trustInactive, inactive: c.trustInactive },
     credentialProviders: { count: c.credentialProviders, active: c.credentialProviders - c.credentialInactive, inactive: c.credentialInactive },
@@ -84,11 +85,11 @@ function mapToFrontend(dto: DashboardStatsDTO): DashboardData {
   const clientConnections = (dto.topClientWorkloads ?? []).map((w) => ({ name: w.name, value: w.connections }))
   const serverConnections = (dto.topServerWorkloads ?? []).map((w) => ({ name: w.name, value: w.connections }))
 
-  const credentialUsage = (dto.credentialUsageByType ?? []).map((c) => c.count)
-  const protocolUsage = (dto.connectionsByProtocol ?? []).map((p) => p.count)
+  const credentialUsage = (dto.credentialUsageByType ?? []).map((item) => ({ label: item.type, value: item.count }))
+  const protocolUsage = (dto.connectionsByProtocol ?? []).map((p) => ({ label: p.protocol, value: p.count }))
 
   // Denial reasons from mostConditionFailures
-  const denialReasons = (dto.mostConditionFailures ?? []).map((f) => f.failures)
+  const denialReasons = (dto.mostConditionFailures ?? []).map((f) => ({ label: f.policyName, value: f.failures }))
 
   return {
     stats,
@@ -99,7 +100,7 @@ function mapToFrontend(dto: DashboardStatsDTO): DashboardData {
     credentialUsage,
     protocolUsage,
     denialReasons,
-    attestationResults: (dto.attestationResults ?? []).map((a) => a.count),
+    attestationResults: (dto.attestationResults ?? []).map((a) => ({ label: a.result, value: a.count })),
   }
 }
 

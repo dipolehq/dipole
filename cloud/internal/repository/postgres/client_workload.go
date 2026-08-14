@@ -129,3 +129,11 @@ func (r *ClientWorkloadRepo) Delete(ctx context.Context, tenantID uuid.UUID, id 
 	}
 	return nil
 }
+
+func (r *ClientWorkloadRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM client_workloads WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
+}

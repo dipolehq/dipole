@@ -2,22 +2,29 @@ import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { TimeRangeDropdown } from '@/shared/components/TimeRangeDropdown'
 
+const CHART_COLORS = ['#ffd8a8', '#a5d8ff', '#ffec99', '#b2f2bb', '#d0bfff', '#fcc2d7', '#99e9f2', '#e9ecef']
+
 interface DonutChartProps {
   title: string
   subtitle: string
-  total: number
-  labels: string[]
-  series: number[]
-  colors: string[]
+  data: { label: string; value: number }[]
+  timeRange?: string
+  onTimeRangeChange?: (range: string) => void
 }
 
-export function DonutChart({ title, subtitle, total, labels, series, colors }: DonutChartProps) {
+export function DonutChart({ title, subtitle, data, timeRange = '24h', onTimeRangeChange }: DonutChartProps) {
+  const total = data.reduce((sum, d) => sum + d.value, 0)
   const hasData = total > 0
 
   const chartData = useMemo(() => {
-    if (!hasData) return labels.map((name) => ({ name, value: 1 }))
-    return labels.map((name, i) => ({ name, value: series[i] ?? 0 }))
-  }, [labels, series, hasData])
+    if (!hasData) return [{ name: 'No Data', value: 1 }]
+    return data.map((d) => ({ name: d.label, value: d.value }))
+  }, [data, hasData])
+
+  const colors = useMemo(() => {
+    if (!hasData) return ['#e5e7eb']
+    return data.map((_, i) => CHART_COLORS[i % CHART_COLORS.length])
+  }, [data, hasData])
 
   const option = useMemo(() => ({
     animation: true,
@@ -42,7 +49,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
       textStyle: { fontSize: 11, color: '#6b7280' },
       selectedMode: hasData,
     },
-    color: hasData ? colors : colors.map(() => '#e5e7eb'),
+    color: colors,
     series: [
       {
         type: 'pie',
@@ -79,7 +86,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
         <h3 className="text-sm text-gray-600">
           {title} / <span className="font-bold text-gray-900">{subtitle}</span>
         </h3>
-        <TimeRangeDropdown defaultValue="24h" />
+        <TimeRangeDropdown defaultValue={timeRange} onChange={onTimeRangeChange} />
       </div>
       <ReactECharts option={option} style={{ height: 270 }} opts={{ renderer: 'canvas' }} />
     </div>
