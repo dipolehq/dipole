@@ -20,56 +20,73 @@ export function TlsDecryptPanel() {
   }
 
   return (
-    <div className="p-6">
-      <div className="border border-border rounded-lg p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">TLS Decrypt Root CA</h2>
-            <p className="text-xs text-gray-600 mb-2">
-              Dipole provides the Root CA certificate for your tenant in support of the TLS Decrypt feature.
-            </p>
-            <p className="text-xs text-gray-600 max-w-3xl">
-              When you enable TLS Decrypt for your Dipole-enabled Client Workloads, Dipole Agent Proxy can decrypt and manage encrypted traffic (such as HTTPS) to and from the configured Client and Server Workloads.
-            </p>
-          </div>
-
-          <a href="#" className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium shrink-0">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-            Documentation
-          </a>
-        </div>
-
-        <div className="mt-6 flex items-end gap-4">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1.5 font-medium">Leaf Certificate Lifetime options</label>
-            <div className="w-40">
-              <Dropdown
-                options={LEAF_CERT_LIFETIME_OPTIONS}
-                value={leafLifetime}
-                onChange={setLeafLifetime}
-                placeholder="Select lifetime..."
-              />
-            </div>
-          </div>
-
+    <>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
+        <h2 className="text-sm font-medium text-gray-900">TLS Decrypt</h2>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 border border-gray-400 text-gray-600 hover:bg-gray-50 text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Save
           </button>
-
           <button
             type="button"
             onClick={handleDownloadRootCA}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            <Download size={12} />
-            Download Tenant Root CA
+            <Download size={14} strokeWidth={2} className="opacity-60" />
+            Download Root CA
           </button>
         </div>
       </div>
-    </div>
+
+      {/* Content box */}
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Root CA Certificate</h4>
+                <p className="text-xs text-gray-600 leading-relaxed mb-4">
+                  Dipole provides the Root CA certificate for your tenant in support of the TLS Decrypt feature. When you enable TLS Decrypt, the Agent Proxy can decrypt and manage encrypted traffic (such as HTTPS) to and from configured workloads.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Leaf Certificate Lifetime</h4>
+                <div className="w-48">
+                  <Dropdown
+                    options={LEAF_CERT_LIFETIME_OPTIONS}
+                    value={leafLifetime}
+                    onChange={setLeafLifetime}
+                    placeholder="Select lifetime..."
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">
+                  Controls how long generated leaf certificates remain valid before requiring renewal.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">TLS Decrypt</span> enables the Agent Proxy to terminate TLS connections from client workloads, inspect/modify HTTP requests (e.g., inject credentials), and re-encrypt to the server.
+              </p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                The <span className="font-semibold text-gray-800">Root CA</span> must be trusted by your client workloads. It is automatically injected into pods by the Agent Injector's init container.
+              </p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Leaf certificates</span> are generated per-hostname on the fly. Shorter lifetimes are more secure but may increase CPU usage on the proxy.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
