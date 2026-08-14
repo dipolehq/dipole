@@ -21,6 +21,12 @@ export interface ResourceSetListItem {
   id: string
   name: string
   description: string
+  accessPolicies: number
+  clientWorkloads: number
+  trustProviders: number
+  accessConditions: number
+  credentialProviders: number
+  serverWorkloads: number
   createdAt: string
   updatedAt: string
 }

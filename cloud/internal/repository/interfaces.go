@@ -96,6 +96,7 @@ type ResourceSetRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error)
+	GetResourceCounts(ctx context.Context, tenantID uuid.UUID, resourceSetIDs []uuid.UUID) (map[uuid.UUID]domain.ResourceSetCounts, error)
 }
 
 type UserRepository interface {

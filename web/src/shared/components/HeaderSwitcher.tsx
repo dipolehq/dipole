@@ -6,6 +6,7 @@ import { useResourceSetContext } from '@/shared/context/ResourceSetContext'
 import { apiClient } from '@/shared/lib/api-client'
 import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
 import { useQuery } from '@tanstack/react-query'
+import { CloudLoader } from '@/shared/components/CloudLoader'
 
 interface TenantSummary {
   id: string
@@ -151,6 +152,11 @@ function TenantSwitcherInline() {
 
   return (
     <div ref={ref} className="relative">
+      {switching && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/80">
+          <CloudLoader scale={0.6} />
+        </div>
+      )}
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-gray-700 hover:bg-gray-100 transition-colors"
@@ -183,9 +189,11 @@ function TenantSwitcherInline() {
                     : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                <div className="min-w-0">
-                  <div className="truncate">{t.name}</div>
-                  <div className="text-[11px] text-gray-400 truncate">{t.subdomain}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{t.name}</span>
+                  {t.id === currentTenantId && (
+                    <span className="text-[11px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">{displayRole}</span>
+                  )}
                 </div>
                 {t.id === currentTenantId && <Check size={14} className="text-gray-600 shrink-0" />}
               </button>

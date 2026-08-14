@@ -124,7 +124,7 @@ export function FloatingDropdown({
   useClickOutside(ref, () => setOpen(false))
 
   const selectedLabel = options.find((o) => o.value === value)?.label
-  const hasValue = value.length > 0
+  const hasValue = (value ?? '').length > 0
   const isFloating = open || hasValue
 
   return (

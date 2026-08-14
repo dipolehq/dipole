@@ -11,6 +11,12 @@ interface ResourceSetRow {
   name: string
   description: string
   resourceSetId: string
+  accessPolicies: number
+  clientWorkloads: number
+  trustProviders: number
+  accessConditions: number
+  credentialProviders: number
+  serverWorkloads: number
   modifiedAt: string
 }
 
@@ -19,14 +25,14 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function ResourceIcons() {
+function ResourceIcons({ row }: { row: ResourceSetRow }) {
   const items = [
-    { icon: ArrowLeftRight, count: 0 },
-    { icon: MonitorSmartphone, count: 0 },
-    { icon: CheckCircle, count: 0 },
-    { icon: Clock, count: 0 },
-    { icon: Key, count: 0 },
-    { icon: Server, count: 0 },
+    { icon: ArrowLeftRight, count: row.accessPolicies },
+    { icon: MonitorSmartphone, count: row.clientWorkloads },
+    { icon: CheckCircle, count: row.trustProviders },
+    { icon: Clock, count: row.accessConditions },
+    { icon: Key, count: row.credentialProviders },
+    { icon: Server, count: row.serverWorkloads },
   ]
   return (
     <div className="flex items-center gap-5">
@@ -53,6 +59,12 @@ export function AdminResourceSetsPage() {
         name: item.name ?? '',
         description: item.description ?? '',
         resourceSetId: item.id ?? '',
+        accessPolicies: item.accessPolicies ?? 0,
+        clientWorkloads: item.clientWorkloads ?? 0,
+        trustProviders: item.trustProviders ?? 0,
+        accessConditions: item.accessConditions ?? 0,
+        credentialProviders: item.credentialProviders ?? 0,
+        serverWorkloads: item.serverWorkloads ?? 0,
         modifiedAt: item.updatedAt ?? item.createdAt ?? '',
       })),
     [items],
@@ -90,7 +102,7 @@ export function AdminResourceSetsPage() {
       {
         id: 'resources',
         header: 'Resources',
-        cell: () => <ResourceIcons />,
+        cell: ({ row }) => <ResourceIcons row={row.original} />,
         size: 280,
         enableSorting: false,
       },

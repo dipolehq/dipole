@@ -19,7 +19,20 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
-	respondJSON(w, http.StatusOK, NewListResponse(toResourceSetResponses(items), total, opts))
+
+	// Fetch resource counts for all listed resource sets in one query.
+	ids := make([]uuid.UUID, len(items))
+	for i := range items {
+		ids[i] = items[i].ID
+	}
+	counts, err := h.resourceSets.GetResourceCounts(r.Context(), tenantID, ids)
+	if err != nil {
+		slog.Error("get resource counts failed", "error", err)
+		// Non-fatal: return list without counts rather than failing entirely.
+		counts = nil
+	}
+
+	respondJSON(w, http.StatusOK, NewListResponse(toResourceSetResponsesWithCounts(items, counts), total, opts))
 }
 
 func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) {
@@ -154,11 +167,17 @@ func (r resourceSetRequest) toDomain() domain.ResourceSet {
 }
 
 type resourceSetResponse struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   string    `json:"createdAt"`
-	UpdatedAt   string    `json:"updatedAt"`
+	ID                  uuid.UUID `json:"id"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description"`
+	AccessPolicies      int       `json:"accessPolicies"`
+	ClientWorkloads     int       `json:"clientWorkloads"`
+	TrustProviders      int       `json:"trustProviders"`
+	AccessConditions    int       `json:"accessConditions"`
+	CredentialProviders int       `json:"credentialProviders"`
+	ServerWorkloads     int       `json:"serverWorkloads"`
+	CreatedAt           string    `json:"createdAt"`
+	UpdatedAt           string    `json:"updatedAt"`
 }
 
 func toResourceSetResponse(rs *domain.ResourceSet) resourceSetResponse {
@@ -175,6 +194,24 @@ func toResourceSetResponses(sets []domain.ResourceSet) []resourceSetResponse {
 	resp := make([]resourceSetResponse, 0, len(sets))
 	for i := range sets {
 		resp = append(resp, toResourceSetResponse(&sets[i]))
+	}
+	return resp
+}
+
+func toResourceSetResponsesWithCounts(sets []domain.ResourceSet, counts map[uuid.UUID]domain.ResourceSetCounts) []resourceSetResponse {
+	resp := make([]resourceSetResponse, 0, len(sets))
+	for i := range sets {
+		r := toResourceSetResponse(&sets[i])
+		if counts != nil {
+			c := counts[sets[i].ID]
+			r.AccessPolicies = c.AccessPolicies
+			r.ClientWorkloads = c.ClientWorkloads
+			r.TrustProviders = c.TrustProviders
+			r.AccessConditions = c.AccessConditions
+			r.CredentialProviders = c.CredentialProviders
+			r.ServerWorkloads = c.ServerWorkloads
+		}
+		resp = append(resp, r)
 	}
 	return resp
 }

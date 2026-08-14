@@ -22,14 +22,16 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
   const option = useMemo(() => ({
     animation: true,
     animationDuration: 300,
-    tooltip: {
-      trigger: 'item' as const,
-      backgroundColor: '#fff',
-      borderColor: '#e5e7eb',
-      borderWidth: 1,
-      textStyle: { fontSize: 12, color: '#374151' },
-      formatter: hasData ? '{b}: {c}' : undefined,
-    },
+    tooltip: hasData
+      ? {
+          trigger: 'item' as const,
+          backgroundColor: '#fff',
+          borderColor: '#e5e7eb',
+          borderWidth: 1,
+          textStyle: { fontSize: 12, color: '#374151' },
+          formatter: '{b}: {c}',
+        }
+      : { show: false },
     legend: {
       orient: 'vertical' as const,
       right: 10,
@@ -38,6 +40,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
       itemHeight: 8,
       itemGap: 10,
       textStyle: { fontSize: 11, color: '#6b7280' },
+      selectedMode: hasData,
     },
     color: hasData ? colors : colors.map(() => '#e5e7eb'),
     series: [
@@ -56,6 +59,7 @@ export function DonutChart({ title, subtitle, total, labels, series, colors }: D
           formatter: () => hasData ? String(total) : 'No Data',
         },
         emphasis: {
+          disabled: !hasData,
           scale: false,
           label: { show: true, fontSize: 22, fontWeight: '400' },
         },

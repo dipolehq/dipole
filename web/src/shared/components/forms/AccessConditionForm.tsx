@@ -59,7 +59,7 @@ export function AccessConditionForm({
             <FloatingDropdown
               label="Integration Type"
               options={INTEGRATION_TYPES}
-              value={values.integration}
+              value={values.integration ?? ''}
               onChange={(v) => update({ integration: v })}
               disabled={disabled}
             />
@@ -69,7 +69,7 @@ export function AccessConditionForm({
                 <h5 className="text-xs font-semibold text-gray-800 mb-3">Conditions</h5>
                 {values.integration === 'geoip' && (
                   <GeoIPConditionForm
-                    countries={values.countries}
+                    countries={values.countries ?? [{ country: '', subdivisions: [''] }]}
                     onCountriesChange={(c) => update({ countries: c })}
                   />
                 )}
@@ -77,7 +77,7 @@ export function AccessConditionForm({
                   <TimeConditionForm
                     timezone={values.timezone}
                     onTimezoneChange={(v) => update({ timezone: v })}
-                    days={values.days}
+                    days={values.days ?? []}
                     onDaysChange={(d) => update({ days: d })}
                   />
                 )}
@@ -167,7 +167,7 @@ function GeoIPConditionForm({
               </div>
             </div>
             <div className="space-y-2">
-              {entry.subdivisions.map((sub, subIdx) => (
+              {(entry.subdivisions ?? ['']).map((sub, subIdx) => (
                 <div key={subIdx} className="flex items-center gap-1">
                   <div className="flex-1">
                     <FloatingDropdown
