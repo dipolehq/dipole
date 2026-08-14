@@ -30,27 +30,40 @@ const (
 )
 
 type SignupService struct {
-	tenants      repository.TenantRepository
-	users        repository.UserRepository
-	resourceSets repository.ResourceSetRepository
-	issuer       *identity.IdentityIssuer
+	tenants        repository.TenantRepository
+	users          repository.UserRepository
+	roles          repository.RoleRepository
+	resourceSets   repository.ResourceSetRepository
+	tenantProfiles TenantProfileWriter
+	issuer         *identity.IdentityIssuer
+}
+
+// TenantProfileWriter abstracts profile persistence for signup.
+type TenantProfileWriter interface {
+	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
 }
 
 func NewSignupService(
 	tenants repository.TenantRepository,
 	users repository.UserRepository,
+	roles repository.RoleRepository,
 	resourceSets repository.ResourceSetRepository,
+	tenantProfiles TenantProfileWriter,
 	issuer *identity.IdentityIssuer,
 ) *SignupService {
 	return &SignupService{
-		tenants:      tenants,
-		users:        users,
-		resourceSets: resourceSets,
-		issuer:       issuer,
+		tenants:        tenants,
+		users:          users,
+		roles:          roles,
+		resourceSets:   resourceSets,
+		tenantProfiles: tenantProfiles,
+		issuer:         issuer,
 	}
 }
 
 type SignupRequest struct {
+	FirstName   string
+	LastName    string
 	CompanyName string
 	Email       string
 	Password    string
@@ -70,6 +83,12 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	}
 	if req.Email == "" {
 		return nil, fmt.Errorf("email is required")
+	}
+	if req.FirstName == "" {
+		return nil, fmt.Errorf("first name is required")
+	}
+	if req.LastName == "" {
+		return nil, fmt.Errorf("last name is required")
 	}
 	if len(req.Password) < 6 {
 		return nil, fmt.Errorf("password must be at least 6 characters")
@@ -110,16 +129,38 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
+	displayName := req.FirstName + " " + req.LastName
 	user := &domain.User{
 		Email:        req.Email,
-		Name:         req.CompanyName + " Admin",
-		FirstName:    "Admin",
+		Name:         displayName,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
 		IsActive:     true,
 		PasswordHash: passwordHash,
 	}
+
+	// Create the default SuperAdmin role for the founding admin.
+	superAdminRole := &domain.Role{
+		Name:        "SuperAdmin",
+		Description: "Full administrative access",
+		IsActive:    true,
+	}
+	if err := s.roles.Create(ctx, tenant.ID, superAdminRole); err != nil {
+		return nil, fmt.Errorf("create super admin role: %w", err)
+	}
+	user.RoleID = &superAdminRole.ID
+
 	if err := s.users.Create(ctx, tenant.ID, user); err != nil {
 		return nil, fmt.Errorf("create admin user: %w", err)
 	}
+
+	// Pre-populate the tenant profile so the profile page shows data from day one.
+	_ = s.tenantProfiles.Upsert(ctx, tenant.ID, &domain.TenantProfile{
+		TenantID:  tenant.ID,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Email:     req.Email,
+	})
 
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
@@ -132,6 +173,7 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 			"user_id":          user.ID.String(),
 			"email":            user.Email,
 			"name":             user.Name,
+			"role_name":        "SuperAdmin",
 		},
 	})
 	if err != nil {

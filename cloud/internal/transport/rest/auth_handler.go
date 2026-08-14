@@ -188,6 +188,8 @@ func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		FirstName   string `json:"firstName"`
+		LastName    string `json:"lastName"`
 		CompanyName string `json:"companyName"`
 		Email       string `json:"email"`
 		Password    string `json:"password"`
@@ -198,6 +200,8 @@ func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, err := h.signupSvc.Signup(r.Context(), &service.SignupRequest{
+		FirstName:   req.FirstName,
+		LastName:    req.LastName,
 		CompanyName: req.CompanyName,
 		Email:       req.Email,
 		Password:    req.Password,

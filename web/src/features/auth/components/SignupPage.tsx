@@ -5,6 +5,8 @@ import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
 
 export function SignupPage() {
   const navigate = useNavigate()
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,6 +18,8 @@ export function SignupPage() {
     e.preventDefault()
     setError('')
 
+    if (!firstName.trim()) { setError('First name is required.'); return }
+    if (!lastName.trim()) { setError('Last name is required.'); return }
     if (!companyName.trim()) { setError('Company name is required.'); return }
     if (!email.trim()) { setError('Email is required.'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
@@ -25,7 +29,7 @@ export function SignupPage() {
     try {
       const res = await apiClient.post<{ token: string; user: { id: string; email: string; name: string }; subdomain: string }>(
         '/auth/signup',
-        { companyName: companyName.trim(), email: email.trim(), password },
+        { firstName: firstName.trim(), lastName: lastName.trim(), companyName: companyName.trim(), email: email.trim(), password },
       )
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
@@ -49,6 +53,24 @@ export function SignupPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="First name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+            />
+            <input
+              type="text"
+              placeholder="Last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+            />
+          </div>
           <div>
             <input
               type="text"

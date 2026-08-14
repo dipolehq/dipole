@@ -347,7 +347,7 @@ func buildHTTPServer(
 
 	feedbackHandler := rest.NewFeedbackHandler(cfg.ResendAPIKey, cfg.EmailFrom, "support@dipolehq.com")
 	feedbackHandler.RegisterRoutes(mux)
-	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer)
+	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(auditEmitter)
 	authHandler.RegisterRoutes(mux)

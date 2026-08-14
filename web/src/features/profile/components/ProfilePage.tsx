@@ -60,6 +60,22 @@ export function ProfilePage() {
   return <ProfileContent data={data} activeTab={activeTab} setActiveTab={setActiveTab} />
 }
 
+function parsePhone(fullPhone: string): { code: string; number: string } {
+  if (!fullPhone) return { code: '+1', number: '' }
+  // Match known country codes (longest first to avoid partial matches)
+  const codes = ['+971', '+91', '+65', '+61', '+44', '+1']
+  for (const c of codes) {
+    if (fullPhone.startsWith(c)) {
+      return { code: c, number: fullPhone.slice(c.length) }
+    }
+  }
+  // If phone starts with + but doesn't match known codes, keep as-is
+  if (fullPhone.startsWith('+')) {
+    return { code: '+1', number: fullPhone }
+  }
+  return { code: '+1', number: fullPhone }
+}
+
 function ProfileContent({
   data,
   activeTab,
@@ -71,26 +87,38 @@ function ProfileContent({
 }) {
   const qc = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const [firstName, setFirstName] = useState(data.firstName)
   const [lastName, setLastName] = useState(data.lastName)
-  const [email, setEmail] = useState(data.email)
-  const [countryCode, setCountryCode] = useState('+91')
-  const [phone, setPhone] = useState(data.phone)
+  const parsed = parsePhone(data.phone)
+  const [countryCode, setCountryCode] = useState(parsed.code)
+  const [phone, setPhone] = useState(parsed.number)
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      apiClient.put<ProfileData>('/profile', { firstName, lastName, email, phone }),
+    mutationFn: () => {
+      const fullPhone = phone ? `${countryCode}${phone}` : ''
+      return apiClient.put<ProfileData>('/profile', { firstName, lastName, email: data.email, phone: fullPhone })
+    },
     onSuccess: () => {
+      setSaveError('')
       qc.invalidateQueries({ queryKey: ['profile'] })
       setIsEditing(false)
+
+      // Update sessionStorage so the sidebar name reflects immediately.
+      const displayName = [firstName, lastName].filter(Boolean).join(' ')
+      if (displayName) {
+        try {
+          const raw = sessionStorage.getItem('dipole_user')
+          const user = raw ? JSON.parse(raw) : {}
+          user.name = displayName
+          sessionStorage.setItem('dipole_user', JSON.stringify(user))
+        } catch { /* ignore */ }
+      }
     },
-    onError: () => {
-      setFirstName(data.firstName)
-      setLastName(data.lastName)
-      setEmail(data.email)
-      setPhone(data.phone)
-      setIsEditing(false)
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to save profile.'
+      setSaveError(msg)
     },
   })
 
@@ -105,10 +133,12 @@ function ProfileContent({
   }
 
   function handleCancel() {
+    const p = parsePhone(data.phone)
     setFirstName(data.firstName)
     setLastName(data.lastName)
-    setEmail(data.email)
-    setPhone(data.phone)
+    setCountryCode(p.code)
+    setPhone(p.number)
+    setSaveError('')
     setIsEditing(false)
   }
 
@@ -184,12 +214,18 @@ function ProfileContent({
           <div className="px-6 py-5 overflow-y-auto border-r border-border">
             {activeTab === 'details' && (
               <div className="space-y-6">
+                {saveError && (
+                  <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    <p className="text-xs text-red-700">{saveError}</p>
+                  </div>
+                )}
+
                 <div className={disabled ? 'opacity-60 pointer-events-none' : ''}>
                   <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">User Details</h4>
                   <div className="space-y-4">
                     <FloatingInput label="First Name" value={firstName} onChange={setFirstName} disabled={disabled} required />
                     <FloatingInput label="Last Name" value={lastName} onChange={setLastName} disabled={disabled} required />
-                    <FloatingInput label="Email" value={email} onChange={setEmail} disabled={disabled} required />
+                    <FloatingInput label="Email" value={data.email} onChange={() => {}} disabled />
                     <div className="flex gap-3">
                       <div className="w-36">
                         <FloatingDropdown label="Code" options={COUNTRY_CODE_OPTIONS} value={countryCode} onChange={setCountryCode} disabled={disabled} />
@@ -305,12 +341,10 @@ function PasswordChangeForm() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit() {
     setError('')
-    setSuccess('')
 
     if (!currentPassword) { setError('Current password is required.'); return }
     if (newPassword.length < 6) { setError('New password must be at least 6 characters.'); return }
@@ -339,7 +373,6 @@ function PasswordChangeForm() {
         <FloatingInput label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} type="password" />
 
         {error && <p className="text-xs text-red-600">{error}</p>}
-        {success && <p className="text-xs text-green-600">{success}</p>}
 
         <button
           type="button"
