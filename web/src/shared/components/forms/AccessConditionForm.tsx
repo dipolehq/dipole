@@ -31,9 +31,9 @@ export function AccessConditionForm({
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="space-y-5">
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+      <div className="space-y-6">
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
           <div className="space-y-4">
             {statusSlot}
             <FloatingInput
@@ -53,8 +53,8 @@ export function AccessConditionForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Condition Configuration</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Condition Configuration</h4>
           <div className="space-y-4">
             <FloatingDropdown
               label="Integration Type"
@@ -86,8 +86,8 @@ export function AccessConditionForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Tags</h4>
           <TagsField
             value={values.tags}
             onChange={(tags) => update({ tags })}
@@ -257,7 +257,7 @@ function TimeConditionForm({
                   onClick={() =>
                     onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: false } : d)))
                   }
-                  className="text-red-400 hover:text-red-500 text-sm"
+                  className="text-gray-400 hover:text-gray-600 text-sm"
                 >
                   ×
                 </button>

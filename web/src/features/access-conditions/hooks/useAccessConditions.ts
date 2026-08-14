@@ -4,6 +4,7 @@ import {
   fetchAccessCondition,
   createAccessCondition,
   saveAccessCondition,
+  deleteAccessCondition,
 } from '@/features/access-conditions/api/accessConditionsApi'
 import type { AccessConditionInput } from '@/features/access-conditions/api/accessConditionsApi'
 
@@ -41,6 +42,16 @@ export function useSaveAccessCondition(id: string) {
     mutationFn: (input: AccessConditionInput) => saveAccessCondition(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['access-conditions', 'detail', id] })
+      qc.invalidateQueries({ queryKey: ['access-conditions', 'list'] })
+    },
+  })
+}
+
+export function useDeleteAccessCondition() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteAccessCondition(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['access-conditions', 'list'] })
     },
   })

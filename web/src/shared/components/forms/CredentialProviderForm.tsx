@@ -31,9 +31,9 @@ export function CredentialProviderForm({
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="space-y-5">
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+      <div className="space-y-6">
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
           <div className="space-y-4">
             {statusSlot}
             <FloatingInput
@@ -53,8 +53,8 @@ export function CredentialProviderForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Credential Configuration</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Credential Configuration</h4>
           <div className="space-y-4">
             <FloatingDropdown
               label="Credential Type"
@@ -75,8 +75,8 @@ export function CredentialProviderForm({
         </div>
 
         {['oidc_id_token', 'jwt_svid', 'vault_client_token'].includes(values.credentialType) && (
-          <div className="border border-border rounded-lg p-5">
-            <h4 className="text-sm font-semibold text-gray-800 mb-4">Custom Claims</h4>
+          <div>
+            <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Custom Claims</h4>
             <div className="space-y-2">
               {values.customClaims.map((claim, idx) => (
                 <div key={idx} className="flex items-center gap-2">
@@ -153,8 +153,8 @@ export function CredentialProviderForm({
           </div>
         )}
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Tags</h4>
           <TagsField
             value={values.tags}
             onChange={(tags) => update({ tags })}

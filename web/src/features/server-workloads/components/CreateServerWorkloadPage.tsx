@@ -38,68 +38,71 @@ export function CreateServerWorkloadPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={createMutation.isPending}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
-          >
-            {createMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={createMutation.isPending}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          {createMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
       </div>
 
       {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="flex h-full">
-          <div className="w-[60%] px-6 py-6 overflow-y-auto">
-            <div className="space-y-6">
-              <ServerWorkloadForm
-                values={values}
-                onChange={setValues}
-                statusSlot={
-                  <FloatingDropdown
-                    label="Status"
-                    options={[
-                      { value: 'active', label: 'Active' },
-                      { value: 'inactive', label: 'Inactive' },
-                    ]}
-                    value={status}
-                    onChange={setStatus}
-                  />
-                }
-              />
-            </div>
+      {/* Content box */}
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          {/* Form area */}
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <ServerWorkloadForm
+              values={values}
+              onChange={setValues}
+              statusSlot={
+                <FloatingDropdown
+                  label="Status"
+                  options={[
+                    { value: 'active', label: 'Active' },
+                    { value: 'inactive', label: 'Inactive' },
+                  ]}
+                  value={status}
+                  onChange={setStatus}
+                />
+              }
+            />
           </div>
-          <div className="w-[40%] px-6 py-6 overflow-y-auto">
-            <div className="border border-border rounded-lg p-5 sticky top-0">
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-gray-700">Server Workloads</span> represent
+
+          {/* Help text */}
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Server Workloads</span> represent
                 the services, APIs, or databases that Client Workloads access. They're identified by
                 host, port, and protocol.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                The <span className="font-semibold">authentication method</span> determines how
+              <p className="text-xs text-gray-600 leading-relaxed">
+                The <span className="font-semibold text-gray-800">authentication method</span> determines how
                 credentials are injected — HTTP Bearer, Basic, API Key header, database password
                 auth, AWS SigV4, or mTLS.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed">
+              <p className="text-xs text-gray-600 leading-relaxed">
                 Dipole supports HTTP, PostgreSQL, MySQL, Redis, Snowflake, Redshift, Oracle, MCP,
                 and TCP passthrough protocols.
               </p>

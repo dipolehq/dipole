@@ -210,3 +210,7 @@ export async function saveServerWorkload(id: string, input: ServerWorkloadInput)
 }
 
 export { apiErrorMessage } from '@/shared/lib/api-client'
+
+export async function deleteServerWorkload(id: string): Promise<void> {
+  await apiClient.delete(`${BASE}/${id}`)
+}
