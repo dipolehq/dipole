@@ -15,6 +15,7 @@ export function ExistingAccessConditionSelector({
 }: ExistingAccessConditionSelectorProps) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [localSelected, setLocalSelected] = useState<Set<string>>(new Set(selectedIds))
   const pageSize = 10
 
   const { data, isLoading } = useQuery({
@@ -25,6 +26,24 @@ export function ExistingAccessConditionSelector({
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  function toggleLocal(id: string) {
+    setLocalSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleUseSelected() {
+    // Find newly added ids (not already in selectedIds)
+    const newIds = Array.from(localSelected).filter((id) => !selectedIds.includes(id))
+    for (const id of newIds) {
+      onToggle(id)
+    }
+    onCancel()
+  }
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 260px)' }}>
@@ -44,7 +63,13 @@ export function ExistingAccessConditionSelector({
             onClick={onCancel}
             className="text-xs text-gray-500 hover:text-gray-700 font-medium"
           >
-            Done
+            Cancel
+          </button>
+          <button
+            onClick={handleUseSelected}
+            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
+          >
+            Use Selected
           </button>
         </div>
       </div>
@@ -81,18 +106,18 @@ export function ExistingAccessConditionSelector({
             )}
             {!isLoading &&
               items.map((ac) => {
-                const isSelected = selectedIds.includes(ac.id)
+                const isSelected = localSelected.has(ac.id)
                 return (
                   <tr
                     key={ac.id}
-                    onClick={() => onToggle(ac.id)}
+                    onClick={() => toggleLocal(ac.id)}
                     className={`cursor-pointer transition-colors ${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                   >
                     <td className="px-1 py-2.5 text-center">
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => onToggle(ac.id)}
+                        onChange={() => toggleLocal(ac.id)}
                         className="w-3.5 h-3.5 text-gray-600 focus:ring-gray-200"
                       />
                     </td>
