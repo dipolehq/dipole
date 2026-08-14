@@ -24,7 +24,7 @@ export function AgentControllersTable({ items, isLoading }: AgentControllersTabl
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none">
-            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+            <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>
           </th>
@@ -83,7 +83,7 @@ function StatusBadge({ status }: { status: string }) {
     healthy: { label: 'Healthy', color: 'text-green-600' },
     registered: { label: 'Registered', color: 'text-blue-600' },
     unregistered: { label: 'Unregistered', color: 'text-gray-400' },
-    not_connected: { label: 'Not Connected', color: 'text-orange-500' },
+    not_connected: { label: 'Not Connected', color: 'text-gray-600' },
   }
   const c = config[status] ?? { label: status, color: 'text-gray-500' }
   return <span className={`text-xs font-medium ${c.color}`}>{c.label}</span>

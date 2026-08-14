@@ -78,7 +78,7 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
             type="button"
             onClick={isEditing ? () => saveMutation.mutate() : () => setIsEditing(true)}
             disabled={saveMutation.isPending}
-            className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60 w-[60px] text-center"
+            className="px-4 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60 w-[60px] text-center"
           >
             {saveMutation.isPending ? 'Saving…' : isEditing ? 'Save' : 'Edit'}
           </button>
@@ -127,7 +127,7 @@ function GlobalPolicyForm({ data, queryClient }: { data: GlobalPolicyData; query
       <div className="w-[40%] px-6 py-6 overflow-y-auto">
         <div className="border border-border rounded-lg p-5 sticky top-0">
           <p className="text-xs text-gray-700 leading-relaxed mb-3">
-            <span className="font-semibold text-orange-600">Global Policy Compliance</span> defines organization-wide security standards for Access Policies and Agent Controllers.
+            <span className="font-semibold text-gray-700">Global Policy Compliance</span> defines organization-wide security standards for Access Policies and Agent Controllers.
           </p>
           <p className="text-xs text-gray-700 leading-relaxed mb-3">
             Each attribute can be set to <span className="font-semibold">Required</span> (must be present), <span className="font-semibold">Recommended</span> (flagged if missing), or <span className="font-semibold">Optional</span> (no enforcement).
@@ -164,7 +164,7 @@ function EnforcementRow({
             disabled={disabled}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${
               value === level.value
-                ? 'bg-orange-500 text-white'
+                ? 'bg-gray-800 text-white'
                 : 'bg-white text-gray-600 hover:bg-gray-50'
             } ${disabled ? 'cursor-default' : 'cursor-pointer'}`}
           >

@@ -4,14 +4,14 @@ import { ExternalLink, Play, Sparkles, MonitorPlay, ArrowRight } from 'lucide-re
 export function GettingStartedPanel() {
   return (
     <div className="flex flex-col h-full space-y-6">
-      <div className="bg-orange-50 rounded-lg p-4 grid grid-cols-3 gap-5 border border-orange-200">
+      <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-3 gap-5 border border-gray-200">
         {/* Introduction */}
         <div className="flex flex-col">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Introduction to Dipole</h3>
           <p className="text-xs text-gray-600 leading-relaxed flex-1">
             To gain a better understanding of Dipole and Workload Identity and Access Management (IAM), please watch the An Introduction To Dipole and IAM video.
           </p>
-          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium mt-4">
+          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium mt-4">
             <Play size={12} />
             How Does Dipole Work?
           </a>
@@ -22,10 +22,10 @@ export function GettingStartedPanel() {
           <h3 className="text-sm font-semibold text-gray-900 mb-2">QuickStart</h3>
           <p className="text-xs text-gray-600 leading-relaxed flex-1">
             Follow the QuickStart guide to set up a sandbox workloads and explore Dipole's capabilities. Explore our detailed{' '}
-            <a href="#" className="text-orange-500 hover:text-orange-600 font-semibold">Documentation</a>{' '}
+            <a href="#" className="text-gray-600 hover:text-gray-700 font-semibold">Documentation</a>{' '}
             to dive deeper into Dipole's features and configurations.
           </p>
-          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium mt-4">
+          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium mt-4">
             <Sparkles size={12} />
             QuickStart
           </a>
@@ -37,7 +37,7 @@ export function GettingStartedPanel() {
           <p className="text-xs text-gray-600 leading-relaxed flex-1">
             We're happy to provide a one-on-one demo that will help you better understand Dipole as well answer any questions you may have.
           </p>
-          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium mt-4">
+          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium mt-4">
             <MonitorPlay size={12} />
             Request a Demo
           </a>
@@ -57,7 +57,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/edge-components"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             Deploy Dipole Edge
             <ArrowRight size={11} />
@@ -75,7 +75,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/access-policies/new"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             Add an Access Policy
             <ArrowRight size={11} />
@@ -93,7 +93,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/reporting"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors mt-4"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors mt-4"
           >
             Explore Reporting
             <ArrowRight size={11} />
@@ -111,7 +111,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors mt-4"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors mt-4"
           >
             View Dashboard
             <ArrowRight size={11} />

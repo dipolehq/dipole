@@ -39,7 +39,7 @@ function deriveStatus(tp: ComplianceLevel, ac: ComplianceLevel): string {
 function ComplianceBadge({ level }: { level: ComplianceLevel }) {
   const config: Record<ComplianceLevel, { label: string; color: string }> = {
     required: { label: 'Required', color: 'text-red-500' },
-    recommended: { label: 'Recommended', color: 'text-orange-500' },
+    recommended: { label: 'Recommended', color: 'text-gray-600' },
     optional: { label: 'Optional', color: 'text-blue-500' },
     compliant: { label: '—', color: 'text-gray-400' },
   }
@@ -63,7 +63,7 @@ export function ReportingCompliancePage() {
         <button
           type="button"
           onClick={() => queryClient.invalidateQueries({ queryKey: ['compliance-report'] })}
-          className="text-gray-400 hover:text-orange-500 transition-colors"
+          className="text-gray-400 hover:text-gray-600 transition-colors"
           title="Refresh"
         >
           <RefreshCw size={15} strokeWidth={2.5} />
@@ -73,7 +73,7 @@ export function ReportingCompliancePage() {
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); navigate(`/access-policies/${row.original.id}`) }}
-          className="text-gray-400 hover:text-orange-500 transition-colors"
+          className="text-gray-400 hover:text-gray-600 transition-colors"
           title="View policy"
         >
           <ExternalLink size={14} />
@@ -129,7 +129,7 @@ export function ReportingCompliancePage() {
         const colors: Record<string, string> = {
           'Compliant': 'text-green-600',
           'Missing Required': 'text-red-500',
-          'Missing Recommended': 'text-orange-500',
+          'Missing Recommended': 'text-gray-600',
         }
         return <span className={`text-xs font-medium ${colors[status] ?? 'text-gray-600'}`}>{status}</span>
       },

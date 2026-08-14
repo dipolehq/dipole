@@ -51,7 +51,7 @@ export function ExistingWorkloadSelector({
             onClick={() => {
               if (selected) onSelect(selected)
             }}
-            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             Use Selected
           </button>
@@ -93,14 +93,14 @@ export function ExistingWorkloadSelector({
                 <tr
                   key={w.id}
                   onClick={() => setSelected(w.id)}
-                  className={`cursor-pointer transition-colors ${selected === w.id ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
+                  className={`cursor-pointer transition-colors ${selected === w.id ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-1 py-2.5 text-center">
                     <input
                       type="radio"
                       checked={selected === w.id}
                       onChange={() => setSelected(w.id)}
-                      className="w-3.5 h-3.5 text-orange-500 focus:ring-orange-200"
+                      className="w-3.5 h-3.5 text-gray-600 focus:ring-gray-200"
                     />
                   </td>
                   <td className="px-3 py-2.5 text-gray-900 font-medium truncate">{w.name}</td>
@@ -146,7 +146,7 @@ export function ExistingWorkloadSelector({
             <button
               key={i + 1}
               onClick={() => setPage(i + 1)}
-              className={`w-5 h-5 rounded text-[10px] font-medium ${page === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`w-5 h-5 rounded text-[10px] font-medium ${page === i + 1 ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               {i + 1}
             </button>

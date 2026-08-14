@@ -78,7 +78,7 @@ export function IdentityProviderDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Identity Provider not found.</p>
-          <button onClick={() => navigate('/administration/identity-providers')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/identity-providers')} className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -162,7 +162,7 @@ export function IdentityProviderDetailPage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
+          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
           {!isEditing && (
             <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
@@ -176,7 +176,7 @@ export function IdentityProviderDetailPage() {
             {sectionOpen && (
               <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
                 {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
+                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
                 ))}
               </div>
             )}
@@ -224,18 +224,18 @@ export function IdentityProviderDetailPage() {
                       <FloatingInput label="Client ID" value={clientId} onChange={setClientId} disabled={disabled} required />
                       <FloatingInput label="Scopes" value={scopes} onChange={setScopes} disabled={disabled} />
                       <div className="flex items-center gap-2">
-                        <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-orange-500 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                        <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
                         <span className="text-sm text-gray-700">PKCE Required</span>
                       </div>
                       <div>
-                        <label className="block text-xs text-orange-600 font-medium mb-2">Authentication Method</label>
+                        <label className="block text-xs text-gray-700 font-medium mb-2">Authentication Method</label>
                         <div className="flex items-center gap-4">
                           <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="authMethodDetail" checked={authMethod === 'client_secret'} onChange={() => !disabled && setAuthMethod('client_secret')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 disabled:opacity-60" />
+                            <input type="radio" name="authMethodDetail" checked={authMethod === 'client_secret'} onChange={() => !disabled && setAuthMethod('client_secret')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 disabled:opacity-60" />
                             <span className="text-sm text-gray-700">Client Secret</span>
                           </label>
                           <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="authMethodDetail" checked={authMethod === 'public_private_keypair'} onChange={() => !disabled && setAuthMethod('public_private_keypair')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 disabled:opacity-60" />
+                            <input type="radio" name="authMethodDetail" checked={authMethod === 'public_private_keypair'} onChange={() => !disabled && setAuthMethod('public_private_keypair')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 disabled:opacity-60" />
                             <span className="text-sm text-gray-700">Public Private Keypair</span>
                           </label>
                         </div>
@@ -275,10 +275,10 @@ export function IdentityProviderDetailPage() {
                         <tbody className="divide-y divide-border">
                           {mappings.map((mapping, index) => (
                             <tr key={index}>
-                              <td className="px-4 py-2"><input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} disabled={disabled} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" /></td>
-                              <td className="px-4 py-2"><input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} disabled={disabled} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" /></td>
+                              <td className="px-4 py-2"><input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} disabled={disabled} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
+                              <td className="px-4 py-2"><input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} disabled={disabled} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
                               <td className="px-4 py-2"><FloatingDropdown label="Role" options={ROLE_OPTIONS} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} disabled={disabled} /></td>
-                              <td className="px-2 py-2">{!disabled && <button type="button" onClick={() => handleRemoveMapping(index)} className="text-orange-400 hover:text-orange-600 transition-colors"><X size={14} /></button>}</td>
+                              <td className="px-2 py-2">{!disabled && <button type="button" onClick={() => handleRemoveMapping(index)} className="text-gray-500 hover:text-gray-700 transition-colors"><X size={14} /></button>}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -286,7 +286,7 @@ export function IdentityProviderDetailPage() {
                     </div>
                   )}
                   {!disabled && (
-                    <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium"><Plus size={13} />New Mapping</button>
+                    <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium"><Plus size={13} />New Mapping</button>
                   )}
                 </div>
               </div>
@@ -308,7 +308,7 @@ export function IdentityProviderDetailPage() {
               </div>
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Identity Providers</span> enable Single Sign-On (SSO) for your organization using SAML 2.0 or OIDC 1.0.
+                  <span className="font-semibold text-gray-700">Identity Providers</span> enable Single Sign-On (SSO) for your organization using SAML 2.0 or OIDC 1.0.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed">
                   <span className="font-semibold">Role Mappings</span> allow automatic user provisioning based on IdP group claims.

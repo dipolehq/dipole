@@ -68,7 +68,7 @@ export function AgentControllerDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Agent Controller not found.</p>
-          <button onClick={() => navigate('/edge-components')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Edge Components</button>
+          <button onClick={() => navigate('/edge-components')} className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium">← Back to Edge Components</button>
         </div>
       </div>
     )
@@ -131,7 +131,7 @@ export function AgentControllerDetailPage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">
+          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors">
             {isEditing ? 'Save' : 'Edit'}
           </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">
@@ -151,7 +151,7 @@ export function AgentControllerDetailPage() {
             {sectionOpen && (
               <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
                 {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
+                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
                 ))}
               </div>
             )}
@@ -218,7 +218,7 @@ export function AgentControllerDetailPage() {
 
                 <div className="border border-border rounded-lg p-5">
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                    <span className="font-semibold text-orange-600">Agent Controllers</span> manage Agent Proxy registration and token provisioning. They act as a registration broker between Agent Proxies and the Dipole Cloud.
+                    <span className="font-semibold text-gray-700">Agent Controllers</span> manage Agent Proxy registration and token provisioning. They act as a registration broker between Agent Proxies and the Dipole Cloud.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
                     Associating a <span className="font-semibold">Trust Provider</span> enables automated identity attestation during registration, removing the need for manual device codes.

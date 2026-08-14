@@ -62,12 +62,12 @@ export function APITokensSection() {
             value={tokenName}
             onChange={(e) => setTokenName(e.target.value)}
             placeholder="Token name"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
           />
           <select
             value={scopeResourceSetId}
             onChange={(e) => setScopeResourceSetId(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white"
+            className="px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white"
           >
             <option value="">All Resource Sets (Global)</option>
             {resourceSets.map((rs) => (
@@ -78,7 +78,7 @@ export function APITokensSection() {
             type="button"
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending || !tokenName.trim()}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap"
           >
             {generateMutation.isPending ? 'Generating…' : 'Generate Token'}
           </button>

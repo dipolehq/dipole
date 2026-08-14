@@ -61,7 +61,7 @@ export function DeployEdgePanel() {
             onClick={() => setSelectedEnv(env.value)}
             className={`w-full text-left px-3 py-4 rounded-lg border transition-colors ${
               selectedEnv === env.value
-                ? 'border-orange-500 bg-orange-50'
+                ? 'border-gray-400 bg-gray-50'
                 : 'border-border hover:border-gray-300 hover:bg-gray-50'
             }`}
           >
@@ -70,7 +70,7 @@ export function DeployEdgePanel() {
                 <EnvironmentLogo env={env.value} />
                 <span className={`text-sm font-semibold ${selectedEnv === env.value ? 'text-gray-900' : 'text-gray-700'}`}>{env.label}</span>
               </div>
-              <ArrowRight size={12} className={selectedEnv === env.value ? 'text-orange-500' : 'text-gray-400'} />
+              <ArrowRight size={12} className={selectedEnv === env.value ? 'text-gray-600' : 'text-gray-400'} />
             </div>
             <p className="text-[11px] text-gray-500 mt-1 ml-7">{env.subtitle}</p>
           </button>
@@ -198,7 +198,7 @@ function KubernetesDeployment({
     <>
       {/* Prerequisites */}
       <div className="border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-orange-600 mb-2">Prerequisites</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Prerequisites</h3>
         <p className="text-xs text-gray-600 mb-3">
           You must have the following to deploy Dipole Edge Components on Kubernetes:
         </p>
@@ -211,7 +211,7 @@ function KubernetesDeployment({
       {/* Step 1: Prepare Edge Components */}
       <div className="border border-border rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">1</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">1</span>
           <h3 className="text-sm font-semibold text-gray-900">Prepare Edge Components</h3>
         </div>
 
@@ -219,13 +219,13 @@ function KubernetesDeployment({
           1. Click <span className="font-semibold">New Agent Controller</span> or select an existing Agent Controller.
         </p>
         <p className="text-xs text-gray-500 mb-4">
-          See <Link to="/edge-components/agent_controllers/new" className="text-orange-500 hover:text-orange-600">Create an Agent Controller</Link>.
+          See <Link to="/edge-components/agent_controllers/new" className="text-gray-600 hover:text-gray-700">Create an Agent Controller</Link>.
         </p>
 
         <div className="flex items-center gap-3 mb-5">
           <Link
             to="/edge-components/agent_controllers/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             <Plus size={12} />
             New Agent Controller
@@ -255,7 +255,7 @@ function KubernetesDeployment({
                 type="button"
                 onClick={onGenerateCode}
                 disabled={isGenerating}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
                 {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
@@ -271,7 +271,7 @@ function KubernetesDeployment({
 
       {/* Message when no controller selected */}
       {!controllerSelected && (
-        <p className="text-xs text-orange-500 text-center py-4">
+        <p className="text-xs text-gray-600 text-center py-4">
           To continue, complete the preceding step: Add or create an Agent Controller.
         </p>
       )}
@@ -282,7 +282,7 @@ function KubernetesDeployment({
           {/* Step 2: Install Helm Chart */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">2</span>
               <h3 className="text-sm font-semibold text-gray-900">Install Dipole Edge Helm Chart</h3>
             </div>
 
@@ -300,7 +300,7 @@ function KubernetesDeployment({
           {/* Step 3: Annotate Client Workloads */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">3</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">3</span>
               <h3 className="text-sm font-semibold text-gray-900">Annotate Client Workloads</h3>
             </div>
 
@@ -318,7 +318,7 @@ function KubernetesDeployment({
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Configurations</h3>
             <p className="text-xs text-gray-600">
               For further configuration options, refer to the official documentation:{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Deploying Kubernetes Configurations</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Deploying Kubernetes Configurations</a>.
             </p>
           </div>
         </>
@@ -350,7 +350,7 @@ function UbuntuDeployment({
     <>
       {/* Prerequisites */}
       <div className="border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-orange-600 mb-2">Prerequisites</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Prerequisites</h3>
         <p className="text-xs text-gray-600 mb-4">
           Use the following table to make sure that the operating system and platform you're deploying to your virtual machine (VM) is supported:
         </p>
@@ -382,7 +382,7 @@ function UbuntuDeployment({
 
         <p className="text-xs text-gray-600 mb-2">
           Dipole recommends deploying Agent Controller on a standalone virtual machine and not collocating it with Agent Proxy. See{' '}
-          <a href="#" className="text-orange-500 hover:text-orange-600">About Colocating Edge Components</a>.
+          <a href="#" className="text-gray-600 hover:text-gray-700">About Colocating Edge Components</a>.
         </p>
         <p className="text-xs text-gray-600 mb-2">
           Make sure the VM is running and accessible via SSH.
@@ -393,7 +393,7 @@ function UbuntuDeployment({
       {/* Step 1: Prepare Edge Components */}
       <div className="border border-border rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">1</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">1</span>
           <h3 className="text-sm font-semibold text-gray-900">Prepare Edge Components</h3>
         </div>
 
@@ -401,13 +401,13 @@ function UbuntuDeployment({
           1. Click <span className="font-semibold">New Agent Controller</span> or select an existing Agent Controller.
         </p>
         <p className="text-xs text-gray-500 mb-4">
-          See <Link to="/edge-components/agent_controllers/new" className="text-orange-500 hover:text-orange-600">Create an Agent Controller</Link>.
+          See <Link to="/edge-components/agent_controllers/new" className="text-gray-600 hover:text-gray-700">Create an Agent Controller</Link>.
         </p>
 
         <div className="flex items-center gap-3 mb-5">
           <Link
             to="/edge-components/agent_controllers/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             <Plus size={12} />
             New Agent Controller
@@ -437,7 +437,7 @@ function UbuntuDeployment({
                 type="button"
                 onClick={onGenerateCode}
                 disabled={isGenerating}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
                 {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
@@ -453,7 +453,7 @@ function UbuntuDeployment({
 
       {/* Message when no controller selected */}
       {!controllerSelected && (
-        <p className="text-xs text-orange-500 text-center py-4">
+        <p className="text-xs text-gray-600 text-center py-4">
           To continue, complete the preceding step: Add or create an Agent Controller.
         </p>
       )}
@@ -464,7 +464,7 @@ function UbuntuDeployment({
           {/* Step 2: Install the Agent Controller */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">2</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Controller</h3>
             </div>
 
@@ -492,7 +492,7 @@ function UbuntuDeployment({
           {/* Step 3: Install the Agent Proxy */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">3</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">3</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Proxy</h3>
             </div>
 
@@ -522,11 +522,11 @@ function UbuntuDeployment({
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Configurations</h3>
             <p className="text-xs text-gray-600 mb-1">
               For further customization and advanced configurations, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Virtual Machine Deployment Guide</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Virtual Machine Deployment Guide</a>.
             </p>
             <p className="text-xs text-gray-600">
               This guide always uses the latest version of Agent Controller and Proxy. For other versions, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Releases</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Releases</a>.
             </p>
           </div>
         </>
@@ -558,7 +558,7 @@ function RedHatDeployment({
     <>
       {/* Prerequisites */}
       <div className="border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-orange-600 mb-2">Prerequisites</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Prerequisites</h3>
         <p className="text-xs text-gray-600 mb-4">
           Use the following table to make sure that the operating system and platform you're deploying to your virtual machine (VM) is supported:
         </p>
@@ -590,7 +590,7 @@ function RedHatDeployment({
 
         <p className="text-xs text-gray-600 mb-2">
           Dipole recommends deploying Agent Controller on a standalone virtual machine and not collocating it with Agent Proxy. See{' '}
-          <a href="#" className="text-orange-500 hover:text-orange-600">About Colocating Edge Components</a>.
+          <a href="#" className="text-gray-600 hover:text-gray-700">About Colocating Edge Components</a>.
         </p>
         <p className="text-xs text-gray-600 mb-2">
           Make sure the VM is running and accessible via SSH.
@@ -601,7 +601,7 @@ function RedHatDeployment({
       {/* Step 1: Prepare Edge Components */}
       <div className="border border-border rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">1</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">1</span>
           <h3 className="text-sm font-semibold text-gray-900">Prepare Edge Components</h3>
         </div>
 
@@ -609,13 +609,13 @@ function RedHatDeployment({
           1. Click <span className="font-semibold">New Agent Controller</span> or select an existing Agent Controller.
         </p>
         <p className="text-xs text-gray-500 mb-4">
-          See <Link to="/edge-components/agent_controllers/new" className="text-orange-500 hover:text-orange-600">Create an Agent Controller</Link>.
+          See <Link to="/edge-components/agent_controllers/new" className="text-gray-600 hover:text-gray-700">Create an Agent Controller</Link>.
         </p>
 
         <div className="flex items-center gap-3 mb-5">
           <Link
             to="/edge-components/agent_controllers/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             <Plus size={12} />
             New Agent Controller
@@ -645,7 +645,7 @@ function RedHatDeployment({
                 type="button"
                 onClick={onGenerateCode}
                 disabled={isGenerating}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
                 {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
@@ -661,7 +661,7 @@ function RedHatDeployment({
 
       {/* Message when no controller selected */}
       {!controllerSelected && (
-        <p className="text-xs text-orange-500 text-center py-4">
+        <p className="text-xs text-gray-600 text-center py-4">
           To continue, complete the preceding step: Add or create an Agent Controller.
         </p>
       )}
@@ -672,7 +672,7 @@ function RedHatDeployment({
           {/* Step 2: Install the Agent Controller */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">2</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Controller</h3>
             </div>
 
@@ -705,7 +705,7 @@ function RedHatDeployment({
           {/* Step 3: Install the Agent Proxy */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">3</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">3</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Proxy</h3>
             </div>
 
@@ -740,15 +740,15 @@ function RedHatDeployment({
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Configurations</h3>
             <p className="text-xs text-gray-600 mb-1">
               For further customization and advanced configurations, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Virtual Machine Deployment Guide</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Virtual Machine Deployment Guide</a>.
             </p>
             <p className="text-xs text-gray-600 mb-1">
               For <span className="font-semibold">SELinux configurations</span>, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole SELinux Deployment Guide</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole SELinux Deployment Guide</a>.
             </p>
             <p className="text-xs text-gray-600">
               This guide always uses the latest version of Agent Controller and Proxy. For other versions, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Releases</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Releases</a>.
             </p>
           </div>
         </>
@@ -780,7 +780,7 @@ function WindowsDeployment({
     <>
       {/* Prerequisites */}
       <div className="border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-orange-600 mb-2">Prerequisites</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Prerequisites</h3>
         <p className="text-xs text-gray-600 mb-4">
           Use the following table to make sure that the operating system and platform you're deploying to your virtual machine (VM) is supported:
         </p>
@@ -812,7 +812,7 @@ function WindowsDeployment({
 
         <p className="text-xs text-gray-600 mb-2">
           Dipole recommends deploying Agent Controller on a standalone virtual machine and not collocating it with Agent Proxy. See{' '}
-          <a href="#" className="text-orange-500 hover:text-orange-600">About Colocating Edge Components</a>.
+          <a href="#" className="text-gray-600 hover:text-gray-700">About Colocating Edge Components</a>.
         </p>
         <p className="text-xs text-gray-600 mb-2">
           Make sure the VM is running and accessible via RDP or SSH.
@@ -823,7 +823,7 @@ function WindowsDeployment({
       {/* Step 1: Prepare Edge Components */}
       <div className="border border-border rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">1</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">1</span>
           <h3 className="text-sm font-semibold text-gray-900">Prepare Edge Components</h3>
         </div>
 
@@ -831,13 +831,13 @@ function WindowsDeployment({
           1. Click <span className="font-semibold">New Agent Controller</span> or select an existing Agent Controller.
         </p>
         <p className="text-xs text-gray-500 mb-4">
-          See <Link to="/edge-components/agent_controllers/new" className="text-orange-500 hover:text-orange-600">Create an Agent Controller</Link>.
+          See <Link to="/edge-components/agent_controllers/new" className="text-gray-600 hover:text-gray-700">Create an Agent Controller</Link>.
         </p>
 
         <div className="flex items-center gap-3 mb-5">
           <Link
             to="/edge-components/agent_controllers/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             <Plus size={12} />
             New Agent Controller
@@ -867,7 +867,7 @@ function WindowsDeployment({
                 type="button"
                 onClick={onGenerateCode}
                 disabled={isGenerating}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60"
               >
                 {isGenerating ? 'Generating\u2026' : 'Create Device Code'}
               </button>
@@ -883,7 +883,7 @@ function WindowsDeployment({
 
       {/* Message when no controller selected */}
       {!controllerSelected && (
-        <p className="text-xs text-orange-500 text-center py-4">
+        <p className="text-xs text-gray-600 text-center py-4">
           To continue, complete the preceding step: Add or create an Agent Controller.
         </p>
       )}
@@ -894,7 +894,7 @@ function WindowsDeployment({
           {/* Step 2: Install the Agent Controller */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">2</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">2</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Controller</h3>
             </div>
 
@@ -917,7 +917,7 @@ function WindowsDeployment({
           {/* Step 3: Install the Agent Proxy */}
           <div className="border border-border rounded-lg p-5">
             <div className="flex items-center gap-2 mb-3">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-orange-500 text-orange-500 text-xs font-bold">3</span>
+              <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-gray-400 text-gray-600 text-xs font-bold">3</span>
               <h3 className="text-sm font-semibold text-gray-900">Install the Agent Proxy</h3>
             </div>
 
@@ -942,11 +942,11 @@ function WindowsDeployment({
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Configurations</h3>
             <p className="text-xs text-gray-600 mb-1">
               For further customization and advanced configurations, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Windows Deployment Guide</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Windows Deployment Guide</a>.
             </p>
             <p className="text-xs text-gray-600">
               This guide always uses the latest version of Agent Controller and Proxy. For other versions, see{' '}
-              <a href="#" className="text-orange-500 hover:text-orange-600">Dipole Releases</a>.
+              <a href="#" className="text-gray-600 hover:text-gray-700">Dipole Releases</a>.
             </p>
           </div>
         </>

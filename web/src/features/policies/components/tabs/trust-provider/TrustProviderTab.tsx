@@ -95,14 +95,14 @@ export function TrustProviderTab({
           <button
             type="button"
             onClick={() => setMode('new')}
-            className={`text-xs font-medium transition-colors ${mode === 'new' ? 'text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`text-xs font-medium transition-colors ${mode === 'new' ? 'text-gray-700' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Add New
           </button>
           <button
             type="button"
             onClick={() => setMode('existing')}
-            className={`text-xs font-medium transition-colors ${mode === 'existing' ? 'text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`text-xs font-medium transition-colors ${mode === 'existing' ? 'text-gray-700' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Select Existing
           </button>
@@ -174,7 +174,7 @@ export function TrustProviderTab({
             <button
               type="button"
               onClick={addProvider}
-              className="w-full py-2 border border-dashed border-orange-300 text-orange-500 hover:bg-orange-50 text-xs font-medium rounded-md transition-colors"
+              className="w-full py-2 border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 text-xs font-medium rounded-md transition-colors"
             >
               + Add Another Trust Provider
             </button>
@@ -195,7 +195,7 @@ export function TrustProviderTab({
                 <button
                   type="button"
                   onClick={addProvider}
-                  className="w-full py-2 border border-dashed border-orange-300 text-orange-500 hover:bg-orange-50 text-xs font-medium rounded-md transition-colors"
+                  className="w-full py-2 border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 text-xs font-medium rounded-md transition-colors"
                 >
                   + Add Another Trust Provider
                 </button>

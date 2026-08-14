@@ -134,7 +134,7 @@ export function LoginPage() {
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors pointer-events-auto"
+            className="px-8 py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors pointer-events-auto"
           >
             Sign In with Email
           </button>
@@ -171,7 +171,7 @@ export function LoginPage() {
                 type="button"
                 onClick={() => handleTenantSelect(t.id)}
                 disabled={loading}
-                className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors disabled:opacity-50"
+                className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 <div className="text-sm font-medium text-gray-900">{t.name}</div>
                 <div className="text-xs text-gray-500">{t.subdomain}</div>
@@ -198,7 +198,7 @@ export function LoginPage() {
                 onChange={(e) => setMfaCode(e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').slice(0, 9))}
                 required
                 autoFocus
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               />
             </div>
 
@@ -209,7 +209,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading || mfaCode.length < 6}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
             >
               {loading ? 'Verifying…' : 'Verify'}
             </button>
@@ -231,7 +231,7 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               />
             </div>
             <div>
@@ -241,7 +241,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               />
             </div>
 
@@ -252,14 +252,14 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
 
             <Link
               to="/forgot-password"
-              className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors"
+              className="block text-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               Forgot password?
             </Link>
@@ -289,7 +289,7 @@ export function LoginPage() {
 
         <Link
           to="/signup"
-          className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors mt-4"
+          className="block text-center text-sm text-gray-500 hover:text-gray-700 transition-colors mt-4"
         >
           Don't have an account? Sign up
         </Link>

@@ -130,7 +130,7 @@ export function ReportingPage() {
               type="button"
               onClick={() => setShowFilter(!showFilter)}
               className={`flex items-center gap-1.5 px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
-                showFilter ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-border text-gray-600 hover:border-gray-400'
+                showFilter ? 'border-gray-400 text-gray-700 bg-gray-50' : 'border-border text-gray-600 hover:border-gray-400'
               }`}
             >
               <Filter size={14} />
@@ -139,10 +139,10 @@ export function ReportingPage() {
             {showFilter && (
               <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-white border border-border rounded-lg shadow-lg z-50">
                 <div className="flex items-center justify-between mb-3">
-                  <button type="button" onClick={handleResetFilters} className="text-[11px] text-orange-500 hover:text-orange-600 font-medium">Reset All</button>
+                  <button type="button" onClick={handleResetFilters} className="text-[11px] text-gray-600 hover:text-gray-700 font-medium">Reset All</button>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setShowFilter(false)} className="text-[11px] text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
-                    <button type="button" onClick={() => setShowFilter(false)} className="px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-medium rounded-md transition-colors">Apply</button>
+                    <button type="button" onClick={() => setShowFilter(false)} className="px-2.5 py-1 bg-gray-800 hover:bg-gray-900 text-white text-[11px] font-medium rounded-md transition-colors">Apply</button>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -232,7 +232,7 @@ export function ReportingPage() {
         </div>
         <div className="flex items-center gap-1">
           <button disabled className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">←</button>
-          <button className="w-7 h-7 rounded text-xs font-medium bg-orange-500 text-white">1</button>
+          <button className="w-7 h-7 rounded text-xs font-medium bg-gray-800 text-white">1</button>
           <button disabled className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30">→</button>
         </div>
       </div>
@@ -253,7 +253,7 @@ function LogTypeSelector({ value, onChange }: { value: LogType; onChange: (v: Lo
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-[200px] px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+        className="flex items-center gap-1.5 w-[200px] px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
       >
         <FileText size={14} className="shrink-0" />
         <span className="truncate">{selectedLabel}</span>
@@ -268,7 +268,7 @@ function LogTypeSelector({ value, onChange }: { value: LogType; onChange: (v: Lo
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value as LogType); setOpen(false) }}
-              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${value === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${value === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
             >
               {opt.label}
             </button>

@@ -61,7 +61,7 @@ export function ResetPasswordPage() {
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
           >
             Go to Sign In
           </button>
@@ -90,7 +90,7 @@ export function ResetPasswordPage() {
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               />
             </div>
           )}
@@ -103,7 +103,7 @@ export function ResetPasswordPage() {
               onChange={(e) => setNewPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
 
@@ -115,7 +115,7 @@ export function ResetPasswordPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
 
@@ -126,7 +126,7 @@ export function ResetPasswordPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
           >
             {loading ? 'Resetting…' : 'Reset Password'}
           </button>

@@ -62,7 +62,7 @@ export function SSOCallbackPage() {
           <button
             type="button"
             onClick={() => navigate('/login', { replace: true })}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
           >
             Back to Sign In
           </button>

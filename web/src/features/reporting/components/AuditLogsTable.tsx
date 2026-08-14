@@ -29,7 +29,7 @@ function formatTimestamp(iso: string): string {
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
     Info: 'text-green-600',
-    Warn: 'text-orange-500',
+    Warn: 'text-gray-600',
     Alert: 'text-red-500',
   }
   return (
@@ -110,7 +110,7 @@ export function AuditLogsTable({ searchQuery, severity, category, data = [] }: A
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none">
-            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+            <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>
           </th>

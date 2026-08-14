@@ -23,7 +23,7 @@ function formatTimestamp(iso: string): string {
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const colors: Record<string, string> = { Info: 'text-green-600', Warn: 'text-orange-500', Alert: 'text-red-500' }
+  const colors: Record<string, string> = { Info: 'text-green-600', Warn: 'text-gray-600', Alert: 'text-red-500' }
   return <span className={`text-xs font-medium ${colors[severity] ?? 'text-gray-600'}`}>{severity}</span>
 }
 

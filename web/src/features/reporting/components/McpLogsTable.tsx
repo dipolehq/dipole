@@ -32,7 +32,7 @@ function formatTimestamp(iso: string): string {
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
     Info: 'text-green-600',
-    Warning: 'text-orange-500',
+    Warning: 'text-gray-600',
     Error: 'text-red-500',
   }
   return (
@@ -156,7 +156,7 @@ export function McpLogsTable({ searchQuery, severity, data = [], onRefresh }: Mc
             <button
               type="button"
               onClick={onRefresh}
-              className="text-gray-400 hover:text-orange-500 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors"
               title="Refresh"
             >
               <RefreshCw size={15} strokeWidth={2.5} />

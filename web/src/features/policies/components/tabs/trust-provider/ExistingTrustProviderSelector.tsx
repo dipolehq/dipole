@@ -86,14 +86,14 @@ export function ExistingTrustProviderSelector({
                   <tr
                     key={tp.id}
                     onClick={() => onToggle(tp.id)}
-                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
+                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                   >
                     <td className="px-1 py-2.5 text-center">
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => onToggle(tp.id)}
-                        className="w-3.5 h-3.5 text-orange-500 focus:ring-orange-200"
+                        className="w-3.5 h-3.5 text-gray-600 focus:ring-gray-200"
                       />
                     </td>
                     <td className="px-3 py-2.5 text-gray-900 font-medium truncate">{tp.name}</td>
@@ -140,7 +140,7 @@ export function ExistingTrustProviderSelector({
             <button
               key={i + 1}
               onClick={() => setPage(i + 1)}
-              className={`w-5 h-5 rounded text-[10px] font-medium ${page === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`w-5 h-5 rounded text-[10px] font-medium ${page === i + 1 ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               {i + 1}
             </button>

@@ -94,7 +94,7 @@ export function CreateLogStreamPage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
             {createMutation.isPending ? 'Saving…' : 'Save'}
           </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
@@ -160,7 +160,7 @@ export function CreateLogStreamPage() {
                     <div className="relative">
                       <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} />
                       <label className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} className="w-4 h-4 accent-orange-500 cursor-pointer" />
+                        <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} className="w-4 h-4 accent-gray-600 cursor-pointer" />
                         <span className="text-sm text-gray-700">TLS</span>
                       </label>
                     </div>
@@ -178,7 +178,7 @@ export function CreateLogStreamPage() {
                     <div className="relative">
                       <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} />
                       <label className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} className="w-4 h-4 accent-orange-500 cursor-pointer" />
+                        <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} className="w-4 h-4 accent-gray-600 cursor-pointer" />
                         <span className="text-sm text-gray-700">TLS</span>
                       </label>
                     </div>
@@ -195,7 +195,7 @@ export function CreateLogStreamPage() {
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Log Streams</span> export access authorization events, audit logs, or workload events to external SIEM systems for centralized monitoring and compliance.
+                <span className="font-semibold text-gray-700">Log Streams</span> export access authorization events, audit logs, or workload events to external SIEM systems for centralized monitoring and compliance.
               </p>
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
                 Choose a <span className="font-semibold">Destination Type</span> based on where you want events delivered — AWS S3, GCS, CrowdStrike, or Splunk.

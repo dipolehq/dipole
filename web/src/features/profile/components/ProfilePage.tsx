@@ -121,7 +121,7 @@ function ProfileContent({
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} disabled={saveMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+          <button type="button" onClick={handleEditToggle} disabled={saveMutation.isPending} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
             {saveMutation.isPending ? 'Saving…' : isEditing ? 'Save' : 'Edit'}
           </button>
           {isEditing && (
@@ -139,12 +139,12 @@ function ProfileContent({
             type="button"
             onClick={() => setActiveTab(tab.key)}
             className={`${idx === 0 ? 'pl-0 pr-3' : 'px-3'} py-2.5 text-xs font-medium transition-colors relative ${
-              activeTab === tab.key ? 'text-orange-600' : 'text-gray-500 hover:text-gray-800'
+              activeTab === tab.key ? 'text-gray-700' : 'text-gray-500 hover:text-gray-800'
             }`}
           >
             {tab.label}
             {activeTab === tab.key && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500 rounded-t" />
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-800 rounded-t" />
             )}
           </button>
         ))}
@@ -228,7 +228,7 @@ function ProfileContent({
               {activeTab === 'details' && (
                 <>
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                    <span className="font-semibold text-orange-600">User Profile</span> displays your account details and API access credentials.
+                    <span className="font-semibold text-gray-700">User Profile</span> displays your account details and API access credentials.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed">
                     Use the <span className="font-semibold">Generate</span> button to create a session access token for programmatic API access. Tokens are short-lived and scoped to your permissions.
@@ -243,7 +243,7 @@ function ProfileContent({
               {activeTab === 'mfa' && (
                 <>
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                    <span className="font-semibold text-orange-600">Multi-Factor Authentication</span> adds a second verification step to your sign-in process.
+                    <span className="font-semibold text-gray-700">Multi-Factor Authentication</span> adds a second verification step to your sign-in process.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed">
                     Use an authenticator app (Google Authenticator, Authy) for time-based one-time codes. Generate backup codes for emergency access.
@@ -318,7 +318,7 @@ function PasswordChangeForm() {
             type="button"
             onClick={handleSubmit}
             disabled={loading}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
           >
             {loading ? 'Updating…' : 'Update Password'}
           </button>

@@ -50,7 +50,7 @@ export function ResourceSetDetailPage() {
         </div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Resource Set not found.</p>
-          <button onClick={() => navigate('/administration/resource-sets')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/resource-sets')} className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -106,7 +106,7 @@ export function ResourceSetDetailPage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
+          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
           {!isEditing && (
             <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
@@ -120,7 +120,7 @@ export function ResourceSetDetailPage() {
             {sectionOpen && (
               <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
                 {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
+                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
                 ))}
               </div>
             )}
@@ -167,7 +167,7 @@ export function ResourceSetDetailPage() {
 
                 <div className="border border-border rounded-lg p-5">
                   <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                    <span className="font-semibold text-orange-600">Resource Sets</span> provide multi-tenancy within your organization. Each Resource Set is an isolated group of resources.
+                    <span className="font-semibold text-gray-700">Resource Sets</span> provide multi-tenancy within your organization. Each Resource Set is an isolated group of resources.
                   </p>
                   <p className="text-xs text-gray-700 leading-relaxed">
                     Assign <span className="font-semibold">Roles</span> to control which users can manage resources within this Resource Set.

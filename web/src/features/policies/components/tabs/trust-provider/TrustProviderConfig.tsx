@@ -223,7 +223,7 @@ export function TrustProviderConfig({
                 </div>
                 <button
                   onClick={() => removeMatchRule(idx)}
-                  className="text-orange-400 hover:text-red-500 text-sm"
+                  className="text-gray-500 hover:text-red-500 text-sm"
                 >
                   ×
                 </button>
@@ -232,7 +232,7 @@ export function TrustProviderConfig({
           </div>
           <button
             onClick={addMatchRule}
-            className="mt-3 text-xs text-orange-500 hover:text-orange-600 font-medium"
+            className="mt-3 text-xs text-gray-600 hover:text-gray-700 font-medium"
           >
             + New
           </button>
@@ -273,7 +273,7 @@ export function TrustProviderConfig({
             </div>
             <div className="flex flex-col gap-2 pt-2">
               <label
-                className="cursor-pointer text-orange-500 hover:text-orange-600"
+                className="cursor-pointer text-gray-600 hover:text-gray-700"
                 title="Upload certificate"
               >
                 <input
@@ -301,7 +301,7 @@ export function TrustProviderConfig({
               </label>
               <button
                 onClick={() => onCertificateChange('')}
-                className="text-orange-500 hover:text-red-500"
+                className="text-gray-600 hover:text-red-500"
                 title="Clear certificate"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -409,7 +409,7 @@ function CertificateSignedSection() {
         <FloatingInput label="Search" value="" onChange={() => {}} />
         <button
           onClick={addCert}
-          className="flex items-center gap-1 px-3 py-1.5 border border-orange-500 text-orange-500 hover:bg-orange-50 text-xs font-medium rounded-md transition-colors"
+          className="flex items-center gap-1 px-3 py-1.5 border border-gray-400 text-gray-600 hover:bg-gray-50 text-xs font-medium rounded-md transition-colors"
         >
           + Add
         </button>
@@ -491,7 +491,7 @@ function CertificateSignedSection() {
                           </div>
                           <div className="flex flex-col gap-2 pt-2">
                             <label
-                              className="cursor-pointer text-orange-500 hover:text-orange-600"
+                              className="cursor-pointer text-gray-600 hover:text-gray-700"
                               title="Upload"
                             >
                               <input
@@ -528,7 +528,7 @@ function CertificateSignedSection() {
                             </label>
                             <button
                               onClick={() => updateCert(cert.id, 'certificate', '')}
-                              className="text-orange-500 hover:text-red-500"
+                              className="text-gray-600 hover:text-red-500"
                               title="Clear"
                             >
                               <svg

@@ -26,7 +26,7 @@ export function PolicyDetailPage() {
           <p className="text-sm text-gray-500">Policy not found.</p>
           <button
             onClick={() => navigate('/access-policies')}
-            className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium"
+            className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium"
           >
             ← Back to Access Policies
           </button>

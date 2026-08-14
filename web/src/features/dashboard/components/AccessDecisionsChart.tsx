@@ -83,7 +83,7 @@ export function AccessDecisionsChart({ data, timeRange = '24h', onTimeRangeChang
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#69db7c]" />Authorized</span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#ff6b6b]" />Denied</span>
           </div>
-          <button onClick={onRefresh} className="p-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors">
+          <button onClick={onRefresh} className="p-2 rounded-md bg-gray-800 hover:bg-gray-900 text-white transition-colors">
             <RotateCw size={14} />
           </button>
         </div>

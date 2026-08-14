@@ -42,7 +42,7 @@ export function CredentialProviderDetailPage() {
           <p className="text-sm text-gray-500">Credential provider not found.</p>
           <button
             onClick={() => navigate('/credential-providers')}
-            className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium"
+            className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium"
           >
             ← Back to Credential Providers
           </button>
@@ -101,7 +101,7 @@ export function CredentialProviderDetailPage() {
           <button
             type="button"
             onClick={handleEditToggle}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
           >
             {isEditing ? 'Save' : 'Edit'}
           </button>
@@ -141,7 +141,7 @@ export function CredentialProviderDetailPage() {
                       setSelectedSection(opt.value)
                       setSectionOpen(false)
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
                   >
                     {opt.label}
                   </button>
@@ -210,7 +210,7 @@ export function CredentialProviderDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Credential Providers</span> are
+                  <span className="font-semibold text-gray-700">Credential Providers</span> are
                   the systems that produce the credential injected into requests. They answer: "What
                   credential does the Server Workload expect?"
                 </p>

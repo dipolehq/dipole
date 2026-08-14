@@ -24,7 +24,7 @@ async function fetchComplianceReport(): Promise<GlobalPolicyComplianceEntry[]> {
 function ComplianceBadge({ level }: { level: ComplianceLevel }) {
   const config: Record<ComplianceLevel, { label: string; color: string }> = {
     required: { label: 'Required', color: 'text-red-500' },
-    recommended: { label: 'Recommended', color: 'text-orange-500' },
+    recommended: { label: 'Recommended', color: 'text-gray-600' },
     optional: { label: 'Optional', color: 'text-blue-500' },
     compliant: { label: '', color: '' },
   }
@@ -95,7 +95,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none">
-            <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+            <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-gray-600 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>
           </th>
@@ -122,7 +122,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
               <button
                 type="button"
                 onClick={() => navigate(`/access-policies/${entry.id}`)}
-                className="text-gray-400 hover:text-orange-500 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <ExternalLink size={14} />
               </button>

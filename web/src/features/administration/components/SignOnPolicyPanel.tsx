@@ -68,7 +68,7 @@ function SignOnPolicyForm({ data, queryClient }: { data: SignOnPolicyData; query
               type="button"
               onClick={isEditing ? handleSave : handleEdit}
               disabled={saveMutation.isPending}
-              className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60 w-[60px] text-center"
+              className="px-4 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-60 w-[60px] text-center"
             >
               {saveMutation.isPending ? 'Saving…' : isEditing ? 'Save' : 'Edit'}
             </button>
@@ -110,7 +110,7 @@ function SignOnPolicyForm({ data, queryClient }: { data: SignOnPolicyData; query
       <div className="w-[40%] px-6 py-6 overflow-y-auto">
         <div className="border border-border rounded-lg p-5 sticky top-0">
           <p className="text-xs text-gray-700 leading-relaxed mb-3">
-            <span className="font-semibold text-orange-600">Sign-On Policy</span> controls how users authenticate into the Dipole tenant.
+            <span className="font-semibold text-gray-700">Sign-On Policy</span> controls how users authenticate into the Dipole tenant.
           </p>
           <p className="text-xs text-gray-700 leading-relaxed mb-3">
             <span className="font-semibold">Single Sign-On</span> centralizes authentication through an external identity provider, while <span className="font-semibold">Multi-Factor Authentication</span> adds a second verification step for native sign-ins.
@@ -130,7 +130,7 @@ function Toggle({ enabled, onChange, disabled = false }: { enabled: boolean; onC
       type="button"
       onClick={() => !disabled && onChange(!enabled)}
       disabled={disabled}
-      className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-orange-500' : 'bg-gray-300'} ${disabled ? 'cursor-default' : 'cursor-pointer'}`}
+      className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-gray-800' : 'bg-gray-300'} ${disabled ? 'cursor-default' : 'cursor-pointer'}`}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}

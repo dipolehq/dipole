@@ -209,3 +209,7 @@ export async function saveTrustProvider(id: string, input: TrustProviderInput): 
 }
 
 export { apiErrorMessage } from '@/shared/lib/api-client'
+
+export async function deleteTrustProvider(id: string): Promise<void> {
+  await apiClient.delete(`${BASE}/${id}`)
+}

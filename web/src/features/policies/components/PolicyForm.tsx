@@ -131,7 +131,7 @@ export function PolicyForm({
             <button
               type="button"
               onClick={handlePrimary}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+              className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
             >
               {primaryLabel}
             </button>
@@ -162,12 +162,12 @@ export function PolicyForm({
               type="button"
               onClick={() => setActiveTab(tab.key)}
               className={`${idx === 0 ? 'pl-0 pr-3' : 'px-3'} py-2.5 text-xs font-medium transition-colors relative ${
-                activeTab === tab.key ? 'text-orange-600' : 'text-gray-500 hover:text-gray-800'
+                activeTab === tab.key ? 'text-gray-700' : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               {tab.label}
               {activeTab === tab.key && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500 rounded-t" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-800 rounded-t" />
               )}
             </button>
           ))}
@@ -185,7 +185,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -209,7 +209,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -244,7 +244,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -279,7 +279,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -320,7 +320,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -361,7 +361,7 @@ export function PolicyForm({
                       <button
                         type="button"
                         onClick={() => toggleTabLock(activeTab)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-orange-500 text-orange-600 hover:bg-orange-50' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${isTabLocked(activeTab) ? 'border border-gray-400 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 hover:bg-gray-900 text-white'}`}
                       >
                         {isTabLocked(activeTab) ? 'Edit' : 'Save'}
                       </button>
@@ -416,7 +416,7 @@ export function PolicyForm({
                     )}
                     <div className="border border-border rounded-lg p-5">
                       <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                        <span className="font-semibold text-orange-600">Access Policies</span> are the
+                        <span className="font-semibold text-gray-700">Access Policies</span> are the
                         fundamental unit of authorization. They define who (Client Workload) can
                         access what (Server Workload), under what conditions, and with what
                         credential.
@@ -431,7 +431,7 @@ export function PolicyForm({
                 {activeTab === 'client' && (
                   <div className="border border-border rounded-lg p-5">
                     <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                      <span className="font-semibold text-orange-600">Client Workloads</span>{' '}
+                      <span className="font-semibold text-gray-700">Client Workloads</span>{' '}
                       represent the software that initiates access requests. They are identified by
                       attributes from their runtime environment.
                     </p>
@@ -444,7 +444,7 @@ export function PolicyForm({
                 {activeTab === 'trust' && (
                   <div className="border border-border rounded-lg p-5">
                     <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                      <span className="font-semibold text-orange-600">Trust Providers</span> verify
+                      <span className="font-semibold text-gray-700">Trust Providers</span> verify
                       workload identity using cryptographic attestation. Multiple providers use AND
                       logic — all must pass.
                     </p>
@@ -457,7 +457,7 @@ export function PolicyForm({
                 {activeTab === 'conditions' && (
                   <div className="border border-border rounded-lg p-5">
                     <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                      <span className="font-semibold text-orange-600">Access Conditions</span> add
+                      <span className="font-semibold text-gray-700">Access Conditions</span> add
                       contextual security checks beyond identity. All conditions use AND logic.
                     </p>
                     <p className="text-xs text-gray-700 leading-relaxed">
@@ -469,7 +469,7 @@ export function PolicyForm({
                 {activeTab === 'credential' && (
                   <div className="border border-border rounded-lg p-5">
                     <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                      <span className="font-semibold text-orange-600">Credential Providers</span>{' '}
+                      <span className="font-semibold text-gray-700">Credential Providers</span>{' '}
                       produce the credential that gets injected into the request to the Server
                       Workload.
                     </p>
@@ -482,7 +482,7 @@ export function PolicyForm({
                 {activeTab === 'server' && (
                   <div className="border border-border rounded-lg p-5">
                     <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                      <span className="font-semibold text-orange-600">Server Workloads</span>{' '}
+                      <span className="font-semibold text-gray-700">Server Workloads</span>{' '}
                       represent the services, APIs, or databases being accessed. They're identified
                       by host, port, and protocol.
                     </p>

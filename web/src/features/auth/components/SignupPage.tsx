@@ -56,7 +56,7 @@ export function SignupPage() {
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
           <div>
@@ -66,7 +66,7 @@ export function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
           <div>
@@ -77,7 +77,7 @@ export function SignupPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
           <div>
@@ -88,7 +88,7 @@ export function SignupPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
           </div>
 
@@ -99,7 +99,7 @@ export function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
           >
             {loading ? 'Creating account…' : 'Create Account'}
           </button>
@@ -110,7 +110,7 @@ export function SignupPage() {
 
           <Link
             to="/login"
-            className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors"
+            className="block text-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             Already have an account? Sign in
           </Link>

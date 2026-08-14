@@ -102,7 +102,7 @@ export function CreateRolePage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
+          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
             {createMutation.isPending ? 'Saving…' : 'Save'}
           </button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
@@ -138,7 +138,7 @@ export function CreateRolePage() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50 border-b border-border">
-                        <th className="px-4 py-3 text-[11px] font-bold text-orange-600 uppercase tracking-wider text-left">Entity</th>
+                        <th className="px-4 py-3 text-[11px] font-bold text-gray-700 uppercase tracking-wider text-left">Entity</th>
                         <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">No Access</th>
                         <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read Only</th>
                         <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read/Write</th>
@@ -149,13 +149,13 @@ export function CreateRolePage() {
                         <tr key={entity} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-gray-700">{entity}</td>
                           <td className="px-4 py-3 text-center">
-                            <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => handlePermissionChange(entity, 'no_access')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                            <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => handlePermissionChange(entity, 'no_access')} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer" />
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => handlePermissionChange(entity, 'read_only')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                            <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => handlePermissionChange(entity, 'read_only')} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer" />
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => handlePermissionChange(entity, 'read_write')} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer" />
+                            <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => handlePermissionChange(entity, 'read_write')} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer" />
                           </td>
                         </tr>
                       ))}
@@ -170,7 +170,7 @@ export function CreateRolePage() {
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Roles</span> define what actions a user can perform across the Dipole platform. Each role is a collection of permissions scoped to specific entities.
+                <span className="font-semibold text-gray-700">Roles</span> define what actions a user can perform across the Dipole platform. Each role is a collection of permissions scoped to specific entities.
               </p>
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
                 Use <span className="font-semibold">Resource Set Assignments</span> to limit the role&apos;s scope to specific resource groups, enabling multi-tenancy within your organization.
@@ -223,11 +223,11 @@ function ResourceSetMultiSelect({
         type="button"
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm transition-colors ${
-          open ? 'border-orange-400 ring-2 ring-orange-100' : 'border-border'
+          open ? 'border-gray-400 ring-2 ring-gray-200' : 'border-border'
         } ${displayText ? 'text-gray-900' : 'text-gray-400'}`}
       >
         <span className="truncate">{displayText || 'Select Resource Set(s)...'}</span>
-        <svg className={`w-3.5 h-3.5 shrink-0 text-orange-500 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <svg className={`w-3.5 h-3.5 shrink-0 text-gray-600 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -240,7 +240,7 @@ function ResourceSetMultiSelect({
               type="button"
               onClick={() => handleToggle(opt.value)}
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                selected.includes(opt.value) ? 'bg-gray-100 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                selected.includes(opt.value) ? 'bg-gray-100 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               {opt.label}
@@ -256,7 +256,7 @@ function ResourceSetMultiSelect({
             return (
               <div key={value} className="flex items-center justify-between px-3 py-2 bg-gray-100 rounded-md">
                 <span className="text-sm text-gray-700">{label}</span>
-                <button type="button" onClick={() => handleRemove(value)} className="text-orange-400 hover:text-orange-600 transition-colors">
+                <button type="button" onClick={() => handleRemove(value)} className="text-gray-500 hover:text-gray-700 transition-colors">
                   <X size={14} />
                 </button>
               </div>

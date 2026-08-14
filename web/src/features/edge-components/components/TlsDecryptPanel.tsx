@@ -33,7 +33,7 @@ export function TlsDecryptPanel() {
             </p>
           </div>
 
-          <a href="#" className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium shrink-0">
+          <a href="#" className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium shrink-0">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
             Documentation
           </a>
@@ -55,7 +55,7 @@ export function TlsDecryptPanel() {
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 border border-orange-500 text-orange-500 hover:bg-orange-50 text-xs font-medium rounded-md transition-colors"
+            className="px-4 py-2 border border-gray-400 text-gray-600 hover:bg-gray-50 text-xs font-medium rounded-md transition-colors"
           >
             Save
           </button>
@@ -63,7 +63,7 @@ export function TlsDecryptPanel() {
           <button
             type="button"
             onClick={handleDownloadRootCA}
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             <Download size={12} />
             Download Tenant Root CA

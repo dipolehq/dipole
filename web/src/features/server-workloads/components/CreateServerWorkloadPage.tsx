@@ -45,7 +45,7 @@ export function CreateServerWorkloadPage() {
             type="button"
             onClick={handleSave}
             disabled={createMutation.isPending}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
             {createMutation.isPending ? 'Saving…' : 'Save'}
           </button>
@@ -90,7 +90,7 @@ export function CreateServerWorkloadPage() {
           <div className="w-[40%] px-6 py-6 overflow-y-auto">
             <div className="border border-border rounded-lg p-5 sticky top-0">
               <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Server Workloads</span> represent
+                <span className="font-semibold text-gray-700">Server Workloads</span> represent
                 the services, APIs, or databases that Client Workloads access. They're identified by
                 host, port, and protocol.
               </p>

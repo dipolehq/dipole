@@ -42,7 +42,7 @@ export function AccessConditionDetailPage() {
           <p className="text-sm text-gray-500">Access condition not found.</p>
           <button
             onClick={() => navigate('/access-conditions')}
-            className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium"
+            className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium"
           >
             ← Back to Access Conditions
           </button>
@@ -104,7 +104,7 @@ export function AccessConditionDetailPage() {
             type="button"
             onClick={handleEditToggle}
             disabled={isEditing && saveMutation.isPending}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60"
           >
             {isEditing ? (saveMutation.isPending ? 'Saving…' : 'Save') : 'Edit'}
           </button>
@@ -147,7 +147,7 @@ export function AccessConditionDetailPage() {
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                       selectedSection === opt.value
-                        ? 'bg-orange-50 text-orange-600 font-medium'
+                        ? 'bg-gray-50 text-gray-700 font-medium'
                         : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
@@ -218,7 +218,7 @@ export function AccessConditionDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Access Conditions</span> add
+                  <span className="font-semibold text-gray-700">Access Conditions</span> add
                   contextual security checks beyond identity verification. Even if a workload's
                   identity is verified, additional conditions must be satisfied before access is
                   granted.

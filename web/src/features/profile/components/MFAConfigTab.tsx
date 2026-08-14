@@ -123,7 +123,7 @@ export function MFAConfigTab() {
               placeholder="000000"
               value={verifyCode}
               onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
 
             {error && <p className="text-xs text-red-600">{error}</p>}
@@ -133,7 +133,7 @@ export function MFAConfigTab() {
                 type="button"
                 onClick={handleVerify}
                 disabled={loading || verifyCode.length !== 6}
-                className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+                className="flex-1 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50"
               >
                 {loading ? 'Verifying…' : 'Verify & Enable'}
               </button>
@@ -174,7 +174,7 @@ export function MFAConfigTab() {
           <button
             type="button"
             onClick={() => setBackupCodes(null)}
-            className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+            className="w-full py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
           >
             I've saved these codes
           </button>
@@ -226,7 +226,7 @@ export function MFAConfigTab() {
                 {status?.enabled ? (
                   <span className="text-green-600 font-medium">Active</span>
                 ) : (
-                  <button type="button" onClick={handleSetup} disabled={loading} className="text-orange-500 hover:text-orange-600 font-medium">
+                  <button type="button" onClick={handleSetup} disabled={loading} className="text-gray-600 hover:text-gray-700 font-medium">
                     + Add Authenticator App
                   </button>
                 )}
@@ -238,7 +238,7 @@ export function MFAConfigTab() {
                 {status?.hasBackupCodes ? (
                   <span className="text-green-600 font-medium">Generated</span>
                 ) : status?.enabled ? (
-                  <button type="button" onClick={handleGenerateBackupCodes} disabled={loading} className="text-orange-500 hover:text-orange-600 font-medium">
+                  <button type="button" onClick={handleGenerateBackupCodes} disabled={loading} className="text-gray-600 hover:text-gray-700 font-medium">
                     + Add Backup Codes
                   </button>
                 ) : (

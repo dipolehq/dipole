@@ -57,7 +57,7 @@ export function ForgotPasswordPage() {
                 <p className="text-xs text-gray-800 font-mono break-all select-all">{resetToken}</p>
                 <Link
                   to={`/reset-password?token=${encodeURIComponent(resetToken)}`}
-                  className="inline-block mt-3 text-xs text-orange-600 hover:text-orange-700 font-medium"
+                  className="inline-block mt-3 text-xs text-gray-700 hover:text-gray-800 font-medium"
                 >
                   Use this token to reset password →
                 </Link>
@@ -66,7 +66,7 @@ export function ForgotPasswordPage() {
 
             <Link
               to="/login"
-              className="block text-center text-sm text-orange-600 hover:text-orange-700 font-medium"
+              className="block text-center text-sm text-gray-700 hover:text-gray-800 font-medium"
             >
               ← Back to Sign In
             </Link>
@@ -80,7 +80,7 @@ export function ForgotPasswordPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               />
             </div>
 
@@ -91,7 +91,7 @@ export function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
             >
               {loading ? 'Sending…' : 'Send Reset Link'}
             </button>

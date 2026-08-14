@@ -4,6 +4,7 @@ import {
   fetchTrustProvider,
   createTrustProvider,
   saveTrustProvider,
+  deleteTrustProvider,
 } from '@/features/trust-providers/api/trustProvidersApi'
 import type { TrustProviderInput } from '@/features/trust-providers/api/trustProvidersApi'
 
@@ -41,6 +42,16 @@ export function useSaveTrustProvider(id: string) {
     mutationFn: (input: TrustProviderInput) => saveTrustProvider(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trust-providers', 'detail', id] })
+      qc.invalidateQueries({ queryKey: ['trust-providers', 'list'] })
+    },
+  })
+}
+
+export function useDeleteTrustProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteTrustProvider(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['trust-providers', 'list'] })
     },
   })

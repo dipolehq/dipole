@@ -13,7 +13,7 @@ export const STAT_CARDS: StatConfig[] = [
   { key: 'trustProviders', title: 'Trust Providers', icon: CheckCircle, color: 'text-purple-500' },
   { key: 'accessConditions', title: 'Access Conditions', icon: Clock, color: 'text-purple-500' },
   { key: 'credentialProviders', title: 'Credential Providers', icon: Lock, color: 'text-purple-500' },
-  { key: 'serverWorkloads', title: 'Server Workloads', icon: Server, color: 'text-orange-500' },
+  { key: 'serverWorkloads', title: 'Server Workloads', icon: Server, color: 'text-gray-600' },
 ]
 
 export const CREDENTIAL_USAGE_CONFIG = {

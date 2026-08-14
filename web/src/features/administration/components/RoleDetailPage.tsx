@@ -91,7 +91,7 @@ export function RoleDetailPage() {
         <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Role not found.</p>
-          <button onClick={() => navigate('/administration/roles')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+          <button onClick={() => navigate('/administration/roles')} className="mt-4 text-xs text-gray-600 hover:text-gray-700 font-medium">← Back to Administration</button>
         </div>
       </div>
     )
@@ -162,7 +162,7 @@ export function RoleDetailPage() {
       <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
         <PageHeader />
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
+          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
           <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
           {!isEditing && (
             <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
@@ -176,7 +176,7 @@ export function RoleDetailPage() {
             {sectionOpen && (
               <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
                 {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
+                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-gray-50 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
                 ))}
               </div>
             )}
@@ -211,7 +211,7 @@ export function RoleDetailPage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="bg-gray-50 border-b border-border">
-                          <th className="px-4 py-3 text-[11px] font-bold text-orange-600 uppercase tracking-wider text-left">Entity</th>
+                          <th className="px-4 py-3 text-[11px] font-bold text-gray-700 uppercase tracking-wider text-left">Entity</th>
                           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">No Access</th>
                           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read Only</th>
                           <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-28 whitespace-nowrap">Read/Write</th>
@@ -222,13 +222,13 @@ export function RoleDetailPage() {
                           <tr key={entity} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3 text-gray-700">{entity}</td>
                             <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => handlePermissionChange(entity, 'no_access')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                              <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => handlePermissionChange(entity, 'no_access')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => handlePermissionChange(entity, 'read_only')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                              <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => handlePermissionChange(entity, 'read_only')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => handlePermissionChange(entity, 'read_write')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                              <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => handlePermissionChange(entity, 'read_write')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
                             </td>
                           </tr>
                         ))}
@@ -256,7 +256,7 @@ export function RoleDetailPage() {
 
               <div className="border border-border rounded-lg p-5">
                 <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Roles</span> define what actions a user can perform across the Dipole platform. Each role is a collection of permissions scoped to specific entities.
+                  <span className="font-semibold text-gray-700">Roles</span> define what actions a user can perform across the Dipole platform. Each role is a collection of permissions scoped to specific entities.
                 </p>
                 <p className="text-xs text-gray-700 leading-relaxed">
                   Use <span className="font-semibold">Resource Set Assignments</span> to limit the role&apos;s scope to specific resource groups.
@@ -336,11 +336,11 @@ function ResourceSetMultiSelect({
         onClick={() => !disabled && setOpen(!open)}
         disabled={disabled}
         className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm transition-colors ${
-          open ? 'border-orange-400 ring-2 ring-orange-100' : 'border-border'
+          open ? 'border-gray-400 ring-2 ring-gray-200' : 'border-border'
         } ${displayText ? 'text-gray-900' : 'text-gray-400'} ${disabled ? 'bg-gray-50 cursor-default' : ''}`}
       >
         <span className="truncate">{displayText || 'Select Resource Set(s)...'}</span>
-        <svg className={`w-3.5 h-3.5 shrink-0 text-orange-500 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <svg className={`w-3.5 h-3.5 shrink-0 text-gray-600 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -348,7 +348,7 @@ function ResourceSetMultiSelect({
       {open && !disabled && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
           {options.map((opt) => (
-            <button key={opt.value} type="button" onClick={() => handleToggle(opt.value)} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selected.includes(opt.value) ? 'bg-gray-100 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
+            <button key={opt.value} type="button" onClick={() => handleToggle(opt.value)} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selected.includes(opt.value) ? 'bg-gray-100 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>
               {opt.label}
             </button>
           ))}
@@ -362,7 +362,7 @@ function ResourceSetMultiSelect({
             return (
               <div key={value} className="flex items-center justify-between px-3 py-2 bg-gray-100 rounded-md">
                 <span className="text-sm text-gray-700">{label}</span>
-                <button type="button" onClick={() => handleRemove(value)} className="text-orange-400 hover:text-orange-600 transition-colors">
+                <button type="button" onClick={() => handleRemove(value)} className="text-gray-500 hover:text-gray-700 transition-colors">
                   <X size={14} />
                 </button>
               </div>

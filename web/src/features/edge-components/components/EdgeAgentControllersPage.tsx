@@ -29,7 +29,7 @@ function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     Healthy: 'text-green-600',
     Registered: 'text-blue-600',
-    NotConnected: 'text-orange-500',
+    NotConnected: 'text-gray-600',
     Unregistered: 'text-gray-500',
   }
   return <span className={`font-medium ${colors[status] ?? 'text-gray-600'}`}>{status}</span>
