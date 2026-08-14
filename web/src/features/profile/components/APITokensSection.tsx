@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, Trash2 } from 'lucide-react'
 import { apiClient } from '@/shared/lib/api-client'
+import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { useResourceSetContext } from '@/shared/context/ResourceSetContext'
 
 interface TokenListItem {
@@ -16,7 +17,7 @@ export function APITokensSection() {
   const { all: resourceSets } = useResourceSetContext()
 
   const [tokenName, setTokenName] = useState('API Token')
-  const [scopeResourceSetId, setScopeResourceSetId] = useState('')
+  const [scopeResourceSetId, setScopeResourceSetId] = useState('global')
   const [generatedToken, setGeneratedToken] = useState('')
 
   const { data: tokenListData } = useQuery({
@@ -29,7 +30,7 @@ export function APITokensSection() {
     mutationFn: () =>
       apiClient.post<{ token: string; id: string; name: string; resourceSetId?: string }>('/profile/token', {
         name: tokenName,
-        resourceSetId: scopeResourceSetId || undefined,
+        resourceSetId: scopeResourceSetId === 'global' ? undefined : scopeResourceSetId,
       }),
     onSuccess: (res) => {
       setGeneratedToken(res.token)
@@ -56,29 +57,30 @@ export function APITokensSection() {
 
       {/* Generate new token */}
       <div className="space-y-3 mb-5">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={tokenName}
-            onChange={(e) => setTokenName(e.target.value)}
-            placeholder="Token name"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
-          />
-          <select
-            value={scopeResourceSetId}
-            onChange={(e) => setScopeResourceSetId(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white"
-          >
-            <option value="">All Resource Sets (Global)</option>
-            {resourceSets.map((rs) => (
-              <option key={rs.id} value={rs.id}>{rs.name}</option>
-            ))}
-          </select>
+        <div className="flex gap-2 items-end">
+          <div className="flex-1">
+            <FloatingInput
+              label="Token Name"
+              value={tokenName}
+              onChange={setTokenName}
+            />
+          </div>
+          <div className="w-56">
+            <FloatingDropdown
+              label="Resource Set"
+              options={[
+                { value: 'global', label: 'All Resource Sets (Global)' },
+                ...resourceSets.map((rs) => ({ value: rs.id, label: rs.name })),
+              ]}
+              value={scopeResourceSetId}
+              onChange={setScopeResourceSetId}
+            />
+          </div>
           <button
             type="button"
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending || !tokenName.trim()}
-            className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap"
+            className="inline-flex items-center gap-2 h-[44px] px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 whitespace-nowrap"
           >
             {generateMutation.isPending ? 'Generating…' : 'Generate Token'}
           </button>

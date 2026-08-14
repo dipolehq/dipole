@@ -20,6 +20,9 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'https://api.d
 
 const PLATFORM_DOMAIN = (import.meta.env.VITE_PLATFORM_DOMAIN as string) || 'dipolehq.com'
 
+/** Dipole's AWS Account ID used in cross-account bucket policies for log streaming. */
+const DIPOLE_AWS_ACCOUNT_ID = (import.meta.env.VITE_DIPOLE_AWS_ACCOUNT_ID as string) || '992382430086'
+
 /** Session storage key holding the signed-in tenant's subdomain. */
 export const TENANT_SUBDOMAIN_KEY = 'dipole_tenant_subdomain'
 
@@ -32,6 +35,10 @@ const SAML_CALLBACK_PATH = '/callback/saml'
 
 export function apiBaseUrl(): string {
   return API_BASE
+}
+
+export function dipoleAwsAccountId(): string {
+  return DIPOLE_AWS_ACCOUNT_ID
 }
 
 /**

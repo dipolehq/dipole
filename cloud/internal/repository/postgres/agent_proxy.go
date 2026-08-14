@@ -26,19 +26,33 @@ func (r *AgentProxyRepo) Create(ctx context.Context, tenantID uuid.UUID, proxy *
 }
 
 func (r *AgentProxyRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentProxy, int, error) {
-	countRow := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM agent_proxies WHERE tenant_id = $1`, tenantID)
+	countArgs := []interface{}{tenantID}
+	n := 1
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
+	countRow := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM agent_proxies WHERE tenant_id = $1`+rsFilter, countArgs...)
 	var total int
 	if err := countRow.Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count agent proxies: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID}
+	n = 1
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at
-		 FROM agent_proxies WHERE tenant_id = $1
+		 FROM agent_proxies WHERE tenant_id = $1`+rsFilter+`
 		 ORDER BY registered_at DESC NULLS LAST
-		 LIMIT $2 OFFSET $3`,
-		tenantID, opts.PerPage, offset)
+		 LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list agent proxies: %w", err)
 	}

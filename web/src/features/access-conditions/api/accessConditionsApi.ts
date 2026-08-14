@@ -186,3 +186,7 @@ export async function saveAccessCondition(id: string, input: AccessConditionInpu
 }
 
 export { apiErrorMessage } from '@/shared/lib/api-client'
+
+export async function deleteAccessCondition(id: string): Promise<void> {
+  await apiClient.delete(`${BASE}/${id}`)
+}

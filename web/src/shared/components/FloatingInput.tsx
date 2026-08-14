@@ -35,7 +35,7 @@ export function FloatingInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         className={`peer w-full px-3 pt-4 pb-1.5 text-sm border rounded-md outline-none transition-colors ${
-          focused ? 'border-orange-500 ring-1 ring-orange-500' : 'border-border'
+          focused ? 'border-gray-400 ring-1 ring-gray-300' : 'border-border'
         } ${disabled ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white text-gray-900'}`}
         placeholder=" "
       />
@@ -43,7 +43,7 @@ export function FloatingInput({
         htmlFor={id}
         className={`absolute left-3 transition-all pointer-events-none ${
           isFloating ? '-top-2 text-[10px] bg-white px-1' : 'top-2.5 text-sm'
-        } ${focused ? 'text-orange-500' : 'text-gray-400'}`}
+        } ${focused ? 'text-gray-600' : 'text-gray-400'}`}
       >
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -84,7 +84,7 @@ export function FloatingTextarea({
         onBlur={() => setFocused(false)}
         rows={rows}
         className={`peer w-full px-3 pt-4 pb-1.5 text-sm border rounded-md outline-none transition-colors resize-y ${
-          focused ? 'border-orange-500 ring-1 ring-orange-500' : 'border-border'
+          focused ? 'border-gray-400 ring-1 ring-gray-300' : 'border-border'
         } ${disabled ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white text-gray-900'}`}
         placeholder=" "
       />
@@ -92,7 +92,7 @@ export function FloatingTextarea({
         htmlFor={id}
         className={`absolute left-3 transition-all pointer-events-none ${
           isFloating ? '-top-2 text-[10px] bg-white px-1' : 'top-2.5 text-sm'
-        } ${focused ? 'text-orange-500' : 'text-gray-400'}`}
+        } ${focused ? 'text-gray-600' : 'text-gray-400'}`}
       >
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -124,7 +124,7 @@ export function FloatingDropdown({
   useClickOutside(ref, () => setOpen(false))
 
   const selectedLabel = options.find((o) => o.value === value)?.label
-  const hasValue = value.length > 0
+  const hasValue = (value ?? '').length > 0
   const isFloating = open || hasValue
 
   return (
@@ -134,16 +134,16 @@ export function FloatingDropdown({
         onClick={() => !disabled && setOpen(!open)}
         disabled={disabled}
         className={`w-full h-[44px] flex items-center justify-between px-3 text-sm border rounded-md transition-colors text-left ${
-          open ? 'border-orange-500 ring-1 ring-orange-500' : 'border-border'
+          open ? 'border-gray-400 ring-1 ring-gray-300' : 'border-border'
         } ${disabled ? 'bg-gray-50 text-gray-600 cursor-default' : 'bg-white text-gray-900'}`}
       >
         <span className={`truncate leading-[24px] ${selectedLabel ? 'text-gray-900' : 'text-transparent'}`}>{selectedLabel ?? 'x'}</span>
-        <ChevronDown size={14} className={`shrink-0 -mt-2 transition-transform ${open ? 'rotate-180 text-orange-500' : 'text-gray-400'}`} />
+        <ChevronDown size={14} className={`shrink-0 -mt-2 transition-transform ${open ? 'rotate-180 text-gray-600' : 'text-gray-400'}`} />
       </button>
       <label
         className={`absolute left-3 transition-all pointer-events-none ${
           isFloating ? '-top-2 text-[10px] bg-white px-1' : 'top-2.5 text-sm'
-        } ${open ? 'text-orange-500' : 'text-gray-400'}`}
+        } ${open ? 'text-gray-600' : 'text-gray-400'}`}
       >
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -159,7 +159,7 @@ export function FloatingDropdown({
                 setOpen(false)
               }}
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                value === opt.value ? 'bg-gray-100 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                value === opt.value ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               {opt.label}

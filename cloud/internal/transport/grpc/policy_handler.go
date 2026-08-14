@@ -22,6 +22,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/service/events"
+	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
@@ -45,6 +46,23 @@ type TenantCAProvider interface {
 	GetOrCreateTenantCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyPEM string, err error)
 }
 
+// LeafCertSigner abstracts the PKI service for signing leaf certificate CSRs.
+type LeafCertSigner interface {
+	SignCSR(ctx context.Context, req pki.SignCSRRequest) (*pki.SignCSRResponse, error)
+	IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool
+}
+
+// HostnameAuthorizer checks whether a hostname is authorized for TLS interception.
+type HostnameAuthorizer interface {
+	IsHostnameAuthorizedForTLS(ctx context.Context, tenantID uuid.UUID, hostname string) (bool, error)
+}
+
+// ProxyAuthenticator verifies that a proxy belongs to a tenant.
+// Used to prevent cross-tenant certificate signing.
+type ProxyAuthenticator interface {
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error)
+}
+
 // WorkloadEventPersister abstracts workload event ingestion and persistence.
 type WorkloadEventPersister interface {
 	Ingest(ctx context.Context, event *events.IncomingWorkloadEvent) error
@@ -56,6 +74,9 @@ type PolicyEvaluationServer struct {
 	registrar     ProxyRegistrar
 	healthUpdater ProxyHealthUpdater
 	caProvider    TenantCAProvider
+	leafSigner    LeafCertSigner
+	hostnameAuthz HostnameAuthorizer
+	proxyAuth     ProxyAuthenticator
 	eventIngester WorkloadEventPersister
 	logger        *slog.Logger
 }
@@ -69,6 +90,21 @@ func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistr
 		eventIngester: eventIngester,
 		logger:        logger,
 	}
+}
+
+// SetLeafSigner configures the leaf certificate signing service.
+func (s *PolicyEvaluationServer) SetLeafSigner(signer LeafCertSigner) {
+	s.leafSigner = signer
+}
+
+// SetHostnameAuthorizer configures the hostname authorization checker.
+func (s *PolicyEvaluationServer) SetHostnameAuthorizer(authz HostnameAuthorizer) {
+	s.hostnameAuthz = authz
+}
+
+// SetProxyAuthenticator configures the proxy identity verifier.
+func (s *PolicyEvaluationServer) SetProxyAuthenticator(auth ProxyAuthenticator) {
+	s.proxyAuth = auth
 }
 
 func (s *PolicyEvaluationServer) Evaluate(ctx context.Context, req *pb.PolicyEvaluationRequest) (*pb.PolicyEvaluationResponse, error) {
@@ -345,4 +381,97 @@ func mapResponse(r *domain.EvaluationResult) *pb.PolicyEvaluationResponse {
 	}
 
 	return resp
+}
+
+// SignLeafCertificate handles the proxy's request to sign a CSR for TLS interception.
+// Security flow:
+//  1. Authenticate the proxy (tenant_id from the authenticated context)
+//  2. Authorize the hostname (check active policy with TLS server workload)
+//  3. Validate and sign the CSR
+func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *pb.SignLeafRequest) (*pb.SignLeafResponse, error) {
+	// 1. Parse and validate tenant identity
+	tenantID, err := uuid.Parse(req.TenantId)
+	if err != nil {
+		s.logger.Warn("sign-leaf: invalid tenant_id", "tenant_id", req.TenantId)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "invalid tenant_id"}, nil
+	}
+
+	if req.Hostname == "" {
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "hostname is required"}, nil
+	}
+
+	if len(req.CsrDer) == 0 {
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "CSR is required"}, nil
+	}
+
+	if req.ProxyId == "" {
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy_id is required"}, nil
+	}
+
+	// 2. Check if signing infrastructure is configured
+	if s.leafSigner == nil || s.hostnameAuthz == nil || s.proxyAuth == nil {
+		s.logger.Error("sign-leaf: required dependencies not configured")
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "TLS Decrypt not configured"}, nil
+	}
+
+	// 3. Authenticate the proxy — verify it belongs to the claimed tenant.
+	// This prevents cross-tenant certificate issuance: a proxy from Tenant A
+	// cannot request certs signed by Tenant B's CA.
+	proxyID, err := uuid.Parse(req.ProxyId)
+	if err != nil {
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "invalid proxy_id"}, nil
+	}
+
+	proxy, err := s.proxyAuth.GetByID(ctx, tenantID, proxyID)
+	if err != nil {
+		s.logger.Error("sign-leaf: proxy lookup failed", "tenant_id", tenantID, "proxy_id", proxyID, "error", err)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy authentication failed"}, nil
+	}
+	if proxy == nil {
+		s.logger.Warn("sign-leaf: proxy not found for tenant", "tenant_id", tenantID, "proxy_id", proxyID)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy not registered for this tenant"}, nil
+	}
+
+	// 4. Verify TLS Decrypt is enabled (CA must already exist).
+	// We do NOT lazily generate the CA here — a signing request must not
+	// trigger CA creation. The admin must explicitly enable TLS Decrypt first.
+	if !s.leafSigner.IsTlsDecryptEnabled(ctx, tenantID) {
+		s.logger.Warn("sign-leaf: TLS Decrypt not enabled for tenant", "tenant_id", tenantID)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "TLS Decrypt is not enabled for this tenant"}, nil
+	}
+
+	// 5. Authorize hostname — only sign for hostnames in active policies with TLS
+	authorized, err := s.hostnameAuthz.IsHostnameAuthorizedForTLS(ctx, tenantID, req.Hostname)
+	if err != nil {
+		s.logger.Error("sign-leaf: authorization check failed", "tenant_id", tenantID, "hostname", req.Hostname, "error", err)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "authorization check failed"}, nil
+	}
+	if !authorized {
+		s.logger.Warn("sign-leaf: hostname not authorized", "tenant_id", tenantID, "hostname", req.Hostname, "proxy_id", req.ProxyId)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "hostname not authorized for TLS interception"}, nil
+	}
+
+	// 6. Sign the CSR
+	resp, err := s.leafSigner.SignCSR(ctx, pki.SignCSRRequest{
+		TenantID: tenantID,
+		CSRDER:   req.CsrDer,
+		Hostname: req.Hostname,
+	})
+	if err != nil {
+		s.logger.Error("sign-leaf: signing failed", "tenant_id", tenantID, "hostname", req.Hostname, "error", err)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+
+	s.logger.Info("sign-leaf: certificate issued",
+		"tenant_id", tenantID,
+		"hostname", req.Hostname,
+		"proxy_id", req.ProxyId,
+		"not_after", resp.NotAfter.Format(time.RFC3339),
+	)
+
+	return &pb.SignLeafResponse{
+		CertDer:  resp.CertDER,
+		NotAfter: resp.NotAfter.Unix(),
+		Success:  true,
+	}, nil
 }

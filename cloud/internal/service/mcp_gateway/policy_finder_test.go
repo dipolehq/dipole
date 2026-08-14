@@ -45,6 +45,10 @@ func (m *mockAccessPolicyRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID,
 	return m.byProtocol, m.byProtocolErr
 }
 
+func (m *mockAccessPolicyRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return m.byProtocol, m.byProtocolErr
+}
+
 func buildMCPPolicy(gatewayAudience string, serverName string, serverHost string, serverPort int) domain.AccessPolicyWithRelations {
 	serverID := uuid.New()
 	cpID := uuid.New()
@@ -209,4 +213,10 @@ func TestDBPolicyFinder_FindPolicyForServer_SkipsNonMCPProtocol(t *testing.T) {
 	if result != nil {
 		t.Fatal("expected nil result for non-MCP protocol policy")
 	}
+}
+
+func (m *mockAccessPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockAccessPolicyRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
 }

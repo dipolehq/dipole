@@ -68,21 +68,35 @@ func (r *AgentControllerRepo) GetByDeviceCode(ctx context.Context, tenantID uuid
 
 func (r *AgentControllerRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentController, int, error) {
 	search := escapeILIKE(opts.Search)
+	countArgs := []interface{}{tenantID, search}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM agent_controllers WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
-		tenantID, search).Scan(&total)
+		`SELECT COUNT(*) FROM agent_controllers WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count agent controllers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID, search}
+	n = 2
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
 		 FROM agent_controllers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, search, opts.PerPage, offset)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
+		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list agent controllers: %w", err)
 	}

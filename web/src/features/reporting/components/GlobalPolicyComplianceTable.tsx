@@ -1,7 +1,9 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiClient } from '@/shared/lib/api-client'
 
-type ComplianceLevel = 'Required' | 'Recommended' | 'Optional'
+type ComplianceLevel = 'required' | 'recommended' | 'optional' | 'compliant'
 
 interface GlobalPolicyComplianceEntry {
   id: string
@@ -14,18 +16,23 @@ interface GlobalPolicyComplianceEntry {
   resourceSet: string
 }
 
-// Will be wired to real API later
-const globalPolicyComplianceData: GlobalPolicyComplianceEntry[] = []
+async function fetchComplianceReport(): Promise<GlobalPolicyComplianceEntry[]> {
+  const res = await apiClient.get<{ items: GlobalPolicyComplianceEntry[]; total: number }>('/global-policy-compliance/report')
+  return res.items ?? []
+}
 
 function ComplianceBadge({ level }: { level: ComplianceLevel }) {
-  const colors: Record<ComplianceLevel, string> = {
-    Required: 'text-red-500',
-    Recommended: 'text-orange-500',
-    Optional: 'text-blue-500',
+  const config: Record<ComplianceLevel, { label: string; color: string }> = {
+    required: { label: 'Required', color: 'text-red-500' },
+    recommended: { label: 'Recommended', color: 'text-gray-600' },
+    optional: { label: 'Optional', color: 'text-blue-500' },
+    compliant: { label: '', color: '' },
   }
+  const c = config[level] ?? config.optional
+  if (level === 'compliant') return null
   return (
-    <span className={`text-xs font-medium ${colors[level]}`}>
-      {level}
+    <span className={`text-xs font-medium ${c.color}`}>
+      {c.label}
     </span>
   )
 }
@@ -38,17 +45,26 @@ interface GlobalPolicyComplianceTableProps {
 
 export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, resourceSet }: GlobalPolicyComplianceTableProps) {
   const navigate = useNavigate()
+  const qc = useQueryClient()
 
-  const filtered = globalPolicyComplianceData.filter((entry) => {
+  const { data: items = [] } = useQuery({
+    queryKey: ['compliance-report'],
+    queryFn: fetchComplianceReport,
+  })
+
+  function handleRefresh() {
+    qc.invalidateQueries({ queryKey: ['compliance-report'] })
+  }
+
+  const filtered = items.filter((entry) => {
     if (resourceSet && entry.resourceSet !== resourceSet) return false
     if (complianceStatus) {
       if (complianceStatus === 'Compliant') {
-        if (entry.trustProvider === 'Required' || entry.accessCondition === 'Required' ||
-            entry.trustProvider === 'Recommended' || entry.accessCondition === 'Recommended') return false
+        if (entry.trustProvider !== 'compliant' || entry.accessCondition !== 'compliant') return false
       } else if (complianceStatus === 'Missing Required') {
-        if (entry.trustProvider !== 'Required' && entry.accessCondition !== 'Required') return false
+        if (entry.trustProvider !== 'required' && entry.accessCondition !== 'required') return false
       } else if (complianceStatus === 'Missing Recommended') {
-        if (entry.trustProvider !== 'Recommended' && entry.accessCondition !== 'Recommended') return false
+        if (entry.trustProvider !== 'recommended' && entry.accessCondition !== 'recommended') return false
       }
     }
     if (searchQuery) {
@@ -58,8 +74,6 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
         entry.clientWorkload.toLowerCase().includes(q) ||
         entry.serverWorkload.toLowerCase().includes(q) ||
         entry.credentialProvider.toLowerCase().includes(q) ||
-        entry.trustProvider.toLowerCase().includes(q) ||
-        entry.accessCondition.toLowerCase().includes(q) ||
         entry.resourceSet.toLowerCase().includes(q)
       if (!matches) return false
     }
@@ -81,7 +95,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none">
-            <button type="button" className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+            <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-gray-600 transition-colors" title="Refresh">
               <RefreshCw size={15} strokeWidth={2.5} />
             </button>
           </th>
@@ -108,7 +122,7 @@ export function GlobalPolicyComplianceTable({ searchQuery, complianceStatus, res
               <button
                 type="button"
                 onClick={() => navigate(`/access-policies/${entry.id}`)}
-                className="text-gray-400 hover:text-orange-500 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <ExternalLink size={14} />
               </button>

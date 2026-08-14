@@ -190,3 +190,15 @@ func TestGenerateCA_KeyMatchesCert(t *testing.T) {
 		t.Fatal("certificate public key does not match private key")
 	}
 }
+
+func (m *mockTenantCARepo) HasCA(_ context.Context, _ uuid.UUID) (bool, error) {
+	return m.stored, nil
+}
+
+func (m *mockTenantCARepo) GetLeafLifetime(_ context.Context, _ uuid.UUID) (int, error) {
+	return 86400, nil
+}
+
+func (m *mockTenantCARepo) SetLeafLifetime(_ context.Context, _ uuid.UUID, _ int) error {
+	return nil
+}

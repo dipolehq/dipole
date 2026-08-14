@@ -65,23 +65,37 @@ func (r *ServerWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 }
 
 func (r *ServerWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ServerWorkload, int, error) {
+	countArgs := []interface{}{tenantID, opts.Search}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM server_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`,
-		tenantID, opts.Search).Scan(&total)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`+rsFilter,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count server workloads: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID, opts.Search}
+	n = 2
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM access_policies ap WHERE ap.server_workload_id = server_workloads.id) AS policy_count
 		 FROM server_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, opts.Search, opts.PerPage, offset)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`+rsFilter+`
+		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list server workloads: %w", err)
 	}
@@ -133,4 +147,12 @@ func (r *ServerWorkloadRepo) Delete(ctx context.Context, tenantID uuid.UUID, id 
 		return fmt.Errorf("delete server workload: %w", err)
 	}
 	return nil
+}
+
+func (r *ServerWorkloadRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM server_workloads WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
 }

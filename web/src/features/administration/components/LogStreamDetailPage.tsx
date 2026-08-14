@@ -1,21 +1,14 @@
 import { useState } from 'react'
-import { identityIssuerUrl } from '@/shared/lib/platform-urls'
+import { identityIssuerUrl, dipoleAwsAccountId } from '@/shared/lib/platform-urls'
 import { useNavigate, useParams } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
 import { useLogStream, useSaveLogStream, useDeleteLogStream } from '@/features/administration/hooks/useLogStreams'
 import { apiErrorMessage } from '@/features/administration/api/logStreamsApi'
 import type { LogStreamEventType, LogStreamDestinationType } from '@/shared/constants/administration'
-
-const DETAIL_SECTIONS = [
-  { value: 'details', label: 'Details' },
-  { value: 'metrics', label: 'Metrics' },
-  { value: 'logs', label: 'Logs' },
-] as const
-
-type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 
 export function LogStreamDetailPage() {
   const navigate = useNavigate()
@@ -25,14 +18,13 @@ export function LogStreamDetailPage() {
   const saveMutation = useSaveLogStream(id ?? '')
   const deleteMutation = useDeleteLogStream()
 
-  const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
-  const [sectionOpen, setSectionOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [lsStatus, setLsStatus] = useState('active')
   const [eventType, setEventType] = useState<LogStreamEventType>('access_authorization')
   const [destinationType, setDestinationType] = useState<LogStreamDestinationType>('aws_s3')
   const [s3Region, setS3Region] = useState('')
@@ -55,6 +47,7 @@ export function LogStreamDetailPage() {
     const config = (ls.config ?? {}) as Record<string, unknown>
     setName(ls.name)
     setDescription(ls.description)
+    setLsStatus(ls.isActive ? 'active' : 'inactive')
     setEventType(ls.eventType as LogStreamEventType)
     setDestinationType(ls.destinationType as LogStreamDestinationType)
     setS3Region((config.s3BucketRegion as string) ?? '')
@@ -81,62 +74,67 @@ export function LogStreamDetailPage() {
   if (!id || (!isLoading && ls === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
-        <div className="flex-1 flex items-center justify-center flex-col">
-          <p className="text-sm text-gray-500">Log Stream not found.</p>
-          <button onClick={() => navigate('/administration?tab=log_streams')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
+          <PageHeader />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-gray-400">Log Stream not found.</p>
         </div>
       </div>
     )
   }
 
   const disabled = !isEditing
-  const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
+  const displayName = name || 'Untitled'
+  const statusValue = lsStatus
 
-  async function handleEditToggle() {
-    if (isEditing) {
-      setError(null)
-      const config: Record<string, unknown> = {}
-      if (destinationType === 'aws_s3') {
-        config.s3BucketRegion = s3Region; config.s3BucketName = s3Bucket; config.s3PathPrefix = s3Prefix
-      } else if (destinationType === 'gcs_bucket') {
-        config.gcsBucketName = gcsBucket; config.gcsPathPrefix = gcsPathPrefix; config.gcsAudience = gcsAudience; config.gcsServiceAccountEmail = gcsEmail; config.gcsTokenLifetime = gcsLifetime
-      } else if (destinationType === 'crowdstrike_siem') {
-        config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.apiKey = apiKey; config.sourceName = sourceName
-      } else if (destinationType === 'splunk_siem') {
-        config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.authToken = authToken; config.sourceName = sourceName
-      }
-      try {
-        await saveMutation.mutateAsync({ name, description, isActive: true, eventType, destinationType, config })
-        setIsEditing(false)
-      } catch (err) {
-        setError(apiErrorMessage(err, 'Failed to save log stream'))
-      }
-    } else { setIsEditing(true) }
+  async function handleSave() {
+    setError(null)
+    const config: Record<string, unknown> = {}
+    if (destinationType === 'aws_s3') {
+      config.s3BucketRegion = s3Region; config.s3BucketName = s3Bucket; config.s3PathPrefix = s3Prefix
+    } else if (destinationType === 'gcs_bucket') {
+      config.gcsBucketName = gcsBucket; config.gcsPathPrefix = gcsPathPrefix; config.gcsAudience = gcsAudience; config.gcsServiceAccountEmail = gcsEmail; config.gcsTokenLifetime = gcsLifetime
+    } else if (destinationType === 'crowdstrike_siem') {
+      config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.apiKey = apiKey; config.sourceName = sourceName
+    } else if (destinationType === 'splunk_siem') {
+      config.hostPort = hostPort; config.tls = tls; config.tlsVerification = tlsVerification; config.authToken = authToken; config.sourceName = sourceName
+    }
+    try {
+      await saveMutation.mutateAsync({ name, description, isActive: lsStatus === 'active', eventType, destinationType, config })
+      setIsEditing(false)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to save log stream'))
+    }
+  }
+
+  function handleEdit() {
+    setError(null)
+    setIsEditing(true)
   }
 
   function handleCancel() {
-    if (isEditing) {
-      if (ls) {
-        const config = (ls.config ?? {}) as Record<string, unknown>
-        setName(ls.name); setDescription(ls.description)
-        setEventType(ls.eventType as LogStreamEventType); setDestinationType(ls.destinationType as LogStreamDestinationType)
-        setS3Region((config.s3BucketRegion as string) ?? ''); setS3Bucket((config.s3BucketName as string) ?? ''); setS3Prefix((config.s3PathPrefix as string) ?? '')
-        setGcsBucket((config.gcsBucketName as string) ?? ''); setGcsPathPrefix((config.gcsPathPrefix as string) ?? ''); setGcsAudience((config.gcsAudience as string) ?? '')
-        setGcsEmail((config.gcsServiceAccountEmail as string) ?? ''); setGcsLifetime((config.gcsTokenLifetime as string) ?? '3600')
-        setHostPort((config.hostPort as string) ?? ''); setTls((config.tls as boolean) ?? false)
-        setTlsVerification((config.tlsVerification as string) ?? 'full')
-        setApiKey((config.apiKey as string) ?? ''); setAuthToken((config.authToken as string) ?? ''); setSourceName((config.sourceName as string) ?? '')
-      }
-      setIsEditing(false)
-    } else { navigate('/administration?tab=log_streams') }
+    setError(null)
+    if (ls) {
+      const config = (ls.config ?? {}) as Record<string, unknown>
+      setName(ls.name); setDescription(ls.description)
+      setLsStatus(ls.isActive ? 'active' : 'inactive')
+      setEventType(ls.eventType as LogStreamEventType); setDestinationType(ls.destinationType as LogStreamDestinationType)
+      setS3Region((config.s3BucketRegion as string) ?? ''); setS3Bucket((config.s3BucketName as string) ?? ''); setS3Prefix((config.s3PathPrefix as string) ?? '')
+      setGcsBucket((config.gcsBucketName as string) ?? ''); setGcsPathPrefix((config.gcsPathPrefix as string) ?? ''); setGcsAudience((config.gcsAudience as string) ?? '')
+      setGcsEmail((config.gcsServiceAccountEmail as string) ?? ''); setGcsLifetime((config.gcsTokenLifetime as string) ?? '3600')
+      setHostPort((config.hostPort as string) ?? ''); setTls((config.tls as boolean) ?? false)
+      setTlsVerification((config.tlsVerification as string) ?? 'full')
+      setApiKey((config.apiKey as string) ?? ''); setAuthToken((config.authToken as string) ?? ''); setSourceName((config.sourceName as string) ?? '')
+    }
+    setIsEditing(false)
   }
 
   async function handleDelete() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration?tab=log_streams')
+      navigate('/administration/log-streams')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete log stream'))
     }
@@ -144,45 +142,53 @@ export function LogStreamDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
-          {error}
-        </div>
-      )}
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
-          {!isEditing && (
-            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          <h2 className="text-sm font-medium text-gray-900">{displayName}</h2>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusValue === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {statusValue === 'active' ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isEditing ? (
+            <>
+              <button type="button" onClick={handleSave} disabled={saveMutation.isPending} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                {saveMutation.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={handleCancel} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={handleEdit} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <Pencil size={14} strokeWidth={2} className="opacity-60" /> Edit
+              </button>
+              <button type="button" onClick={() => setDeleteDialogOpen(true)} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+                <Trash2 size={14} strokeWidth={2} className="opacity-60" /> Delete
+              </button>
+            </>
           )}
-          <div className="relative">
-            <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
-              <FileText size={14} className="shrink-0" />
-              <span className="truncate">{selectedLabel}</span>
-              <svg className={`w-3.5 h-3.5 ml-auto shrink-0 transition-transform ${sectionOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {sectionOpen && (
-              <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
-                {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-white">
-        {selectedSection === 'details' && (
-          <div className="flex h-full">
-            <div className="w-[60%] px-6 py-6 overflow-y-auto">
-              <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Stream Details</h4>
+      {error && (
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <fieldset disabled={disabled} className={disabled ? 'opacity-60 pointer-events-none' : ''}>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Stream Details</h4>
                   <div className="space-y-4">
                     <FloatingInput label="Name" value={name} onChange={setName} disabled={disabled} required />
                     <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} disabled={disabled} rows={2} />
@@ -192,23 +198,23 @@ export function LogStreamDetailPage() {
                 </div>
 
                 {destinationType === 'aws_s3' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">AWS S3 Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">AWS S3 Configuration</h4>
                     <div className="space-y-4">
                       <FloatingInput label="S3 Bucket Region" value={s3Region} onChange={setS3Region} disabled={disabled} />
                       <FloatingInput label="S3 Bucket Name" value={s3Bucket} onChange={setS3Bucket} disabled={disabled} />
                       <FloatingInput label="S3 Path Prefix" value={s3Prefix} onChange={setS3Prefix} disabled={disabled} />
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Source AWS Account ID</label>
-                        <div className="text-xs text-gray-700 font-mono">123456789012</div>
+                        <div className="text-xs text-gray-700 font-mono">{dipoleAwsAccountId()}</div>
                       </div>
                     </div>
                   </div>
                 )}
 
                 {destinationType === 'gcs_bucket' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">GCS Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">GCS Configuration</h4>
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">OIDC Issuer URL</label>
@@ -224,13 +230,13 @@ export function LogStreamDetailPage() {
                 )}
 
                 {destinationType === 'crowdstrike_siem' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">CrowdStrike SIEM Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">CrowdStrike SIEM Configuration</h4>
                     <div className="space-y-4">
                       <div className="relative">
                         <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} disabled={disabled} />
                         <label className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                          <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-60" />
+                          <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-gray-600 cursor-pointer disabled:opacity-60" />
                           <span className="text-sm text-gray-700">TLS</span>
                         </label>
                       </div>
@@ -242,13 +248,13 @@ export function LogStreamDetailPage() {
                 )}
 
                 {destinationType === 'splunk_siem' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">Splunk SIEM Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Splunk SIEM Configuration</h4>
                     <div className="space-y-4">
                       <div className="relative">
                         <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} disabled={disabled} />
                         <label className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                          <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-orange-500 cursor-pointer disabled:opacity-60" />
+                          <input type="checkbox" checked={tls} onChange={(e) => setTls(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-gray-600 cursor-pointer disabled:opacity-60" />
                           <span className="text-sm text-gray-700">TLS</span>
                         </label>
                       </div>
@@ -259,53 +265,32 @@ export function LogStreamDetailPage() {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Right panel — 40% */}
-            <div className="w-[40%] px-6 py-6 overflow-y-auto">
-              <div className="border border-border rounded-lg p-5 mb-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
-                <div className="space-y-4">
-                  {ls && (
-                    <>
-                      <FloatingInput label="ID" value={ls.id} disabled />
-                      <FloatingInput label="Status" value={ls.isActive ? 'Active' : 'Inactive'} disabled />
-                      <FloatingInput label="Created At" value={new Date(ls.createdAt).toLocaleString()} disabled />
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="border border-border rounded-lg p-5">
-                <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Log Streams</span> export access authorization events, audit logs, or workload events to external SIEM systems for centralized monitoring and compliance.
-                </p>
-                <p className="text-xs text-gray-700 leading-relaxed">
-                  Choose a <span className="font-semibold">Destination Type</span> based on where you want events delivered — AWS S3, GCS, CrowdStrike, or Splunk.
-                </p>
-              </div>
-            </div>
+            </fieldset>
           </div>
-        )}
-        {selectedSection === 'metrics' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Metrics — coming soon</p></div>)}
-        {selectedSection === 'logs' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>)}
-      </div>
 
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Log Stream</h3>
-            <p className="text-xs text-gray-600 mb-5">
-              Are you sure you want to delete this log stream? Events will no longer be exported to this destination.
-            </p>
-            <div className="flex items-center justify-end gap-3">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-4">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Metadata</h4>
+              {ls && (
+                <>
+                  <FloatingInput label="ID" value={ls.id} disabled />
+                  <FloatingInput label="Created" value={new Date(ls.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} disabled />
+                </>
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        onConfirm={() => { setDeleteDialogOpen(false); handleDelete() }}
+        resourceName={displayName}
+        resourceId={id ?? ''}
+        resourceType="log stream"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }

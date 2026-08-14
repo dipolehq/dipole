@@ -35,7 +35,6 @@ export function CreateUserPage() {
   const [phone, setPhone] = useState('')
   const [selectedRole, setSelectedRole] = useState('')
 
-  // Fetch roles for dropdown
   const { data: rolesData } = useQuery({
     queryKey: ['roles', 'dropdown'],
     queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=100'),
@@ -50,44 +49,56 @@ export function CreateUserPage() {
         firstName,
         lastName,
         email,
-        phone: phone,
+        phone: phone ? `${countryCode}${phone}` : '',
         isActive: status === 'active',
         roleId: selectedRole || undefined,
       })
-      navigate('/administration?tab=users')
+      navigate('/administration/users')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create user'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration?tab=users')
+    navigate('/administration/users')
   }
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
+        <PageHeader />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={createMutation.isPending}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          {createMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+
       {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
-        <PageHeader />
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
-            {createMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="flex h-full">
-          <div className="w-[60%] px-6 py-6 overflow-y-auto">
-            <div className="space-y-5">
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
                 <div className="space-y-4">
                   <FloatingDropdown label="Status" options={STATUS_OPTIONS} value={status} onChange={setStatus} />
                   <FloatingInput label="First Name" value={firstName} onChange={setFirstName} required />
@@ -102,25 +113,23 @@ export function CreateUserPage() {
                 </div>
               </div>
 
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Assignment</h4>
-                <div className="space-y-4">
-                  <FloatingDropdown label="Role" options={roleOptions} value={selectedRole} onChange={setSelectedRole} />
-                </div>
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Role Assignment</h4>
+                <FloatingDropdown label="Role" options={roleOptions} value={selectedRole} onChange={setSelectedRole} />
               </div>
             </div>
           </div>
 
-          <div className="w-[40%] px-6 py-6 overflow-y-auto">
-            <div className="border border-border rounded-lg p-5 sticky top-0">
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Users</span> are administrators who manage the Dipole platform. Each user is assigned a role that determines their level of access.
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Users</span> are administrators who manage the Dipole platform. Each user is assigned a role that determines their level of access.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                Assign a <span className="font-semibold">Role</span> to control what actions the user can perform across entities like Access Policies, Workloads, and Credential Providers.
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Assign a <span className="font-semibold text-gray-800">Role</span> to control what actions the user can perform across entities like Access Policies, Workloads, and Credential Providers.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed">
-                Users can also be provisioned automatically via an <span className="font-semibold">Identity Provider</span> (SSO) with role mappings.
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Users can also be provisioned automatically via an <span className="font-semibold text-gray-800">Identity Provider</span> (SSO) with role mappings.
               </p>
             </div>
           </div>

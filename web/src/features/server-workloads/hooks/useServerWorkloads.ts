@@ -4,6 +4,7 @@ import {
   fetchServerWorkload,
   createServerWorkload,
   saveServerWorkload,
+  deleteServerWorkload,
 } from '@/features/server-workloads/api/serverWorkloadsApi'
 import type { ServerWorkloadInput } from '@/features/server-workloads/api/serverWorkloadsApi'
 
@@ -41,6 +42,16 @@ export function useSaveServerWorkload(id: string) {
     mutationFn: (input: ServerWorkloadInput) => saveServerWorkload(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['server-workloads', 'detail', id] })
+      qc.invalidateQueries({ queryKey: ['server-workloads', 'list'] })
+    },
+  })
+}
+
+export function useDeleteServerWorkload() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteServerWorkload(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['server-workloads', 'list'] })
     },
   })

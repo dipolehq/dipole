@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
 import { setCurrentTenantSubdomain } from '@/shared/lib/platform-urls'
+import { AuthLayout } from './AuthLayout'
+import { type RobotHandle } from './RobotGuard'
 
 interface SSOProvider {
   id: string
@@ -11,24 +13,199 @@ interface SSOProvider {
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const robotRef = useRef<RobotHandle>(null)
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([])
   const [ssoLoading, setSsoLoading] = useState(false)
-  const [showForm, setShowForm] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPass, setShowPass] = useState(false)
+  const [shake, setShake] = useState(false)
+  const [btnLabel, setBtnLabel] = useState('SIGN ME IN')
+  const [done, setDone] = useState(false)
 
   const [mfaToken, setMfaToken] = useState('')
   const [mfaCode, setMfaCode] = useState('')
-
   const [tenants, setTenants] = useState<{ id: string; name: string; subdomain: string }[]>([])
 
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passRef = useRef<HTMLInputElement>(null)
+
+  const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]!
+
+  // Load SSO providers
   useEffect(() => {
+    document.title = 'Dipole | Sign In'
     apiClient.get<{ providers: SSOProvider[] }>('/auth/sso/providers')
       .then((res) => setSsoProviders(res.providers ?? []))
-      .catch(() => {}) // Silently fail — SSO button just won't show.
+      .catch(() => {})
   }, [])
+
+  // Email field
+  function handleEmailFocus() {
+    robotRef.current?.turnAway(false)
+    robotRef.current?.setMood('watching')
+    robotRef.current?.say(pick(["Email, please. I don't do spam.", "Typing detected. Go on."]))
+    robotRef.current?.followTyping(email)
+  }
+
+  function handleEmailChange(value: string) {
+    setEmail(value)
+    robotRef.current?.followTyping(value)
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+    if (EMAIL_RE.test(value.trim())) {
+      robotRef.current?.setMood('happy')
+      robotRef.current?.say(pick(['Valid email. Respect.', 'That looks right.']))
+    } else {
+      robotRef.current?.setMood('watching')
+      if (value.includes('@')) robotRef.current?.say('Close. Not yet.')
+    }
+  }
+
+  // Password field
+  function handlePassFocus() {
+    robotRef.current?.setMood('shy')
+    robotRef.current?.turnAway(true)
+    robotRef.current?.say("A secret? *turns around*")
+  }
+
+  function handlePassBlur(e: React.FocusEvent) {
+    const related = e.relatedTarget as HTMLElement | null
+    if (related?.dataset?.peek) return
+    robotRef.current?.turnAway(false)
+  }
+
+  function handlePeek() {
+    setShowPass(!showPass)
+    if (!showPass) robotRef.current?.say("Peeking? Good thing I'm facing away.")
+    passRef.current?.focus()
+  }
+
+  // Button interactions
+  function handleBtnEnter() {
+    if (done) return
+    robotRef.current?.hype(true)
+    robotRef.current?.setMood('excited')
+    robotRef.current?.say(pick(['Ooh. Do it. Press it.', 'This is my favorite part.']))
+  }
+  function handleBtnLeave() {
+    robotRef.current?.hype(false)
+    if (!done) robotRef.current?.setMood('idle')
+  }
+  function handleBtnDown() {
+    robotRef.current?.press()
+    robotRef.current?.say(pick(["Ahh. That's the stuff.", "Beep. Do that again."]))
+  }
+  function handleBtnUp() { robotRef.current?.release() }
+
+  // Submit
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (done) return
+    setError('')
+
+    if (!email.trim()) {
+      robotRef.current?.say("I need your email.")
+      robotRef.current?.setMood('watching')
+      setShake(true); setTimeout(() => setShake(false), 400)
+      emailRef.current?.focus()
+      return
+    }
+    if (!password) {
+      robotRef.current?.say("A password would help.")
+      robotRef.current?.setMood('watching')
+      setShake(true); setTimeout(() => setShake(false), 400)
+      passRef.current?.focus()
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string }; tenants?: { id: string; name: string; subdomain: string }[] }>(
+        '/auth/login',
+        { email, password },
+      )
+
+      if (res.tenants && res.tenants.length > 1) {
+        setTenants(res.tenants)
+        robotRef.current?.turnAway(false)
+        robotRef.current?.setMood('happy')
+        robotRef.current?.say('Multiple tenants. Pick one.')
+      } else if (res.mfaRequired && res.mfaToken) {
+        setMfaToken(res.mfaToken)
+        robotRef.current?.turnAway(false)
+        robotRef.current?.setMood('watching')
+        robotRef.current?.say('Security check. Enter the code.')
+      } else if (res.token && res.user) {
+        setDone(true)
+        setBtnLabel('ACCESS GRANTED')
+        sessionStorage.setItem('dipole_token', res.token)
+        sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
+        robotRef.current?.success(`Welcome, ${res.user.name || 'human'}.`)
+        setTimeout(() => navigate('/'), 1500)
+      }
+    } catch {
+      setError('Invalid email or password')
+      robotRef.current?.say("Access denied. Try again.")
+      robotRef.current?.setMood('watching')
+      setShake(true); setTimeout(() => setShake(false), 400)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleTenantSelect(tenantId: string) {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string } }>(
+        '/auth/login',
+        { email, password, tenantId },
+      )
+      if (res.mfaRequired && res.mfaToken) {
+        setTenants([])
+        setMfaToken(res.mfaToken)
+        robotRef.current?.say('Security check. Enter the code.')
+      } else if (res.token && res.user) {
+        setDone(true)
+        setBtnLabel('ACCESS GRANTED')
+        sessionStorage.setItem('dipole_token', res.token)
+        sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
+        robotRef.current?.success(`Welcome, ${res.user.name || 'human'}.`)
+        setTimeout(() => navigate('/'), 1500)
+      }
+    } catch {
+      setError('Failed to sign in')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleMFAVerify(e?: React.FormEvent) {
+    e?.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const res = await apiClient.post<{ token: string; tenantSubdomain?: string; user: { id: string; email: string; name: string } }>(
+        '/auth/mfa-verify',
+        { mfaToken, code: mfaCode },
+      )
+      setDone(true)
+      sessionStorage.setItem('dipole_token', res.token)
+      sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
+      setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
+      robotRef.current?.success(`Verified. Welcome, ${res.user.name || 'human'}.`)
+      setTimeout(() => navigate('/'), 1500)
+    } catch {
+      setError('Invalid verification code')
+      robotRef.current?.say("That code doesn't check out.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleSSOLogin(providerId: string) {
     setSsoLoading(true)
@@ -46,254 +223,126 @@ export function LoginPage() {
       setSsoLoading(false)
     }
   }
-  async function handleSubmit(e: React.FormEvent, tenantId?: string) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    try {
-      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string }; tenants?: { id: string; name: string; subdomain: string }[] }>(
-        '/auth/login',
-        { email, password, tenantId },
-      )
-
-      if (res.tenants && res.tenants.length > 1) {
-        setTenants(res.tenants)
-      } else if (res.mfaRequired && res.mfaToken) {
-        setMfaToken(res.mfaToken)
-      } else if (res.token && res.user) {
-        sessionStorage.setItem('dipole_token', res.token)
-        sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
-        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
-        navigate('/')
-      }
-    } catch {
-      setError('Invalid email or password')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleTenantSelect(tenantId: string) {
-    setError('')
-    setLoading(true)
-    try {
-      const res = await apiClient.post<{ token?: string; mfaRequired?: boolean; mfaToken?: string; tenantSubdomain?: string; user?: { id: string; email: string; name: string } }>(
-        '/auth/login',
-        { email, password, tenantId },
-      )
-
-      if (res.mfaRequired && res.mfaToken) {
-        setTenants([])
-        setMfaToken(res.mfaToken)
-      } else if (res.token && res.user) {
-        sessionStorage.setItem('dipole_token', res.token)
-        sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
-        setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
-        navigate('/')
-      }
-    } catch {
-      setError('Failed to sign in to selected tenant')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleMFAVerify(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    try {
-      const res = await apiClient.post<{ token: string; tenantSubdomain?: string; user: { id: string; email: string; name: string } }>(
-        '/auth/mfa-verify',
-        { mfaToken, code: mfaCode },
-      )
-      sessionStorage.setItem('dipole_token', res.token)
-      sessionStorage.setItem('dipole_user', JSON.stringify(res.user))
-      setCurrentTenantSubdomain(res.tenantSubdomain ?? '')
-      navigate('/')
-    } catch {
-      setError('Invalid verification code')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (!showForm) {
-    return (
-      <div className="h-screen w-screen bg-[#050505] overflow-hidden">
-        <div className="fixed inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
-          <div className="flex items-center gap-6 mb-6 -mt-16 select-none">
-            <img src="/dipole_logo.svg" alt="Dipole" className="h-32 w-32" draggable={false} />
-            <span className="text-white text-8xl tracking-tight" style={{ fontFamily: 'Tomorrow, sans-serif', fontWeight: 700 }}>Dipole</span>
-          </div>
-
-          <p className="text-white text-lg mb-12 select-none">Identity & Access Management Fabric For Agents & Workloads</p>
-
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors pointer-events-auto"
-          >
-            Sign In with Email
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   return (
-    <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
-      <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
-        <div className="flex flex-col items-center mb-8">
-          <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
-          <h1 className="text-lg font-semibold text-gray-900">
-            {tenants.length > 0 ? 'Select Tenant' : mfaToken ? 'Verification Required' : 'Sign In to Dipole'}
+    <AuthLayout robotRef={robotRef}>
+      <form className={`card ${shake ? 'shake' : ''}`} onSubmit={handleSubmit} noValidate>
+        <span className="hand hand--l" aria-hidden="true" />
+        <span className="hand hand--r" aria-hidden="true" />
+
+        <div className="title-row">
+          <img src="/logo_black.svg" alt="Dipole" className="card-logo" draggable={false} />
+          <h1 className="title">
+            {tenants.length > 0 ? 'Select your tenant' : mfaToken ? 'Verification required' : 'Sign in to Dipole'}
           </h1>
-          {tenants.length > 0 && (
-            <p className="text-sm text-gray-500 mt-1 text-center">
-              Your account has access to multiple tenants. Choose one to continue.
-            </p>
-          )}
-          {mfaToken && (
-            <p className="text-sm text-gray-500 mt-1 text-center">
-              Enter the 6-digit code from your authenticator app or a backup code.
-            </p>
-          )}
+          <img src="/logo_black_mirror.svg" alt="" className="card-logo" draggable={false} />
         </div>
 
+        {/* Tenant selection */}
         {tenants.length > 0 ? (
-          <div className="space-y-2">
+          <div className="tenant-list">
             {tenants.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => handleTenantSelect(t.id)}
-                disabled={loading}
-                className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors disabled:opacity-50"
-              >
-                <div className="text-sm font-medium text-gray-900">{t.name}</div>
-                <div className="text-xs text-gray-500">{t.subdomain}</div>
+              <button key={t.id} type="button" onClick={() => handleTenantSelect(t.id)} disabled={loading} className="tenant-btn">
+                <span className="tenant-name">{t.name}</span>
+                <span className="tenant-sub">{t.subdomain}</span>
               </button>
             ))}
-
-            {error && <p className="text-sm text-red-600 text-center mt-2">{error}</p>}
-
-            <button
-              type="button"
-              onClick={() => { setTenants([]); setError('') }}
-              className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 mt-3"
-            >
-              ← Back to Sign In
-            </button>
+            {error && <p className="form-error">{error}</p>}
+            <button type="button" onClick={() => { setTenants([]); setError('') }} className="back-link">Back</button>
           </div>
         ) : mfaToken ? (
-          <form onSubmit={handleMFAVerify} className="space-y-4">
-            <div>
+          /* MFA */
+          <div>
+            <label className="field">
+              <svg className="field-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Zm3 4a2 2 0 0 1 1 3.7V19h-2v-1.3a2 2 0 0 1 1-3.7Z" /></svg>
               <input
                 type="text"
-                placeholder="000000"
+                placeholder="6-digit code"
                 value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/[^a-zA-Z0-9\-]/g, '').slice(0, 9))}
-                required
+                onChange={(e) => setMfaCode(e.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 9))}
                 autoFocus
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                aria-label="Verification code"
+                style={{ textAlign: 'center', letterSpacing: '0.3em', fontFamily: 'monospace' }}
               />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-600 text-center">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || mfaCode.length < 6}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Verifying…' : 'Verify'}
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button type="button" className="btn" onClick={() => handleMFAVerify()} disabled={loading || mfaCode.length < 6}>
+              <span className="btn-label">{loading ? 'Verifying...' : 'VERIFY'}</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => { setMfaToken(''); setMfaCode(''); setError('') }}
-              className="block w-full text-center text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← Back to Sign In
-            </button>
-          </form>
+            <button type="button" onClick={() => { setMfaToken(''); setMfaCode(''); setError('') }} className="back-link">Back</button>
+          </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+          /* Email + password */
+          <>
+            <label className="field">
+              <svg className="field-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm8 7.3L4.4 7h15.2L12 12.3ZM4 9.2V17h16V9.2l-8 5.3-8-5.3Z" /></svg>
               <input
+                ref={emailRef}
                 type="email"
-                placeholder="Email"
+                placeholder="Your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onFocus={handleEmailFocus}
+                autoComplete="email"
+                aria-label="Email"
               />
-            </div>
-            <div>
+            </label>
+
+            <label className="field">
+              <svg className="field-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Zm3 4a2 2 0 0 1 1 3.7V19h-2v-1.3a2 2 0 0 1 1-3.7Z" /></svg>
               <input
-                type="password"
+                ref={passRef}
+                type={showPass ? 'text' : 'password'}
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                onFocus={handlePassFocus}
+                onBlur={handlePassBlur}
+                autoComplete="current-password"
+                aria-label="Password"
               />
-            </div>
+              <button className="peek" type="button" data-peek="true" onClick={handlePeek} aria-label={showPass ? 'Hide password' : 'Show password'} aria-pressed={showPass}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9.3 3.1-11 7.5C2.7 16.9 7 20 12 20s9.3-3.1 11-7.5C21.3 8.1 17 5 12 5Zm0 12.5a5 5 0 1 1 5-5 5 5 0 0 1-5 5Zm0-8a3 3 0 1 0 3 3 3 3 0 0 0-3-3Z" /></svg>
+              </button>
+            </label>
 
-            {error && (
-              <p className="text-sm text-red-600 text-center">{error}</p>
-            )}
+            {error && <p className="form-error">{error}</p>}
 
             <button
               type="submit"
+              className={`btn ${done ? 'is-success' : ''}`}
               disabled={loading}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+              onMouseEnter={handleBtnEnter}
+              onMouseLeave={handleBtnLeave}
+              onPointerDown={handleBtnDown}
+              onPointerUp={handleBtnUp}
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              <span className="btn-bolt" aria-hidden="true">&#9889;</span>
+              <span className="btn-label">{loading ? 'Signing in...' : btnLabel}</span>
             </button>
 
-            <Link
-              to="/forgot-password"
-              className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors"
-            >
-              Forgot password?
-            </Link>
+            <div className="form-links">
+              <Link to="/forgot-password" className="form-link">Forgot password?</Link>
 
-            {ssoProviders.length > 0 && (
-              <>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-xs text-gray-400">or</span>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </div>
-                {ssoProviders.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    onClick={() => handleSSOLogin(provider.id)}
-                    disabled={ssoLoading}
-                    className="w-full py-3 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    {ssoLoading ? 'Redirecting…' : `Sign in with ${provider.name}`}
-                  </button>
-                ))}
-              </>
-            )}
-          </form>
+              {ssoProviders.length > 0 && (
+                <>
+                  <div className="divider"><span>or</span></div>
+                  {ssoProviders.map((provider) => (
+                    <button key={provider.id} type="button" onClick={() => handleSSOLogin(provider.id)} disabled={ssoLoading} className="sso-btn">
+                      {ssoLoading ? 'Redirecting...' : `Continue with ${provider.name}`}
+                    </button>
+                  ))}
+                </>
+              )}
+
+              <Link to="/signup" className="form-link signup-link">Don't have an account? <strong>Sign up</strong></Link>
+            </div>
+          </>
         )}
 
-        <Link
-          to="/signup"
-          className="block text-center text-sm text-gray-500 hover:text-orange-600 transition-colors mt-4"
-        >
-          Don't have an account? Sign up
-        </Link>
-      </div>
-    </div>
+        <span className="foot foot--l" aria-hidden="true" />
+        <span className="foot foot--r" aria-hidden="true" />
+      </form>
+    </AuthLayout>
   )
 }

@@ -67,6 +67,16 @@ type ResourceSet struct {
 	UpdatedAt   time.Time
 }
 
+// ResourceSetCounts holds the number of each resource type within a resource set.
+type ResourceSetCounts struct {
+	AccessPolicies      int
+	ClientWorkloads     int
+	TrustProviders      int
+	AccessConditions    int
+	CredentialProviders int
+	ServerWorkloads     int
+}
+
 type IdentityProvider struct {
 	ID          uuid.UUID
 	TenantID    uuid.UUID

@@ -51,3 +51,41 @@ func (r *TenantCARepo) GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, ce
 
 	return certPEM, keyEncrypted, nil
 }
+
+func (r *TenantCARepo) HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error) {
+	var cert *string
+	err := r.pool.QueryRow(ctx,
+		`SELECT ca_cert_pem FROM tenants WHERE id = $1`, tenantID).Scan(&cert)
+	if err != nil {
+		return false, fmt.Errorf("check tenant CA: %w", err)
+	}
+	return cert != nil && *cert != "", nil
+}
+
+func (r *TenantCARepo) GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var lifetime int
+	err := r.pool.QueryRow(ctx,
+		`SELECT leaf_lifetime_seconds FROM tenants WHERE id = $1`,
+		tenantID).Scan(&lifetime)
+	if err != nil {
+		return 86400, fmt.Errorf("get leaf lifetime: %w", err)
+	}
+	return lifetime, nil
+}
+
+func (r *TenantCARepo) SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx,
+		`UPDATE tenants SET leaf_lifetime_seconds = $1, updated_at = NOW() WHERE id = $2`,
+		lifetimeSeconds, tenantID)
+	if err != nil {
+		return fmt.Errorf("set leaf lifetime: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}

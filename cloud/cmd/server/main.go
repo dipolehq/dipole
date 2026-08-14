@@ -162,7 +162,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: service.NewHTTPOIDCClient()})
 	mcpIdPService := mcpsvc.NewIdPService(mcpIdPResolver)
 	mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
-	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
+	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, repos.ClientWorkloads, encKey)
 	mcpTokenService := mcpsvc.NewTokenService(mcpCodeStore, issuer, mcpTokenConfigResolver)
 	mcpAuthorizeService := mcpsvc.NewAuthorizeService(mcpDCR, mcpCodeStore, mcpPolicyFinder, conditionEval, mcpIdPService)
 
@@ -183,12 +183,12 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
 	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
-	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter)
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter, authEmitter)
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver)
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver, authEmitter)
 
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
@@ -197,8 +197,11 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus, caService)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
+	grpcHandler.SetLeafSigner(caService)
+	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
+	grpcHandler.SetProxyAuthenticator(repos.AgentProxies)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -271,6 +274,7 @@ func buildHTTPServer(
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
 	tracingBus *mcpgw.TracingBus,
+	caService *pki.TenantCAService,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -285,6 +289,7 @@ func buildHTTPServer(
 		repos.SignOnPolicies,
 		repos.LogStreams,
 		repos.GlobalPolicyCompliance,
+		service.NewComplianceService(repos.AccessPolicies),
 		repos.TenantProfiles,
 		registrationSvc,
 		repos.Tenants,
@@ -325,6 +330,7 @@ func buildHTTPServer(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
 	)).RegisterRoutes(mux)
+	rest.NewTlsDecryptHandler(caService).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
 	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
@@ -334,10 +340,14 @@ func buildHTTPServer(
 
 	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
 	loginSvc.SetMFA(repos.UserMFA, encKey)
+	loginSvc.SetRoles(repos.Roles)
 	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)
-	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer)
+
+	feedbackHandler := rest.NewFeedbackHandler(cfg.ResendAPIKey, cfg.EmailFrom, "support@dipolehq.com")
+	feedbackHandler.RegisterRoutes(mux)
+	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(auditEmitter)
 	authHandler.RegisterRoutes(mux)

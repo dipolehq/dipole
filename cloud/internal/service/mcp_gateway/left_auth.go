@@ -44,8 +44,9 @@ type LeftSideAuth struct {
 }
 
 type AuthResult struct {
-	UserID string
-	Claims map[string]any
+	UserID             string
+	Claims             map[string]any
+	ClientWorkloadName string
 }
 
 func NewLeftSideAuth(issuer *identity.IdentityIssuer) *LeftSideAuth {
@@ -83,8 +84,9 @@ func (a *LeftSideAuth) Authenticate(token string, expectedAudience string) (*Aut
 	}
 
 	return &AuthResult{
-		UserID: userID,
-		Claims: claims,
+		UserID:             userID,
+		Claims:             claims,
+		ClientWorkloadName: extractClientWorkloadName(claims),
 	}, nil
 }
 
@@ -219,4 +221,9 @@ func extractUserID(claims map[string]any) string {
 		return sub
 	}
 	return ""
+}
+
+func extractClientWorkloadName(claims map[string]any) string {
+	name, _ := claims["client_workload_name"].(string)
+	return name
 }

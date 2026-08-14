@@ -25,6 +25,7 @@ type ClientWorkloadRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ClientWorkload, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, cw *domain.ClientWorkload) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
 }
 
 type ServerWorkloadRepository interface {
@@ -33,6 +34,7 @@ type ServerWorkloadRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ServerWorkload, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, sw *domain.ServerWorkload) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
 }
 
 type TrustProviderRepository interface {
@@ -41,6 +43,7 @@ type TrustProviderRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, tp *domain.TrustProvider) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
 }
 
 type CredentialProviderRepository interface {
@@ -49,6 +52,7 @@ type CredentialProviderRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.CredentialProvider, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, cp *domain.CredentialProvider) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
 }
 
 type AccessConditionRepository interface {
@@ -57,6 +61,7 @@ type AccessConditionRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AccessCondition) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
 }
 
 type AccessPolicyRepository interface {
@@ -67,6 +72,9 @@ type AccessPolicyRepository interface {
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	FindByServerTarget(ctx context.Context, tenantID uuid.UUID, host string, port int, resourceSetID *uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
 	FindByAppProtocol(ctx context.Context, tenantID uuid.UUID, protocol string) ([]domain.AccessPolicyWithRelations, error)
+	ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
+	CountInactive(ctx context.Context, tenantID uuid.UUID) int
+	IsHostnameAuthorizedForTLS(ctx context.Context, tenantID uuid.UUID, hostname string) (bool, error)
 }
 
 type AgentControllerRepository interface {
@@ -95,6 +103,7 @@ type ResourceSetRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error)
+	GetResourceCounts(ctx context.Context, tenantID uuid.UUID, resourceSetIDs []uuid.UUID) (map[uuid.UUID]domain.ResourceSetCounts, error)
 }
 
 type UserRepository interface {
@@ -145,6 +154,9 @@ type AgentProxyRepository interface {
 
 type TenantCARepository interface {
 	GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (storedCertPEM string, storedKeyEncrypted []byte, err error)
+	HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error)
+	GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error)
+	SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error
 }
 
 type RegistrationTokenRepository interface {

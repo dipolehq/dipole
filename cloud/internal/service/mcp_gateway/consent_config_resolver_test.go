@@ -256,3 +256,5 @@ func TestCPConsentConfigResolver_GetConsentConfig_UnencryptedConfig(t *testing.T
 		t.Errorf("expected client_id 'test-client', got '%s'", cfg.ClientID)
 	}
 }
+
+func (m *mockCPRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }

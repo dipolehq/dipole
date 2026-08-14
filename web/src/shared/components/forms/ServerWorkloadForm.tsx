@@ -227,10 +227,10 @@ export function ServerWorkloadForm({
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Details */}
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
           <div className="space-y-4">
             {statusSlot}
             <FloatingInput
@@ -251,8 +251,8 @@ export function ServerWorkloadForm({
         </div>
 
         {/* Service Endpoint */}
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Service Endpoint</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Service Endpoint</h4>
           <div className="space-y-4">
             <FloatingInput
               label="Host"
@@ -355,8 +355,8 @@ export function ServerWorkloadForm({
         </div>
 
         {/* Authentication */}
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Authentication</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Authentication</h4>
           <div className="space-y-4">
             <div
               className={`grid gap-3 ${showAuthScheme && !authLocked ? 'grid-cols-2' : authLocked && values.appProtocol === 'MCP' ? 'grid-cols-2' : 'grid-cols-1'}`}
@@ -427,8 +427,8 @@ export function ServerWorkloadForm({
         )}
 
         {/* Tags */}
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Tags</h4>
           <TagsField
             value={values.tags}
             onChange={(tags) => update({ tags })}
@@ -460,8 +460,8 @@ function StaticHeadersSection({ value, onChange, disabled = false }: StaticHeade
   }
 
   return (
-    <div className="border border-border rounded-lg p-5">
-      <h4 className="text-sm font-semibold text-gray-800 mb-4">Static HTTP Headers</h4>
+    <div>
+      <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Static HTTP Headers</h4>
       {value.length > 0 && (
         <div className="space-y-3 mb-3">
           {value.map((header, idx) => (
@@ -485,7 +485,7 @@ function StaticHeadersSection({ value, onChange, disabled = false }: StaticHeade
               <button
                 type="button"
                 onClick={() => removeHeader(idx)}
-                className="text-orange-400 hover:text-red-500 text-sm"
+                className="text-gray-400 hover:text-gray-600 text-sm"
               >
                 ×
               </button>
@@ -496,7 +496,7 @@ function StaticHeadersSection({ value, onChange, disabled = false }: StaticHeade
       <button
         type="button"
         onClick={addHeader}
-        className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+        className="text-xs text-gray-500 hover:text-gray-700 font-medium"
       >
         + Add Header
       </button>

@@ -3,10 +3,12 @@ import { apiClient } from '@/shared/lib/api-client'
 export interface EventQueryParams {
   page: number
   perPage: number
+  search?: string
   severity?: string
   eventType?: string
   startDate?: string
   endDate?: string
+  source?: string
 }
 
 interface AuthEventDTO {
@@ -92,10 +94,12 @@ function buildEventQuery(params: EventQueryParams): string {
   const q = new URLSearchParams()
   q.set('page', String(params.page))
   q.set('perPage', String(params.perPage))
+  if (params.search) q.set('search', params.search)
   if (params.severity) q.set('severity', params.severity)
   if (params.eventType) q.set('eventType', params.eventType)
   if (params.startDate) q.set('startDate', params.startDate)
   if (params.endDate) q.set('endDate', params.endDate)
+  if (params.source) q.set('source', params.source)
   return q.toString()
 }
 
@@ -127,8 +131,8 @@ export async function fetchWorkloadEvents(params: EventQueryParams): Promise<{ i
       connectionId: dto.connectionId,
       eventType: dto.eventType,
       policyId: dto.policyId,
-      clientWorkloadName: (payload.clientWorkload as Record<string, string>)?.name ?? 'Unknown',
-      serverWorkloadName: (payload.serverWorkload as Record<string, string>)?.name ?? 'Unknown',
+      clientWorkloadName: (payload.workload as Record<string, Record<string, string>>)?.client?.name ?? (payload.clientWorkload as Record<string, string>)?.name ?? '—',
+      serverWorkloadName: (payload.workload as Record<string, Record<string, string>>)?.server?.name ?? (payload.serverWorkload as Record<string, string>)?.name ?? '—',
       outcome: dto.outcome,
       severity: dto.severity,
       timestamp: dto.timestamp,

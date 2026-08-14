@@ -1,3 +1,7 @@
 export { EdgeComponentsPage } from './components/EdgeComponentsPage'
+export { EdgeAgentControllersPage } from './components/EdgeAgentControllersPage'
+export { EdgeAgentProxiesPage } from './components/EdgeAgentProxiesPage'
+export { EdgeDeployPage } from './components/EdgeDeployPage'
+export { EdgeTlsDecryptPage } from './components/EdgeTlsDecryptPage'
 export { CreateAgentControllerPage } from './components/CreateAgentControllerPage'
 export { AgentControllerDetailPage } from './components/AgentControllerDetailPage'

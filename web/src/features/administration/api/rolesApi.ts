@@ -48,6 +48,7 @@ export interface RoleInput {
   description: string
   isActive: boolean
   permissions: Record<string, string>
+  resourceSetIds?: string[]
 }
 
 export interface FetchRolesResult {
@@ -79,6 +80,7 @@ export async function createRole(input: RoleInput): Promise<RoleDetail> {
     description: input.description,
     isActive: input.isActive,
     permissions: input.permissions,
+    resourceSetIds: input.resourceSetIds ?? [],
   })
 }
 
@@ -88,6 +90,7 @@ export async function saveRole(id: string, input: RoleInput): Promise<RoleDetail
     description: input.description,
     isActive: input.isActive,
     permissions: input.permissions,
+    resourceSetIds: input.resourceSetIds ?? [],
   })
 }
 

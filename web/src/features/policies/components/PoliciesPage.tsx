@@ -1,70 +1,46 @@
-import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Search } from 'lucide-react'
+import { useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { type ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
+import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { usePolicies } from '@/features/policies/hooks/usePolicy'
 import { fetchClientWorkloads, fetchServerWorkloads, fetchTrustProviders, fetchAccessConditions, fetchCredentialProviders } from '@/features/policies/api/entityApi'
 
-const PAGE_SIZE_OPTIONS = [15, 25, 50] as const
+interface PolicyRow {
+  id: string
+  name: string
+  clientWorkload: string
+  trustProvider: string
+  accessCondition: string
+  credentialProvider: string
+  serverWorkload: string
+  status: 'Active' | 'Inactive'
+}
+
+const statusFilterFn = (row: { getValue: (id: string) => unknown }, _columnId: string, filterValue: string[]) => {
+  if (!filterValue?.length) return true
+  return filterValue.includes(row.getValue('status') as string)
+}
 
 export function PoliciesPage() {
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
 
-  const [searchQuery, setSearchQuery] = useState(params.get('search') || '')
-  const [pageSize, setPageSizeState] = useState<number>(Number(params.get('perPage')) || PAGE_SIZE_OPTIONS[0])
-  const [currentPage, setCurrentPageState] = useState(Number(params.get('page')) || 1)
-
-  function setCurrentPage(p: number) {
-    setCurrentPageState(p)
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next }, { replace: true })
-  }
-  function setPageSize(pp: number) {
-    setPageSizeState(pp)
-    setCurrentPageState(1)
-    setParams((prev) => { const next = new URLSearchParams(prev); next.set('perPage', String(pp)); next.set('page', '1'); return next }, { replace: true })
-  }
-
-  const { data, isLoading } = usePolicies(currentPage, pageSize, searchQuery)
+  const { data, isLoading } = usePolicies(1, 500, '')
   const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // Fetch entity names for display in columns
-  const { data: cwData } = useQuery({
-    queryKey: ['client-workloads', 'names'],
-    queryFn: () => fetchClientWorkloads({ perPage: 500 }),
-    staleTime: 60_000,
-  })
-  const { data: swData } = useQuery({
-    queryKey: ['server-workloads', 'names'],
-    queryFn: () => fetchServerWorkloads({ perPage: 500 }),
-    staleTime: 60_000,
-  })
-  const { data: tpData } = useQuery({
-    queryKey: ['trust-providers', 'names'],
-    queryFn: () => fetchTrustProviders({ perPage: 500 }),
-    staleTime: 60_000,
-  })
-  const { data: acData } = useQuery({
-    queryKey: ['access-conditions', 'names'],
-    queryFn: () => fetchAccessConditions({ perPage: 500 }),
-    staleTime: 60_000,
-  })
-  const { data: cpData } = useQuery({
-    queryKey: ['credential-providers', 'names'],
-    queryFn: () => fetchCredentialProviders({ perPage: 500 }),
-    staleTime: 60_000,
-  })
+  // Fetch entity names for display
+  const { data: cwData } = useQuery({ queryKey: ['client-workloads', 'names'], queryFn: () => fetchClientWorkloads({ perPage: 500 }), staleTime: 60_000 })
+  const { data: swData } = useQuery({ queryKey: ['server-workloads', 'names'], queryFn: () => fetchServerWorkloads({ perPage: 500 }), staleTime: 60_000 })
+  const { data: tpData } = useQuery({ queryKey: ['trust-providers', 'names'], queryFn: () => fetchTrustProviders({ perPage: 500 }), staleTime: 60_000 })
+  const { data: acData } = useQuery({ queryKey: ['access-conditions', 'names'], queryFn: () => fetchAccessConditions({ perPage: 500 }), staleTime: 60_000 })
+  const { data: cpData } = useQuery({ queryKey: ['credential-providers', 'names'], queryFn: () => fetchCredentialProviders({ perPage: 500 }), staleTime: 60_000 })
 
-  // Build name lookup maps
-  const cwNames = new Map((cwData?.items ?? []).map((i) => [i.id, i.name]))
-  const swNames = new Map((swData?.items ?? []).map((i) => [i.id, i.name]))
-  const tpNames = new Map((tpData?.items ?? []).map((i) => [i.id, i.name]))
-  const acNames = new Map((acData?.items ?? []).map((i) => [i.id, i.name]))
-  const cpNames = new Map((cpData?.items ?? []).map((i) => [i.id, i.name]))
+  const cwNames = useMemo(() => new Map((cwData?.items ?? []).map((i) => [i.id, i.name])), [cwData])
+  const swNames = useMemo(() => new Map((swData?.items ?? []).map((i) => [i.id, i.name])), [swData])
+  const tpNames = useMemo(() => new Map((tpData?.items ?? []).map((i) => [i.id, i.name])), [tpData])
+  const acNames = useMemo(() => new Map((acData?.items ?? []).map((i) => [i.id, i.name])), [acData])
+  const cpNames = useMemo(() => new Map((cpData?.items ?? []).map((i) => [i.id, i.name])), [cpData])
 
   function resolveName(map: Map<string, string>, id: string | undefined): string {
     if (!id) return '—'
@@ -74,150 +50,118 @@ export function PoliciesPage() {
   function resolveNames(map: Map<string, string>, ids: string[]): string {
     if (!ids || ids.length === 0) return '—'
     const names = ids.map((id) => map.get(id)).filter(Boolean)
-    if (names.length === 0) return '—'
-    return names.join(', ')
+    return names.length > 0 ? names.join(', ') : '—'
   }
+
+  const tableData: PolicyRow[] = useMemo(
+    () =>
+      items.map((policy) => ({
+        id: policy.id,
+        name: policy.name,
+        clientWorkload: resolveName(cwNames, policy.clientWorkloadId),
+        trustProvider: resolveNames(tpNames, policy.trustProviderIds),
+        accessCondition:
+          policy.accessConditionIds.length > 0
+            ? resolveNames(acNames, policy.accessConditionIds)
+            : '',
+        credentialProvider: resolveNames(cpNames, policy.credentialProviderIds),
+        serverWorkload: resolveName(swNames, policy.serverWorkloadId),
+        status: policy.isActive ? 'Active' : 'Inactive',
+      })),
+    [items, cwNames, swNames, tpNames, acNames, cpNames],
+  )
+
+  const columns: ColumnDef<PolicyRow, unknown>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Access Policy Name',
+        cell: ({ row }) => (
+          <Link
+            to={`/access-policies/${row.original.id}`}
+            className="font-medium text-gray-900 hover:text-blue-700 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.getValue('name')}
+          </Link>
+        ),
+        size: 200,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'clientWorkload',
+        header: 'Client Workload',
+        cell: ({ row }) => <span className="text-gray-700">{row.getValue('clientWorkload')}</span>,
+      },
+      {
+        accessorKey: 'trustProvider',
+        header: 'Trust Provider',
+        cell: ({ row }) => <span className="text-gray-700">{row.getValue('trustProvider')}</span>,
+      },
+      {
+        accessorKey: 'accessCondition',
+        header: 'Access Condition',
+        cell: ({ row }) => {
+          const val = row.getValue('accessCondition') as string
+          if (!val) {
+            return (
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded font-medium">
+                Optional
+              </span>
+            )
+          }
+          return <span className="text-gray-700">{val}</span>
+        },
+      },
+      {
+        accessorKey: 'credentialProvider',
+        header: 'Credential Provider',
+        cell: ({ row }) => <span className="text-gray-700">{row.getValue('credentialProvider')}</span>,
+      },
+      {
+        accessorKey: 'serverWorkload',
+        header: 'Server Workload',
+        cell: ({ row }) => <span className="text-gray-700">{row.getValue('serverWorkload')}</span>,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) =>
+          row.getValue('status') === 'Active' ? (
+            <span className="text-green-600 font-medium">Active</span>
+          ) : (
+            <span className="text-red-500 font-medium">Inactive</span>
+          ),
+        size: 100,
+        filterFn: statusFilterFn,
+      },
+    ],
+    [],
+  )
+
+  const facetedFilters: FacetedFilterConfig[] = useMemo(
+    () => [{ columnId: 'status', label: 'Status' }],
+    [],
+  )
+
+  if (isLoading) return <div className="flex-1" />
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
-                setCurrentPageState(1)
-                setParams((prev) => { const next = new URLSearchParams(prev); if (e.target.value) next.set('search', e.target.value); else next.delete('search'); next.set('page', '1'); return next }, { replace: true })
-              }}
-              className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
-            />
-          </div>
-          <Link
-            to="/access-policies/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
-          >
-            <Plus size={14} /> New
-          </Link>
-        </div>
       </div>
-
-      {isLoading ? (
-        <div className="flex-1" />
-      ) : (
-        <>
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <table className="w-full text-xs table-fixed">
-              <thead className="sticky top-0 bg-gray-50 z-10">
-                <tr className="border-b border-border">
-                  <th className="px-3 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-[4%]">#</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Access Policy Name</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Client Workload</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Trust Provider</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Access Condition</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Credential Provider</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-left">Server Workload</th>
-                  <th className="px-4 py-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider text-center w-[8%]">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-white">
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400 text-sm">
-                      No access policies found.
-                    </td>
-                  </tr>
-                )}
-                {items.map((policy, idx) => (
-                  <tr
-                    key={policy.id}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/access-policies/${policy.id}`)}
-                  >
-                    <td className="px-3 py-3 text-gray-400 text-center w-10">
-                      {(currentPage - 1) * pageSize + idx + 1}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-900 truncate max-w-[220px]">
-                      <Link
-                        to={`/access-policies/${policy.id}`}
-                        className="hover:text-blue-700 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {policy.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
-                      {resolveName(cwNames, policy.clientWorkloadId)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
-                      {resolveNames(tpNames, policy.trustProviderIds)}
-                    </td>
-                    <td className="px-4 py-3 truncate max-w-[160px]">
-                      {policy.accessConditionIds.length > 0 ? (
-                        <span className="text-gray-700">{resolveNames(acNames, policy.accessConditionIds)}</span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded font-medium">Optional</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
-                      {resolveNames(cpNames, policy.credentialProviderIds)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[160px]">
-                      {resolveName(swNames, policy.serverWorkloadId)}
-                    </td>
-                    <td className="px-3 py-3 text-xs font-medium text-center">
-                      {policy.isActive ? (
-                        <span className="text-green-600">Active</span>
-                      ) : (
-                        <span className="text-red-500">Inactive</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-gray-50 shrink-0">
-            <div className="flex items-center gap-2 text-xs text-gray-600">
-              <PageSizeSelect value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={(v) => { setPageSize(v) }} />
-              <span>
-                Showing {total === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
-                {Math.min(currentPage * pageSize, total)} of {total} Results
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
-              >
-                ←
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i + 1}
-                  onClick={() => setCurrentPage(i + 1)}
-                  className={`w-7 h-7 rounded text-xs font-medium transition-colors ${currentPage === i + 1 ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
-              >
-                →
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      <DataTable
+      columns={columns}
+      data={tableData}
+      searchPlaceholder="Filter by name or workload..."
+      searchKeys={['name', 'clientWorkload', 'serverWorkload', 'trustProvider', 'credentialProvider']}
+      facetedFilters={facetedFilters}
+      actionLabel="New Policy"
+      onAction={() => navigate('/access-policies/new')}
+      onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
+      emptyMessage="No access policies found."
+    />
     </div>
   )
 }

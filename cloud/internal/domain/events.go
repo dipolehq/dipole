@@ -17,6 +17,7 @@ type AuthEvent struct {
 	Timestamp     time.Time       `json:"timestamp"`
 	Payload       json.RawMessage `json:"payload"`
 	ResourceSetID *uuid.UUID      `json:"resourceSetId"`
+	Source        string          `json:"source"`
 }
 
 type WorkloadEvent struct {
@@ -60,10 +61,12 @@ type EventQueryOptions struct {
 	StartDate         *time.Time
 	EndDate           *time.Time
 	Severity          string
+	Severities        []string
 	EventType         string
 	ClientWorkloadIDs []string
 	ServerWorkloadIDs []string
 	UserID            string
+	Source            string
 }
 
 type DashboardEventData struct {
@@ -77,6 +80,7 @@ type DashboardEventData struct {
 	CredentialUsage      []DashboardTypeCount
 	ProtocolUsage        []DashboardTypeCount
 	PolicyFailures       []DashboardPolicyFailure
+	AttestationResults   []DashboardTypeCount
 }
 
 type DashboardTimePoint struct {

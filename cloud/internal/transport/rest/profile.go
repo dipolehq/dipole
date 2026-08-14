@@ -3,6 +3,7 @@ package rest
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/service"
@@ -57,6 +58,21 @@ func (h *APIHandlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
+
+	// Sync the display name to the users table so the sidebar reflects immediately.
+	email := UserEmailFromContext(r.Context())
+	if email != "" {
+		if user, err := h.users.GetByEmail(r.Context(), tenantID, email); err == nil && user != nil {
+			displayName := strings.TrimSpace(req.FirstName + " " + req.LastName)
+			if displayName != "" {
+				user.Name = displayName
+				user.FirstName = req.FirstName
+				user.LastName = req.LastName
+				_ = h.users.Update(r.Context(), tenantID, user)
+			}
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]any{
 		"firstName": req.FirstName,
 		"lastName":  req.LastName,
@@ -195,8 +211,8 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "currentPassword and newPassword are required")
 		return
 	}
-	if len(req.NewPassword) < 6 {
-		respondBadRequest(w, "new password must be at least 6 characters")
+	if len(req.NewPassword) < 8 {
+		respondBadRequest(w, "new password must be at least 8 characters")
 		return
 	}
 

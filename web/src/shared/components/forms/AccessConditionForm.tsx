@@ -31,9 +31,9 @@ export function AccessConditionForm({
 
   return (
     <fieldset disabled={disabled} className={disabledClass}>
-      <div className="space-y-5">
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Details</h4>
+      <div className="space-y-6">
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Details</h4>
           <div className="space-y-4">
             {statusSlot}
             <FloatingInput
@@ -53,13 +53,13 @@ export function AccessConditionForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Condition Configuration</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Condition Configuration</h4>
           <div className="space-y-4">
             <FloatingDropdown
               label="Integration Type"
               options={INTEGRATION_TYPES}
-              value={values.integration}
+              value={values.integration ?? ''}
               onChange={(v) => update({ integration: v })}
               disabled={disabled}
             />
@@ -69,7 +69,7 @@ export function AccessConditionForm({
                 <h5 className="text-xs font-semibold text-gray-800 mb-3">Conditions</h5>
                 {values.integration === 'geoip' && (
                   <GeoIPConditionForm
-                    countries={values.countries}
+                    countries={values.countries ?? [{ country: '', subdivisions: [''] }]}
                     onCountriesChange={(c) => update({ countries: c })}
                   />
                 )}
@@ -77,7 +77,7 @@ export function AccessConditionForm({
                   <TimeConditionForm
                     timezone={values.timezone}
                     onTimezoneChange={(v) => update({ timezone: v })}
-                    days={values.days}
+                    days={values.days ?? []}
                     onDaysChange={(d) => update({ days: d })}
                   />
                 )}
@@ -86,8 +86,8 @@ export function AccessConditionForm({
           </div>
         </div>
 
-        <div className="border border-border rounded-lg p-5">
-          <h4 className="text-sm font-semibold text-gray-800 mb-4">Tags</h4>
+        <div>
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Tags</h4>
           <TagsField
             value={values.tags}
             onChange={(tags) => update({ tags })}
@@ -160,14 +160,14 @@ function GeoIPConditionForm({
                 </div>
                 <button
                   onClick={() => removeCountry(idx)}
-                  className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                  className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
                 >
                   ×
                 </button>
               </div>
             </div>
             <div className="space-y-2">
-              {entry.subdivisions.map((sub, subIdx) => (
+              {(entry.subdivisions ?? ['']).map((sub, subIdx) => (
                 <div key={subIdx} className="flex items-center gap-1">
                   <div className="flex-1">
                     <FloatingDropdown
@@ -179,7 +179,7 @@ function GeoIPConditionForm({
                   </div>
                   <button
                     onClick={() => removeSubdivision(idx, subIdx)}
-                    className="text-orange-400 hover:text-red-500 text-sm shrink-0"
+                    className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
                   >
                     ×
                   </button>
@@ -187,7 +187,7 @@ function GeoIPConditionForm({
               ))}
               <button
                 onClick={() => addSubdivision(idx)}
-                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+                className="text-gray-500 hover:text-gray-700 text-lg font-bold"
               >
                 +
               </button>
@@ -198,7 +198,7 @@ function GeoIPConditionForm({
       <div className="text-center">
         <button
           onClick={addCountry}
-          className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+          className="text-xs text-gray-500 hover:text-gray-700 font-medium"
         >
           + Add Country
         </button>
@@ -240,7 +240,7 @@ function TimeConditionForm({
                       days.map((d, i) => (i === idx ? { ...d, startTime: e.target.value } : d)),
                     )
                   }
-                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
                 <span className="text-xs text-gray-400">to</span>
                 <input
@@ -251,13 +251,13 @@ function TimeConditionForm({
                       days.map((d, i) => (i === idx ? { ...d, endTime: e.target.value } : d)),
                     )
                   }
-                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300"
                 />
                 <button
                   onClick={() =>
                     onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: false } : d)))
                   }
-                  className="text-red-400 hover:text-red-500 text-sm"
+                  className="text-gray-400 hover:text-gray-600 text-sm"
                 >
                   ×
                 </button>
@@ -267,7 +267,7 @@ function TimeConditionForm({
                 onClick={() =>
                   onDaysChange(days.map((d, i) => (i === idx ? { ...d, enabled: true } : d)))
                 }
-                className="text-orange-500 hover:text-orange-600 text-lg font-bold"
+                className="text-gray-500 hover:text-gray-700 text-lg font-bold"
               >
                 +
               </button>

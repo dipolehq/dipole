@@ -55,6 +55,35 @@ func TestLeftAuth_ValidToken_ReturnsUser(t *testing.T) {
 	}
 }
 
+func TestLeftAuth_TokenWithClientWorkloadClaim_ReturnsClientName(t *testing.T) {
+	auth, issuer := setupAuth(t)
+	token := issueTestToken(t, issuer, testGatewayURL, 1*time.Hour, map[string]any{
+		"email":                "alice@corp.com",
+		"client_workload_name": "Claude Desktop",
+	})
+
+	result, err := auth.Authenticate(token, testGatewayURL)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ClientWorkloadName != "Claude Desktop" {
+		t.Errorf("expected ClientWorkloadName=%q, got %q", "Claude Desktop", result.ClientWorkloadName)
+	}
+}
+
+func TestLeftAuth_TokenWithoutClientWorkloadClaim_ReturnsEmptyName(t *testing.T) {
+	auth, issuer := setupAuth(t)
+	token := issueTestToken(t, issuer, testGatewayURL, 1*time.Hour, map[string]any{"email": "alice@corp.com"})
+
+	result, err := auth.Authenticate(token, testGatewayURL)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ClientWorkloadName != "" {
+		t.Errorf("expected empty ClientWorkloadName, got %q", result.ClientWorkloadName)
+	}
+}
+
 func TestLeftAuth_ValidToken_SubAsFallback(t *testing.T) {
 	auth, issuer := setupAuth(t)
 	token := issueTestToken(t, issuer, testGatewayURL, 1*time.Hour, nil)

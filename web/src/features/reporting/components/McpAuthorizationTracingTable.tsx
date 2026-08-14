@@ -27,7 +27,7 @@ function formatTimestamp(iso: string): string {
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
     Info: 'text-green-600',
-    Warning: 'text-orange-500',
+    Warning: 'text-gray-600',
     Error: 'text-red-500',
   }
   return (
@@ -50,11 +50,27 @@ async function fetchTracingEntries(): Promise<McpAuthorizationTracingEntry[]> {
 export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAuthorizationTracingTableProps) {
   const qc = useQueryClient()
 
-  const { data: entries = [] } = useQuery({
+  const { data: rawEntries = [] } = useQuery({
     queryKey: ['mcp-tracing'],
     queryFn: fetchTracingEntries,
     refetchInterval: 3000,
   })
+
+  // Sample data for UI development when no live MCP traffic exists
+  const sampleEntries: McpAuthorizationTracingEntry[] = [
+    { id: 's1', timestamp: new Date(Date.now() - 120000).toISOString(), clientIP: '49.37.169.218,172.71.124.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's2', timestamp: new Date(Date.now() - 180000).toISOString(), clientIP: '49.37.169.218,162.158.170.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's3', timestamp: new Date(Date.now() - 300000).toISOString(), clientIP: '103.21.58.44,104.23.21.5', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:58299/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's4', timestamp: new Date(Date.now() - 420000).toISOString(), clientIP: '14.97.201.133,172.70.208.5', accessPolicy: { name: 'Authenticated', status: 'Unknown' }, redirectUri: 'amanbhardwaj0081@gmail.com', clientWorkload: { name: 'Unknown', status: 'Unknown' }, resourceServer: 'Unknown', serverWorkload: { name: 'Unknown', status: 'Unknown' }, severity: 'Error' },
+    { id: 's5', timestamp: new Date(Date.now() - 540000).toISOString(), clientIP: '49.37.169.218,104.22.66.26', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's6', timestamp: new Date(Date.now() - 660000).toISOString(), clientIP: '106.51.72.89,162.158.170.8', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:56686/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's7', timestamp: new Date(Date.now() - 900000).toISOString(), clientIP: '49.37.169.218,104.22.66.26', accessPolicy: { name: 'Missing token', status: 'Unknown' }, redirectUri: '', clientWorkload: { name: 'Unknown', status: 'Unknown' }, resourceServer: 'Unknown', serverWorkload: { name: 'Unknown', status: 'Unknown' }, severity: 'Error' },
+    { id: 's8', timestamp: new Date(Date.now() - 1020000).toISOString(), clientIP: '223.226.151.4,172.71.124.8', accessPolicy: { name: 'Claude to MCP Gateway', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's9', timestamp: new Date(Date.now() - 1200000).toISOString(), clientIP: '49.37.169.218,162.158.170.8', accessPolicy: { name: 'Gemini to MCP Gateway', status: 'Active' }, redirectUri: 'http://localhost:58432/oauth/callback', clientWorkload: { name: 'Gemini CLI', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Info' },
+    { id: 's10', timestamp: new Date(Date.now() - 1500000).toISOString(), clientIP: '103.21.58.44,104.23.21.5', accessPolicy: { name: 'Authenticated', status: 'Active' }, redirectUri: 'https://claude.ai/api/mcp/auth_callback', clientWorkload: { name: 'Claude Desktop', status: 'Identified' }, resourceServer: 'testing-dipole-mcpgateway.dipolehq.com', serverWorkload: { name: 'Dipole MCP Gateway', status: 'Identified' }, severity: 'Warning' },
+  ]
+
+  const entries = rawEntries.length > 0 ? rawEntries : (import.meta.env.DEV ? sampleEntries : [])
 
   function handleRefresh() {
     qc.invalidateQueries({ queryKey: ['mcp-tracing'] })
@@ -78,21 +94,21 @@ export function McpAuthorizationTracingTable({ searchQuery, severity }: McpAutho
   })
 
   return (
-    <table className="w-full text-xs table-fixed">
+    <table className="w-full text-xs">
       <colgroup>
-        <col className="w-[4%]" />
-        <col className="w-[15%]" />
-        <col className="w-[9%]" />
-        <col className="w-[14%]" />
-        <col className="w-[24%]" />
-        <col className="w-[28%]" />
-        <col className="w-[7%]" />
+        <col style={{ width: '3%' }} />
+        <col style={{ width: '14%' }} />
+        <col style={{ width: '12%' }} />
+        <col style={{ width: '14%' }} />
+        <col style={{ width: '25%' }} />
+        <col style={{ width: '25%' }} />
+        <col style={{ width: '7%' }} />
       </colgroup>
       <thead className="sticky top-0 bg-gray-50 z-10">
         <tr className="border-b border-border">
           <th className="px-3 py-2.5 leading-none h-[39.16px]">
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-orange-500 transition-colors" title="Refresh">
+              <button type="button" onClick={handleRefresh} className="text-gray-400 hover:text-gray-600 transition-colors" title="Refresh">
                 <RefreshCw size={15} strokeWidth={2.5} />
               </button>
               <span className="w-2 h-2 rounded-full bg-green-500" title="Live (polling every 3s)" />
@@ -131,8 +147,8 @@ function McpTracingRow({ entry }: { entry: McpAuthorizationTracingEntry }) {
       <td className="px-4 py-2 text-gray-700 whitespace-nowrap">
         {formatTimestamp(entry.timestamp)}
       </td>
-      <td className="px-4 py-2 text-gray-700">
-        {entry.clientIP}
+      <td className="px-4 py-2 text-gray-700 truncate max-w-0">
+        {entry.clientIP.split(',')[0]}
       </td>
       <td className="px-4 py-2">
         <PolicyCell name={entry.accessPolicy.name} status={entry.accessPolicy.status} />
@@ -160,26 +176,22 @@ function McpTracingRow({ entry }: { entry: McpAuthorizationTracingEntry }) {
 
 function PolicyCell({ name, status }: { name: string; status: McpPolicyStatus }) {
   if (status === 'Unknown') {
-    return <span className="text-xs text-orange-500 font-medium">Unknown</span>
+    return <span className="text-xs text-gray-600 font-medium">Unknown</span>
   }
-  const statusColor = status === 'Active' ? 'text-green-600' : 'text-gray-400'
   return (
-    <div>
-      <div className="text-xs text-gray-700 font-medium">{name}</div>
-      <span className={`text-[11px] font-medium ${statusColor}`}>{status}</span>
-    </div>
+    <div className="truncate text-xs text-gray-700 font-medium">{name}</div>
   )
 }
 
 function WorkloadCell({ name, status, uri }: { name: string; status: 'Identified' | 'Unknown'; uri: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       {status === 'Identified' ? (
-        <div className="text-xs text-gray-700 font-medium">{name}</div>
+        <div className="text-xs text-gray-700 font-medium truncate">{name}</div>
       ) : (
-        <div className="text-xs text-orange-500 font-medium">Unknown</div>
+        <div className="text-xs text-gray-600 font-medium">Unknown</div>
       )}
-      <div className="text-[11px] text-gray-500 break-all leading-relaxed">{uri}</div>
+      <div className="text-[11px] text-gray-400 truncate" title={uri}>{uri}</div>
     </div>
   )
 }

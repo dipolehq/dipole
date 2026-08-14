@@ -81,7 +81,7 @@ func newGatewayTestServer(t *testing.T) (*MCPGatewayServer, *recordingGatewayAut
 	auth := &recordingGatewayAuth{resultUserID: "alice@corp.com"}
 	handler := &recordingMethodHandler{}
 
-	srv := NewMCPGatewayServer(auth, handler, nil, nil, nil, resolver)
+	srv := NewMCPGatewayServer(auth, handler, nil, nil, nil, resolver, nil)
 	return srv, auth, handler, tenants
 }
 
@@ -244,7 +244,7 @@ func TestGatewayHandleMCP_TracingEntriesAreTenantScoped(t *testing.T) {
 
 	srv := NewMCPGatewayServer(
 		&recordingGatewayAuth{resultUserID: "alice@corp.com"},
-		&recordingMethodHandler{}, nil, nil, bus, resolver,
+		&recordingMethodHandler{}, nil, nil, bus, resolver, nil,
 	)
 
 	srv.HandleMCP(httptest.NewRecorder(), gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
@@ -276,7 +276,7 @@ func TestGatewayConsentCallback_ResolvesTenantFromHostname(t *testing.T) {
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 	consent := &recordingConsentHandler{}
 
-	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/mcp/consent/callback?code=abc&state=xyz", nil)
 	req.Host = "internal.run.app"
@@ -307,7 +307,7 @@ func TestGatewayConsentCallback_UnresolvableHostFailsClosed(t *testing.T) {
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 	consent := &recordingConsentHandler{}
 
-	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver)
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, consent, nil, nil, resolver, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/mcp/consent/callback?code=abc&state=xyz", nil)
 	req.Host = "internal.run.app"
@@ -331,7 +331,7 @@ func TestGatewayProtectedResourceMetadata_ReturnsCorrectAuthServer(t *testing.T)
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
-	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
 	req.Host = "internal.run.app"
@@ -371,7 +371,7 @@ func TestGatewayProtectedResourceMetadata_RejectsNonGatewayHost(t *testing.T) {
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
-	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
 	req.Host = "internal.run.app"
@@ -392,7 +392,7 @@ func TestGatewayProtectedResourceMetadata_UnknownTenantFailsClosed(t *testing.T)
 	lookup := &fakeTenantLookup{bySubdomain: tenants}
 	resolver := NewTenantHostResolver(lookup, platform.NewHosts("dipolehq.com", ""), false)
 
-	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver)
+	srv := NewMCPGatewayServer(&recordingGatewayAuth{}, &recordingMethodHandler{}, nil, nil, nil, resolver, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
 	req.Host = "internal.run.app"

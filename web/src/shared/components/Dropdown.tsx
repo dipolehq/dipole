@@ -29,11 +29,11 @@ export function Dropdown({ options, value, onChange, placeholder = 'Please selec
         type="button"
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm transition-colors ${
-          open ? 'border-orange-400 ring-2 ring-orange-100' : 'border-border'
+          open ? 'border-gray-400 ring-2 ring-gray-200' : 'border-border'
         } ${selectedLabel ? 'text-gray-900' : 'text-gray-400'}`}
       >
         <span className="truncate">{selectedLabel ?? placeholder}</span>
-        <ChevronDown size={14} className={`shrink-0 text-orange-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`shrink-0 text-gray-600 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
@@ -48,7 +48,7 @@ export function Dropdown({ options, value, onChange, placeholder = 'Please selec
               }}
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
                 value === opt.value
-                  ? 'bg-gray-100 text-orange-600 font-medium'
+                  ? 'bg-gray-100 text-gray-700 font-medium'
                   : 'text-gray-600 hover:bg-gray-50'
               }`}
             >

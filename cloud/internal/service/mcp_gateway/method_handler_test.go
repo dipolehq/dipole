@@ -162,7 +162,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/list", nil)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	// Call jira tool
 	jiraPrefix := toolPrefix(ServerInfo{ID: jiraID, Name: "jira"})
@@ -264,7 +264,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -277,7 +277,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -351,7 +351,7 @@ func TestToolsCall_EmitsAuditEventWithHumanReadableServerName(t *testing.T) {
 
 	sink := &recordingEventSink{}
 	emitter := NewGatewayEventEmitter(sink)
-	handler := NewMethodHandler(rightAuth, clients, emitter)
+	handler := NewMethodHandler(rightAuth, clients, emitter, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Customer Database MCP Server"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__list_customers"))
@@ -388,7 +388,7 @@ func TestToolsCall_FailurePath_EmitsAuditEventWithHumanReadableServerName(t *tes
 
 	sink := &recordingEventSink{}
 	emitter := NewGatewayEventEmitter(sink)
-	handler := NewMethodHandler(rightAuth, clients, emitter)
+	handler := NewMethodHandler(rightAuth, clients, emitter, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Payments API"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__charge"))
@@ -425,7 +425,7 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
 	clients := mapClientFactory{"My  Server!": client}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	// Step 1: tools/list
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/list", nil)
@@ -464,7 +464,7 @@ func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
 	if err != nil {
@@ -479,7 +479,7 @@ func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
 	if err != nil {
@@ -543,7 +543,7 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/list", nil)
 	if err != nil {
@@ -593,7 +593,7 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
@@ -629,7 +629,7 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)

@@ -4,6 +4,7 @@ import {
   fetchCredentialProvider,
   createCredentialProvider,
   saveCredentialProvider,
+  deleteCredentialProvider,
 } from '@/features/credential-providers/api/credentialProvidersApi'
 import type { CredentialProviderInput } from '@/features/credential-providers/api/credentialProvidersApi'
 
@@ -41,6 +42,16 @@ export function useSaveCredentialProvider(id: string) {
     mutationFn: (input: CredentialProviderInput) => saveCredentialProvider(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['credential-providers', 'detail', id] })
+      qc.invalidateQueries({ queryKey: ['credential-providers', 'list'] })
+    },
+  })
+}
+
+export function useDeleteCredentialProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteCredentialProvider(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['credential-providers', 'list'] })
     },
   })

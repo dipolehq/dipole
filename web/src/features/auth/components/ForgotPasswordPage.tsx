@@ -1,17 +1,45 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '@/shared/lib/api-client'
+import { AuthLayout } from './AuthLayout'
+import { type RobotHandle } from './RobotGuard'
 
 export function ForgotPasswordPage() {
+  const robotRef = useRef<RobotHandle>(null)
+
+  useEffect(() => { document.title = 'Dipole | Reset Password' }, [])
+
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [resetToken, setResetToken] = useState('')
   const [error, setError] = useState('')
 
+  function handleEmailFocus() {
+    robotRef.current?.setMood('watching')
+    robotRef.current?.turnAway(false)
+    robotRef.current?.say("Where should I send the reset link?")
+    robotRef.current?.followTyping(email)
+  }
+
+  function handleEmailChange(value: string) {
+    setEmail(value)
+    robotRef.current?.followTyping(value)
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+    if (EMAIL_RE.test(value.trim())) {
+      robotRef.current?.setMood('happy')
+      robotRef.current?.say("Got it. Ready when you are.")
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (!email.trim()) {
+      setError('Email is required.')
+      robotRef.current?.say("I need an email to help you.")
+      return
+    }
     setLoading(true)
 
     try {
@@ -20,91 +48,94 @@ export function ForgotPasswordPage() {
         { email },
       )
       setSubmitted(true)
-      if (res.token) {
-        setResetToken(res.token)
-      }
+      if (res.token) setResetToken(res.token)
+      robotRef.current?.success("Done! Check your inbox.")
     } catch {
       setError('Something went wrong. Please try again.')
+      robotRef.current?.say("Something broke. Try again?")
+      robotRef.current?.setMood('watching')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
-      <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
-        <div className="flex flex-col items-center mb-8">
-          <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
-          <h1 className="text-lg font-semibold text-gray-900">Reset Password</h1>
-          {!submitted && (
-            <p className="text-sm text-gray-500 mt-1 text-center">
-              Enter your email and we'll send you a reset link.
-            </p>
-          )}
+    <AuthLayout robotRef={robotRef}>
+      <form className="card" onSubmit={handleSubmit} noValidate>
+        <span className="hand hand--l" aria-hidden="true" />
+        <span className="hand hand--r" aria-hidden="true" />
+
+        <div className="title-row">
+          <img src="/logo_black.svg" alt="Dipole" className="card-logo" draggable={false} />
+          <h1 className="title">{submitted ? 'Check your email' : 'Reset password'}</h1>
+          <img src="/logo_black_mirror.svg" alt="" className="card-logo" draggable={false} />
         </div>
 
         {submitted ? (
-          <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <p className="text-sm text-green-800">
-                If an account with that email exists, a password reset link has been sent.
-              </p>
+          <div>
+            <div className="success-box">
+              <p>If an account with that email exists, a password reset link has been sent.</p>
             </div>
 
             {resetToken && (
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                <p className="text-xs text-gray-500 mb-1 font-medium">Dev Mode — Reset Token:</p>
-                <p className="text-xs text-gray-800 font-mono break-all select-all">{resetToken}</p>
+              <div className="dev-box">
+                <p className="dev-label">Dev Mode — Reset Token:</p>
+                <p className="dev-token">{resetToken}</p>
                 <Link
                   to={`/reset-password?token=${encodeURIComponent(resetToken)}`}
-                  className="inline-block mt-3 text-xs text-orange-600 hover:text-orange-700 font-medium"
+                  className="dev-link"
                 >
-                  Use this token to reset password →
+                  Use this token to reset password &rarr;
                 </Link>
               </div>
             )}
 
-            <Link
-              to="/login"
-              className="block text-center text-sm text-orange-600 hover:text-orange-700 font-medium"
-            >
-              ← Back to Sign In
-            </Link>
+            <div className="form-links">
+              <Link to="/login" className="form-link">&larr; Back to Sign In</Link>
+            </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+          <>
+            <p className="form-subtitle">Enter your email and we'll send you a reset link.</p>
+
+            <label className="field">
+              <svg className="field-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm8 7.3L4.4 7h15.2L12 12.3ZM4 9.2V17h16V9.2l-8 5.3-8-5.3Z" /></svg>
               <input
                 type="email"
-                placeholder="Email address"
+                placeholder="Your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onFocus={handleEmailFocus}
+                autoComplete="email"
+                autoFocus
+                aria-label="Email"
               />
-            </div>
+            </label>
 
-            {error && (
-              <p className="text-sm text-red-600 text-center">{error}</p>
-            )}
+            {error && <p className="form-error">{error}</p>}
 
             <button
               type="submit"
+              className="btn"
               disabled={loading}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+              onMouseEnter={() => { robotRef.current?.hype(true); robotRef.current?.setMood('excited'); robotRef.current?.say('Ooh. Do it. Press it.') }}
+              onMouseLeave={() => { robotRef.current?.hype(false); robotRef.current?.setMood('idle') }}
+              onPointerDown={() => { robotRef.current?.press(); robotRef.current?.say("Ahh. That's the stuff.") }}
+              onPointerUp={() => robotRef.current?.release()}
             >
-              {loading ? 'Sending…' : 'Send Reset Link'}
+              <span className="btn-bolt" aria-hidden="true">&#9889;</span>
+              <span className="btn-label">{loading ? 'Sending...' : 'SEND RESET LINK'}</span>
             </button>
 
-            <Link
-              to="/login"
-              className="block text-center text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← Back to Sign In
-            </Link>
-          </form>
+            <div className="form-links">
+              <Link to="/login" className="form-link">&larr; Back to Sign In</Link>
+            </div>
+          </>
         )}
-      </div>
-    </div>
+
+        <span className="foot foot--l" aria-hidden="true" />
+        <span className="foot foot--r" aria-hidden="true" />
+      </form>
+    </AuthLayout>
   )
 }

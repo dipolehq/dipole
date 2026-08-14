@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
@@ -7,16 +8,19 @@ import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { useCreateIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, oidcCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
+import { apiClient } from '@/shared/lib/api-client'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
-
-const ROLE_OPTIONS = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-]
 
 export function CreateIdentityProviderPage() {
   const navigate = useNavigate()
   const createMutation = useCreateIdentityProvider()
+
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=100'),
+    staleTime: 60_000,
+  })
+  const roleOptions = (rolesData?.items ?? []).map((r) => ({ value: r.name, label: r.name }))
   const [error, setError] = useState<string | null>(null)
 
   // The redirect/ACS/JWKS URLs below are per tenant, and the customer must
@@ -84,42 +88,52 @@ export function CreateIdentityProviderPage() {
         type: idpType,
         config,
       })
-      navigate('/administration?tab=identity_providers')
+      navigate('/administration/identity-providers')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to create identity provider'))
     }
   }
 
   function handleCancel() {
-    navigate('/administration?tab=identity_providers')
+    navigate('/administration/identity-providers')
   }
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
+        <PageHeader />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={createMutation.isPending}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          {createMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+
       {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
           {error}
         </div>
       )}
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
-        <PageHeader />
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
-            {createMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="flex h-full">
-          {/* Form — left 60% */}
-          <div className="w-[60%] px-6 py-6 overflow-y-auto">
-            <div className="space-y-5">
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Identity Provider Details</h4>
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Identity Provider Details</h4>
                 <div className="space-y-4">
                   <FloatingInput label="Name" value={name} onChange={setName} required />
                   <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} rows={2} />
@@ -134,8 +148,8 @@ export function CreateIdentityProviderPage() {
               </div>
 
               {idpType === 'saml_2.0' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">SAML 2.0 Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">SAML 2.0 Configuration</h4>
                   <div className="space-y-4">
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
@@ -152,25 +166,25 @@ export function CreateIdentityProviderPage() {
               )}
 
               {idpType === 'oidc_1.0' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">OIDC 1.0 Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">OIDC 1.0 Configuration</h4>
                   <div className="space-y-4">
                     <FloatingInput label="Identity Provider Base URL" value={baseUrl} onChange={setBaseUrl} required />
                     <FloatingInput label="Client ID" value={clientId} onChange={setClientId} required />
                     <FloatingInput label="Scopes" value={scopes} onChange={setScopes} />
                     <div className="flex items-center gap-2">
-                      <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} className="w-4 h-4 accent-orange-500 cursor-pointer" />
+                      <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} className="w-4 h-4 accent-gray-600 cursor-pointer" />
                       <span className="text-sm text-gray-700">PKCE Required</span>
                     </div>
                     <div>
-                      <label className="block text-xs text-orange-600 font-medium mb-2">Authentication Method</label>
+                      <label className="block text-xs text-gray-700 font-medium mb-2">Authentication Method</label>
                       <div className="flex items-center gap-4">
                         <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="radio" name="authMethod" checked={authMethod === 'client_secret'} onChange={() => setAuthMethod('client_secret')} className="w-3.5 h-3.5 accent-orange-500" />
+                          <input type="radio" name="authMethod" checked={authMethod === 'client_secret'} onChange={() => setAuthMethod('client_secret')} className="w-3.5 h-3.5 accent-gray-600" />
                           <span className="text-sm text-gray-700">Client Secret</span>
                         </label>
                         <label className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="radio" name="authMethod" checked={authMethod === 'public_private_keypair'} onChange={() => setAuthMethod('public_private_keypair')} className="w-3.5 h-3.5 accent-orange-500" />
+                          <input type="radio" name="authMethod" checked={authMethod === 'public_private_keypair'} onChange={() => setAuthMethod('public_private_keypair')} className="w-3.5 h-3.5 accent-gray-600" />
                           <span className="text-sm text-gray-700">Public Private Keypair</span>
                         </label>
                       </div>
@@ -196,8 +210,8 @@ export function CreateIdentityProviderPage() {
                 </div>
               )}
 
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Mappings</h4>
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Role Mappings</h4>
                 <p className="text-xs text-gray-600 mb-4">
                   Map your IdP&apos;s group claims to Dipole user roles. When a user authenticates via SSO, Dipole uses these mappings to automatically create user accounts with the correct roles.
                 </p>
@@ -223,16 +237,16 @@ export function CreateIdentityProviderPage() {
                         {mappings.map((mapping, index) => (
                           <tr key={index}>
                             <td className="px-4 py-2">
-                              <input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                              <input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" />
                             </td>
                             <td className="px-4 py-2">
-                              <input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                              <input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" />
                             </td>
                             <td className="px-4 py-2">
-                              <FloatingDropdown label="Role" options={ROLE_OPTIONS} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} />
+                              <FloatingDropdown label="Role" options={roleOptions} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} />
                             </td>
                             <td className="px-2 py-2">
-                              <button type="button" onClick={() => handleRemoveMapping(index)} className="text-orange-400 hover:text-orange-600 transition-colors">
+                              <button type="button" onClick={() => handleRemoveMapping(index)} className="text-gray-500 hover:text-gray-700 transition-colors">
                                 <X size={14} />
                               </button>
                             </td>
@@ -243,7 +257,7 @@ export function CreateIdentityProviderPage() {
                   </div>
                 )}
 
-                <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium">
+                <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium">
                   <Plus size={13} />
                   New Mapping
                 </button>
@@ -251,17 +265,16 @@ export function CreateIdentityProviderPage() {
             </div>
           </div>
 
-          {/* Help panel — right 40% */}
-          <div className="w-[40%] px-6 py-6 overflow-y-auto">
-            <div className="border border-border rounded-lg p-5 sticky top-0">
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-orange-600">Identity Providers</span> enable Single Sign-On (SSO) for your organization. Connect your existing IdP (Okta, Google Workspace, Azure AD) to allow users to authenticate using their corporate credentials.
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Identity Providers</span> enable Single Sign-On (SSO) for your organization. Connect your existing IdP (Okta, Google Workspace, Azure AD) to allow users to authenticate using their corporate credentials.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold">SAML 2.0</span> is the most common enterprise SSO protocol. <span className="font-semibold">OIDC 1.0</span> is preferred for modern applications.
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">SAML 2.0</span> is the most common enterprise SSO protocol. <span className="font-semibold text-gray-800">OIDC 1.0</span> is preferred for modern applications.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed">
-                <span className="font-semibold">Role Mappings</span> allow automatic user provisioning based on IdP group claims.
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Role Mappings</span> allow automatic user provisioning based on IdP group claims.
               </p>
             </div>
           </div>

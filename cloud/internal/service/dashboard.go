@@ -16,30 +16,32 @@ import (
 )
 
 type DashboardStats struct {
-	Counts                   EntityCounts      `json:"counts"`
-	RecentEvents             RecentEventStats  `json:"recentEvents"`
-	TopClientWorkloads       []TopWorkload     `json:"topClientWorkloads"`
-	TopServerWorkloads       []TopWorkload     `json:"topServerWorkloads"`
-	UnmanagedServerWorkloads []TopWorkload     `json:"unmanagedServerWorkloads"`
-	CredentialUsageByType    []CredentialUsage `json:"credentialUsageByType"`
-	ConnectionsByProtocol    []ProtocolCount   `json:"connectionsByProtocol"`
-	MostConditionFailures    []PolicyFailures  `json:"mostConditionFailures"`
+	Counts                   EntityCounts        `json:"counts"`
+	RecentEvents             RecentEventStats    `json:"recentEvents"`
+	TopClientWorkloads       []TopWorkload       `json:"topClientWorkloads"`
+	TopServerWorkloads       []TopWorkload       `json:"topServerWorkloads"`
+	UnmanagedServerWorkloads []TopWorkload       `json:"unmanagedServerWorkloads"`
+	CredentialUsageByType    []CredentialUsage   `json:"credentialUsageByType"`
+	ConnectionsByProtocol    []ProtocolCount     `json:"connectionsByProtocol"`
+	MostConditionFailures    []PolicyFailures    `json:"mostConditionFailures"`
+	AttestationResults       []AttestationResult `json:"attestationResults"`
 }
 
 type EntityCounts struct {
-	ClientWorkloads     int `json:"clientWorkloads"`
-	ClientInactive      int `json:"clientInactive"`
-	ClientUnmanaged     int `json:"clientUnmanaged"`
-	ServerWorkloads     int `json:"serverWorkloads"`
-	ServerInactive      int `json:"serverInactive"`
-	ServerUnmanaged     int `json:"serverUnmanaged"`
-	TrustProviders      int `json:"trustProviders"`
-	TrustInactive       int `json:"trustInactive"`
-	CredentialProviders int `json:"credentialProviders"`
-	CredentialInactive  int `json:"credentialInactive"`
-	AccessPolicies      int `json:"accessPolicies"`
-	AccessConditions    int `json:"accessConditions"`
-	ConditionInactive   int `json:"conditionInactive"`
+	ClientWorkloads        int `json:"clientWorkloads"`
+	ClientInactive         int `json:"clientInactive"`
+	ClientUnmanaged        int `json:"clientUnmanaged"`
+	ServerWorkloads        int `json:"serverWorkloads"`
+	ServerInactive         int `json:"serverInactive"`
+	ServerUnmanaged        int `json:"serverUnmanaged"`
+	TrustProviders         int `json:"trustProviders"`
+	TrustInactive          int `json:"trustInactive"`
+	CredentialProviders    int `json:"credentialProviders"`
+	CredentialInactive     int `json:"credentialInactive"`
+	AccessPolicies         int `json:"accessPolicies"`
+	AccessPoliciesInactive int `json:"accessPoliciesInactive"`
+	AccessConditions       int `json:"accessConditions"`
+	ConditionInactive      int `json:"conditionInactive"`
 }
 
 type RecentEventStats struct {
@@ -89,6 +91,11 @@ type PolicyFailures struct {
 	Failures   int    `json:"failures"`
 }
 
+type AttestationResult struct {
+	Result string `json:"result"`
+	Count  int    `json:"count"`
+}
+
 type DashboardService struct {
 	cwRepo    repository.ClientWorkloadRepository
 	swRepo    repository.ServerWorkloadRepository
@@ -123,14 +130,28 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, tim
 	_, apCount, _ := s.apRepo.List(ctx, tenantID, opts)
 	_, acCount, _ := s.acRepo.List(ctx, tenantID, opts)
 
+	// Get inactive counts
+	cwInactive := s.cwRepo.CountInactive(ctx, tenantID)
+	swInactive := s.swRepo.CountInactive(ctx, tenantID)
+	tpInactive := s.tpRepo.CountInactive(ctx, tenantID)
+	cpInactive := s.cpRepo.CountInactive(ctx, tenantID)
+	apInactive := s.apRepo.CountInactive(ctx, tenantID)
+	acInactive := s.acRepo.CountInactive(ctx, tenantID)
+
 	stats := &DashboardStats{
 		Counts: EntityCounts{
-			ClientWorkloads:     cwCount,
-			ServerWorkloads:     swCount,
-			TrustProviders:      tpCount,
-			CredentialProviders: cpCount,
-			AccessPolicies:      apCount,
-			AccessConditions:    acCount,
+			ClientWorkloads:        cwCount,
+			ClientInactive:         cwInactive,
+			ServerWorkloads:        swCount,
+			ServerInactive:         swInactive,
+			TrustProviders:         tpCount,
+			TrustInactive:          tpInactive,
+			CredentialProviders:    cpCount,
+			CredentialInactive:     cpInactive,
+			AccessPolicies:         apCount,
+			AccessPoliciesInactive: apInactive,
+			AccessConditions:       acCount,
+			ConditionInactive:      acInactive,
 		},
 		RecentEvents: RecentEventStats{
 			Last6h:     EventSummary{Total: 0, Authorized: 0, Denied: 0},
@@ -196,6 +217,11 @@ func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, tim
 	for _, pf := range eventData.PolicyFailures {
 		stats.MostConditionFailures = append(stats.MostConditionFailures, PolicyFailures{
 			PolicyID: pf.PolicyID, PolicyName: pf.PolicyName, Failures: pf.Count,
+		})
+	}
+	for _, ar := range eventData.AttestationResults {
+		stats.AttestationResults = append(stats.AttestationResults, AttestationResult{
+			Result: ar.Type, Count: ar.Count,
 		})
 	}
 

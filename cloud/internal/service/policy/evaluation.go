@@ -204,6 +204,7 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 		ServerWorkload:           ec.serverWorkload,
 		CandidateClientWorkloads: ec.candidateClientWorkloads,
 		CandidateServerWorkloads: ec.candidateServerWorkloads,
+		Source:                   "edge_proxy",
 	}
 
 	if ec.policy != nil {

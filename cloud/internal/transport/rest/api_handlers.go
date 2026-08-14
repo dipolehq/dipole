@@ -24,6 +24,10 @@ type globalPolicyComplianceStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.GlobalPolicyCompliance) error
 }
 
+type complianceChecker interface {
+	ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error)
+}
+
 type tenantProfileStore interface {
 	Get(ctx context.Context, tenantID uuid.UUID) (*domain.TenantProfile, error)
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
@@ -52,6 +56,7 @@ type APIHandlers struct {
 	signOnPolicies         signOnPolicyStore
 	logStreams             repository.LogStreamRepository
 	globalPolicyCompliance globalPolicyComplianceStore
+	complianceChecker      complianceChecker
 	tenantProfiles         tenantProfileStore
 	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
@@ -71,6 +76,7 @@ func NewAPIHandlers(
 	sop signOnPolicyStore,
 	ls repository.LogStreamRepository,
 	gpc globalPolicyComplianceStore,
+	cc complianceChecker,
 	tp tenantProfileStore,
 	regSvc ControllerCreator,
 	tenants repository.TenantRepository,
@@ -86,6 +92,7 @@ func NewAPIHandlers(
 		signOnPolicies:         sop,
 		logStreams:             ls,
 		globalPolicyCompliance: gpc,
+		complianceChecker:      cc,
 		tenantProfiles:         tp,
 		tenants:                tenants,
 		registrationSvc:        regSvc,
@@ -138,6 +145,7 @@ func (h *APIHandlers) RegisterAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/global-policy-compliance", h.GetGlobalPolicyCompliance)
 	mux.HandleFunc("PUT /api/v1/global-policy-compliance", h.UpdateGlobalPolicyCompliance)
+	mux.HandleFunc("GET /api/v1/global-policy-compliance/report", h.GetComplianceReport)
 
 	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
 	mux.HandleFunc("PUT /api/v1/profile", h.UpdateProfile)

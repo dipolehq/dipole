@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PolicyEvaluationService_Evaluate_FullMethodName     = "/dipole.v1.PolicyEvaluationService/Evaluate"
-	PolicyEvaluationService_Register_FullMethodName     = "/dipole.v1.PolicyEvaluationService/Register"
-	PolicyEvaluationService_ReportHealth_FullMethodName = "/dipole.v1.PolicyEvaluationService/ReportHealth"
-	PolicyEvaluationService_IngestEvents_FullMethodName = "/dipole.v1.PolicyEvaluationService/IngestEvents"
+	PolicyEvaluationService_Evaluate_FullMethodName            = "/dipole.v1.PolicyEvaluationService/Evaluate"
+	PolicyEvaluationService_Register_FullMethodName            = "/dipole.v1.PolicyEvaluationService/Register"
+	PolicyEvaluationService_ReportHealth_FullMethodName        = "/dipole.v1.PolicyEvaluationService/ReportHealth"
+	PolicyEvaluationService_IngestEvents_FullMethodName        = "/dipole.v1.PolicyEvaluationService/IngestEvents"
+	PolicyEvaluationService_SignLeafCertificate_FullMethodName = "/dipole.v1.PolicyEvaluationService/SignLeafCertificate"
 )
 
 // PolicyEvaluationServiceClient is the client API for PolicyEvaluationService service.
@@ -33,6 +34,7 @@ type PolicyEvaluationServiceClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	ReportHealth(ctx context.Context, in *HealthReport, opts ...grpc.CallOption) (*HealthAck, error)
 	IngestEvents(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WorkloadEventBatch, EventAck], error)
+	SignLeafCertificate(ctx context.Context, in *SignLeafRequest, opts ...grpc.CallOption) (*SignLeafResponse, error)
 }
 
 type policyEvaluationServiceClient struct {
@@ -86,6 +88,16 @@ func (c *policyEvaluationServiceClient) IngestEvents(ctx context.Context, opts .
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PolicyEvaluationService_IngestEventsClient = grpc.ClientStreamingClient[WorkloadEventBatch, EventAck]
 
+func (c *policyEvaluationServiceClient) SignLeafCertificate(ctx context.Context, in *SignLeafRequest, opts ...grpc.CallOption) (*SignLeafResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignLeafResponse)
+	err := c.cc.Invoke(ctx, PolicyEvaluationService_SignLeafCertificate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PolicyEvaluationServiceServer is the server API for PolicyEvaluationService service.
 // All implementations must embed UnimplementedPolicyEvaluationServiceServer
 // for forward compatibility.
@@ -94,6 +106,7 @@ type PolicyEvaluationServiceServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	ReportHealth(context.Context, *HealthReport) (*HealthAck, error)
 	IngestEvents(grpc.ClientStreamingServer[WorkloadEventBatch, EventAck]) error
+	SignLeafCertificate(context.Context, *SignLeafRequest) (*SignLeafResponse, error)
 	mustEmbedUnimplementedPolicyEvaluationServiceServer()
 }
 
@@ -115,6 +128,9 @@ func (UnimplementedPolicyEvaluationServiceServer) ReportHealth(context.Context, 
 }
 func (UnimplementedPolicyEvaluationServiceServer) IngestEvents(grpc.ClientStreamingServer[WorkloadEventBatch, EventAck]) error {
 	return status.Error(codes.Unimplemented, "method IngestEvents not implemented")
+}
+func (UnimplementedPolicyEvaluationServiceServer) SignLeafCertificate(context.Context, *SignLeafRequest) (*SignLeafResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SignLeafCertificate not implemented")
 }
 func (UnimplementedPolicyEvaluationServiceServer) mustEmbedUnimplementedPolicyEvaluationServiceServer() {
 }
@@ -199,6 +215,24 @@ func _PolicyEvaluationService_IngestEvents_Handler(srv interface{}, stream grpc.
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PolicyEvaluationService_IngestEventsServer = grpc.ClientStreamingServer[WorkloadEventBatch, EventAck]
 
+func _PolicyEvaluationService_SignLeafCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignLeafRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PolicyEvaluationServiceServer).SignLeafCertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PolicyEvaluationService_SignLeafCertificate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PolicyEvaluationServiceServer).SignLeafCertificate(ctx, req.(*SignLeafRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PolicyEvaluationService_ServiceDesc is the grpc.ServiceDesc for PolicyEvaluationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -217,6 +251,10 @@ var PolicyEvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportHealth",
 			Handler:    _PolicyEvaluationService_ReportHealth_Handler,
+		},
+		{
+			MethodName: "SignLeafCertificate",
+			Handler:    _PolicyEvaluationService_SignLeafCertificate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

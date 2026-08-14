@@ -2,16 +2,8 @@ import { apiClient, ApiError } from '@/shared/lib/api-client'
 
 const BASE = '/resource-sets'
 
-interface ResourceSetDTO {
-  id: string
-  name: string
-  description: string
-  createdAt: string
-  updatedAt: string
-}
-
 interface ListResponseDTO {
-  items: ResourceSetDTO[]
+  items: ResourceSetListItem[]
   total: number
   page: number
   perPage: number
@@ -21,6 +13,12 @@ export interface ResourceSetListItem {
   id: string
   name: string
   description: string
+  accessPolicies: number
+  clientWorkloads: number
+  trustProviders: number
+  accessConditions: number
+  credentialProviders: number
+  serverWorkloads: number
   createdAt: string
   updatedAt: string
 }

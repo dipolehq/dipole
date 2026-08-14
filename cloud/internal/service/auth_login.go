@@ -31,6 +31,7 @@ import (
 type LoginService struct {
 	users   repository.UserRepository
 	tenants repository.TenantRepository
+	roles   repository.RoleRepository
 	mfaRepo repository.UserMFARepository
 	issuer  *identity.IdentityIssuer
 	encKey  []byte
@@ -48,6 +49,11 @@ func NewLoginService(users repository.UserRepository, tenants repository.TenantR
 func (s *LoginService) SetMFA(mfaRepo repository.UserMFARepository, encKey []byte) {
 	s.mfaRepo = mfaRepo
 	s.encKey = encKey
+}
+
+// SetRoles injects the role repository for resolving user role names in session tokens.
+func (s *LoginService) SetRoles(roles repository.RoleRepository) {
+	s.roles = roles
 }
 
 type LoginRequest struct {
@@ -75,6 +81,7 @@ type LoginUser struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	Role  string `json:"role"`
 }
 
 func (s *LoginService) Login(ctx context.Context, req *LoginRequest) (*LoginResponse, error) {
@@ -228,20 +235,26 @@ func (s *LoginService) issueSessionTokenForTenant(ctx context.Context, user *dom
 		tenantSubdomain = tenant.Subdomain
 	}
 
+	// Best-effort: resolve the user's role name for display in the admin console.
+	var roleName string
+	if s.roles != nil && user.RoleID != nil {
+		if role, err := s.roles.GetByID(ctx, tenantID, *user.RoleID); err == nil && role != nil {
+			roleName = role.Name
+		}
+	}
+
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		Subject:   user.Email,
 		Audience:  "dipole-admin",
 		Lifetime:  30 * time.Minute,
 		Algorithm: "ES256",
 		CustomClaims: map[string]interface{}{
-			"tenant_id": tenantID.String(),
-			// Carried in the token so the console can derive this tenant's
-			// per-tenant service URLs from the session itself, rather than from
-			// separately-synced client state that can go stale or be missing.
+			"tenant_id":        tenantID.String(),
 			"tenant_subdomain": tenantSubdomain,
 			"user_id":          user.ID.String(),
 			"email":            user.Email,
 			"name":             user.Name,
+			"role_name":        roleName,
 		},
 	})
 	if err != nil {
@@ -256,6 +269,7 @@ func (s *LoginService) issueSessionTokenForTenant(ctx context.Context, user *dom
 			ID:    user.ID.String(),
 			Email: user.Email,
 			Name:  user.Name,
+			Role:  roleName,
 		},
 	}, nil
 }

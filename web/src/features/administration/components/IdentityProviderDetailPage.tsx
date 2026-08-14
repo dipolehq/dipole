@@ -1,47 +1,41 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { FileText, Plus, X } from 'lucide-react'
+import { Pencil, Trash2, Plus, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
+import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
 import { samlEntityId, samlAcsUrl, jwksUrl, adminSsoCallbackUrl, currentTenantSubdomain, displayUrl } from '@/shared/lib/platform-urls'
 import { useIdentityProvider, useSaveIdentityProvider, useDeleteIdentityProvider } from '@/features/administration/hooks/useIdentityProviders'
 import { apiErrorMessage } from '@/features/administration/api/identityProvidersApi'
+import { apiClient } from '@/shared/lib/api-client'
 import type { IdpType, AuthMethod } from '@/shared/constants/administration'
-
-const ROLE_OPTIONS = [
-  { value: 'SuperAdmin', label: 'SuperAdmin' },
-  { value: 'Auditor', label: 'Auditor' },
-]
-
-const DETAIL_SECTIONS = [
-  { value: 'details', label: 'Details' },
-  { value: 'metrics', label: 'Metrics' },
-  { value: 'logs', label: 'Logs' },
-] as const
-
-type DetailSection = (typeof DETAIL_SECTIONS)[number]['value']
 
 export function IdentityProviderDetailPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
-  // Per-tenant values the customer registers in their IdP — see the note in
-  // CreateIdentityProviderPage.
   const tenantSubdomain = currentTenantSubdomain()
 
   const { data: idp, isLoading } = useIdentityProvider(id)
   const saveMutation = useSaveIdentityProvider(id ?? '')
   const deleteMutation = useDeleteIdentityProvider()
 
-  const [selectedSection, setSelectedSection] = useState<DetailSection>('details')
-  const [sectionOpen, setSectionOpen] = useState(false)
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles', 'dropdown'],
+    queryFn: () => apiClient.get<{ items: { id: string; name: string }[] }>('/roles?perPage=100'),
+    staleTime: 60_000,
+  })
+  const roleOptions = (rolesData?.items ?? []).map((r) => ({ value: r.name, label: r.name }))
+
   const [isEditing, setIsEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [idpStatus, setIdpStatus] = useState('active')
   const [idpType, setIdpType] = useState<IdpType>('saml_2.0')
   const [metadataUrl, setMetadataUrl] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
@@ -57,6 +51,7 @@ export function IdentityProviderDetailPage() {
     const config = (idp.config ?? {}) as Record<string, unknown>
     setName(idp.name)
     setDescription(idp.description)
+    setIdpStatus(idp.isActive ? 'active' : 'inactive')
     setIdpType(idp.type as IdpType)
     setMetadataUrl((config.metadataUrl as string) ?? '')
     setBaseUrl((config.baseUrl as string) ?? '')
@@ -75,17 +70,19 @@ export function IdentityProviderDetailPage() {
   if (!id || (!isLoading && idp === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white"><PageHeader /></div>
-        <div className="flex-1 flex items-center justify-center flex-col">
-          <p className="text-sm text-gray-500">Identity Provider not found.</p>
-          <button onClick={() => navigate('/administration?tab=identity_providers')} className="mt-4 text-xs text-orange-500 hover:text-orange-600 font-medium">← Back to Administration</button>
+        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
+          <PageHeader />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-gray-400">Identity Provider not found.</p>
         </div>
       </div>
     )
   }
 
   const disabled = !isEditing
-  const selectedLabel = DETAIL_SECTIONS.find((s) => s.value === selectedSection)?.label ?? ''
+  const displayName = name || 'Untitled'
+  const statusValue = idpStatus
 
   function handleAddMapping() { setMappings([...mappings, { attributeName: '', attributeValue: '', role: '' }]) }
   function handleRemoveMapping(index: number) { setMappings(mappings.filter((_, i) => i !== index)) }
@@ -96,56 +93,63 @@ export function IdentityProviderDetailPage() {
     setMappings(updated)
   }
 
-  function handleEditToggle() {
-    if (isEditing) {
-      setError(null)
-      const config: Record<string, unknown> = {}
-      if (idpType === 'saml_2.0') {
-        config.metadataUrl = metadataUrl
-      } else if (idpType === 'oidc_1.0') {
-        config.baseUrl = baseUrl
-        config.clientId = clientId
-        config.scopes = scopes
-        config.pkceRequired = pkceRequired
-        config.authMethod = authMethod
-        if (authMethod === 'client_secret' && clientSecret) config.clientSecret = clientSecret
-      }
-      config.mappings = mappings
-      saveMutation.mutateAsync({
+  async function handleSave() {
+    setError(null)
+    const config: Record<string, unknown> = {}
+    if (idpType === 'saml_2.0') {
+      config.metadataUrl = metadataUrl
+    } else if (idpType === 'oidc_1.0') {
+      config.baseUrl = baseUrl
+      config.clientId = clientId
+      config.scopes = scopes
+      config.pkceRequired = pkceRequired
+      config.authMethod = authMethod
+      if (authMethod === 'client_secret' && clientSecret) config.clientSecret = clientSecret
+    }
+    config.mappings = mappings
+    try {
+      await saveMutation.mutateAsync({
         name,
         description,
-        isActive: true,
+        isActive: idpStatus === 'active',
         type: idpType,
         config,
-      }).then(() => setIsEditing(false))
-        .catch((err) => setError(apiErrorMessage(err, 'Failed to save identity provider')))
-    } else { setIsEditing(true) }
+      })
+      setIsEditing(false)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to save identity provider'))
+    }
+  }
+
+  function handleEdit() {
+    setError(null)
+    setIsEditing(true)
   }
 
   function handleCancel() {
-    if (isEditing) {
-      if (idp) {
-        const config = (idp.config ?? {}) as Record<string, unknown>
-        setName(idp.name)
-        setDescription(idp.description)
-        setIdpType(idp.type as IdpType)
-        setMetadataUrl((config.metadataUrl as string) ?? '')
-        setBaseUrl((config.baseUrl as string) ?? '')
-        setClientId((config.clientId as string) ?? '')
-        setScopes((config.scopes as string) ?? 'openid profile email')
-        setPkceRequired((config.pkceRequired as boolean) ?? true)
-        setAuthMethod((config.authMethod as AuthMethod) ?? 'client_secret')
-        setMappings((config.mappings as typeof mappings) ?? [])
-      }
-      setIsEditing(false)
-    } else { navigate('/administration?tab=identity_providers') }
+    setError(null)
+    if (idp) {
+      const config = (idp.config ?? {}) as Record<string, unknown>
+      setName(idp.name)
+      setDescription(idp.description)
+      setIdpStatus(idp.isActive ? 'active' : 'inactive')
+      setIdpType(idp.type as IdpType)
+      setMetadataUrl((config.metadataUrl as string) ?? '')
+      setBaseUrl((config.baseUrl as string) ?? '')
+      setClientId((config.clientId as string) ?? '')
+      setScopes((config.scopes as string) ?? 'openid profile email')
+      setPkceRequired((config.pkceRequired as boolean) ?? true)
+      setAuthMethod((config.authMethod as AuthMethod) ?? 'client_secret')
+      setMappings((config.mappings as typeof mappings) ?? [])
+    }
+    setIsEditing(false)
   }
 
   async function handleDelete() {
     if (!id) return
     try {
       await deleteMutation.mutateAsync(id)
-      navigate('/administration?tab=identity_providers')
+      navigate('/administration/identity-providers')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to delete identity provider'))
     }
@@ -153,45 +157,53 @@ export function IdentityProviderDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
-          {error}
-        </div>
-      )}
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
         <PageHeader />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={handleEditToggle} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors">{isEditing ? 'Save' : 'Edit'}</button>
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">{isEditing ? 'Cancel' : 'Back'}</button>
-          {!isEditing && (
-            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="px-4 py-2 border border-red-300 text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-400 rounded-md transition-colors">Delete</button>
+          <h2 className="text-sm font-medium text-gray-900">{displayName}</h2>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusValue === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {statusValue === 'active' ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isEditing ? (
+            <>
+              <button type="button" onClick={handleSave} disabled={saveMutation.isPending} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                {saveMutation.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={handleCancel} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={handleEdit} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <Pencil size={14} strokeWidth={2} className="opacity-60" /> Edit
+              </button>
+              <button type="button" onClick={() => setDeleteDialogOpen(true)} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+                <Trash2 size={14} strokeWidth={2} className="opacity-60" /> Delete
+              </button>
+            </>
           )}
-          <div className="relative">
-            <button type="button" onClick={() => setSectionOpen(!sectionOpen)} className="flex items-center gap-1.5 w-[160px] px-4 py-2 bg-[#28282B] hover:bg-[#333336] text-white text-sm font-medium rounded-md transition-colors">
-              <FileText size={14} className="shrink-0" />
-              <span className="truncate">{selectedLabel}</span>
-              <svg className={`w-3.5 h-3.5 ml-auto shrink-0 transition-transform ${sectionOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {sectionOpen && (
-              <div className="absolute top-full right-0 mt-1 bg-white border border-border rounded-md shadow-lg z-50 w-[180px] overflow-hidden">
-                {DETAIL_SECTIONS.map((opt) => (
-                  <button key={opt.value} type="button" onClick={() => { setSelectedSection(opt.value); setSectionOpen(false) }} className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedSection === opt.value ? 'bg-orange-50 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}>{opt.label}</button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-white">
-        {selectedSection === 'details' && (
-          <div className="flex h-full">
-            <div className="w-[60%] px-6 py-6 overflow-y-auto">
-              <div className={`space-y-5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Identity Provider Details</h4>
+      {error && (
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <fieldset disabled={disabled} className={disabled ? 'opacity-60 pointer-events-none' : ''}>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Identity Provider Details</h4>
                   <div className="space-y-4">
                     <FloatingInput label="Name" value={name} onChange={setName} disabled={disabled} required />
                     <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} disabled={disabled} rows={2} />
@@ -200,8 +212,8 @@ export function IdentityProviderDetailPage() {
                 </div>
 
                 {idpType === 'saml_2.0' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">SAML 2.0 Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">SAML 2.0 Configuration</h4>
                     <div className="space-y-4">
                       <div className="bg-gray-50 rounded-md p-4">
                         <label className="block text-[10px] text-gray-500 mb-0.5">Service Provider Entity ID</label>
@@ -217,25 +229,25 @@ export function IdentityProviderDetailPage() {
                 )}
 
                 {idpType === 'oidc_1.0' && (
-                  <div className="border border-border rounded-lg p-5">
-                    <h4 className="text-sm font-semibold text-gray-800 mb-4">OIDC 1.0 Configuration</h4>
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">OIDC 1.0 Configuration</h4>
                     <div className="space-y-4">
                       <FloatingInput label="Identity Provider Base URL" value={baseUrl} onChange={setBaseUrl} disabled={disabled} required />
                       <FloatingInput label="Client ID" value={clientId} onChange={setClientId} disabled={disabled} required />
                       <FloatingInput label="Scopes" value={scopes} onChange={setScopes} disabled={disabled} />
                       <div className="flex items-center gap-2">
-                        <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-orange-500 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                        <input type="checkbox" checked={pkceRequired} onChange={(e) => setPkceRequired(e.target.checked)} disabled={disabled} className="w-4 h-4 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
                         <span className="text-sm text-gray-700">PKCE Required</span>
                       </div>
                       <div>
-                        <label className="block text-xs text-orange-600 font-medium mb-2">Authentication Method</label>
+                        <label className="block text-xs text-gray-700 font-medium mb-2">Authentication Method</label>
                         <div className="flex items-center gap-4">
                           <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="authMethodDetail" checked={authMethod === 'client_secret'} onChange={() => !disabled && setAuthMethod('client_secret')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 disabled:opacity-60" />
+                            <input type="radio" name="authMethodDetail" checked={authMethod === 'client_secret'} onChange={() => !disabled && setAuthMethod('client_secret')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 disabled:opacity-60" />
                             <span className="text-sm text-gray-700">Client Secret</span>
                           </label>
                           <label className="flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="authMethodDetail" checked={authMethod === 'public_private_keypair'} onChange={() => !disabled && setAuthMethod('public_private_keypair')} disabled={disabled} className="w-3.5 h-3.5 accent-orange-500 disabled:opacity-60" />
+                            <input type="radio" name="authMethodDetail" checked={authMethod === 'public_private_keypair'} onChange={() => !disabled && setAuthMethod('public_private_keypair')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 disabled:opacity-60" />
                             <span className="text-sm text-gray-700">Public Private Keypair</span>
                           </label>
                         </div>
@@ -257,8 +269,8 @@ export function IdentityProviderDetailPage() {
                   </div>
                 )}
 
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Role Mappings</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Role Mappings</h4>
                   <p className="text-xs text-gray-600 mb-4">Map your IdP&apos;s group claims to Dipole user roles for automatic user creation.</p>
                   {mappings.length > 0 && (
                     <div className="border border-border rounded-lg mb-4">
@@ -275,10 +287,10 @@ export function IdentityProviderDetailPage() {
                         <tbody className="divide-y divide-border">
                           {mappings.map((mapping, index) => (
                             <tr key={index}>
-                              <td className="px-4 py-2"><input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} disabled={disabled} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" /></td>
-                              <td className="px-4 py-2"><input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} disabled={disabled} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-300" /></td>
-                              <td className="px-4 py-2"><FloatingDropdown label="Role" options={ROLE_OPTIONS} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} disabled={disabled} /></td>
-                              <td className="px-2 py-2">{!disabled && <button type="button" onClick={() => handleRemoveMapping(index)} className="text-orange-400 hover:text-orange-600 transition-colors"><X size={14} /></button>}</td>
+                              <td className="px-4 py-2"><input type="text" value={mapping.attributeName} onChange={(e) => handleMappingChange(index, 'attributeName', e.target.value)} disabled={disabled} placeholder="e.g., groups" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
+                              <td className="px-4 py-2"><input type="text" value={mapping.attributeValue} onChange={(e) => handleMappingChange(index, 'attributeValue', e.target.value)} disabled={disabled} placeholder="e.g., DipoleAdmins" className="w-full px-2 py-1 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-300" /></td>
+                              <td className="px-4 py-2"><FloatingDropdown label="Role" options={roleOptions} value={mapping.role} onChange={(v) => handleMappingChange(index, 'role', v)} disabled={disabled} /></td>
+                              <td className="px-2 py-2">{!disabled && <button type="button" onClick={() => handleRemoveMapping(index)} className="text-gray-500 hover:text-gray-700 transition-colors"><X size={14} /></button>}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -286,57 +298,37 @@ export function IdentityProviderDetailPage() {
                     </div>
                   )}
                   {!disabled && (
-                    <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 font-medium"><Plus size={13} />New Mapping</button>
+                    <button type="button" onClick={handleAddMapping} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium"><Plus size={13} />New Mapping</button>
                   )}
                 </div>
               </div>
-            </div>
-
-            {/* Right panel — 40% */}
-            <div className="w-[40%] px-6 py-6 overflow-y-auto">
-              <div className="border border-border rounded-lg p-5 mb-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Metadata</h4>
-                <div className="space-y-4">
-                  {idp && (
-                    <>
-                      <FloatingInput label="ID" value={idp.id} disabled />
-                      <FloatingInput label="Type" value={idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'} disabled />
-                      <FloatingInput label="Created At" value={new Date(idp.createdAt).toLocaleString()} disabled />
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="border border-border rounded-lg p-5">
-                <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                  <span className="font-semibold text-orange-600">Identity Providers</span> enable Single Sign-On (SSO) for your organization using SAML 2.0 or OIDC 1.0.
-                </p>
-                <p className="text-xs text-gray-700 leading-relaxed">
-                  <span className="font-semibold">Role Mappings</span> allow automatic user provisioning based on IdP group claims.
-                </p>
-              </div>
-            </div>
+            </fieldset>
           </div>
-        )}
-        {selectedSection === 'metrics' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Metrics — coming soon</p></div>)}
-        {selectedSection === 'logs' && (<div className="flex items-center justify-center h-full"><p className="text-sm text-gray-400">Logs — coming soon</p></div>)}
-      </div>
 
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-[400px]">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Delete Identity Provider</h3>
-            <p className="text-xs text-gray-600 mb-5">
-              Are you sure you want to delete this identity provider? Users authenticating via this provider will no longer be able to sign in.
-            </p>
-            <div className="flex items-center justify-end gap-3">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleDelete} disabled={deleteMutation.isPending} className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-50">
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-4">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Metadata</h4>
+              {idp && (
+                <>
+                  <FloatingInput label="ID" value={idp.id} disabled />
+                  <FloatingInput label="Type" value={idp.type === 'saml_2.0' ? 'SAML 2.0' : 'OIDC 1.0'} disabled />
+                  <FloatingInput label="Created" value={new Date(idp.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} disabled />
+                </>
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        onConfirm={() => { setDeleteDialogOpen(false); handleDelete() }}
+        resourceName={displayName}
+        resourceId={id ?? ''}
+        resourceType="identity provider"
+        loading={deleteMutation.isPending}
+      />
     </div>
   )
 }

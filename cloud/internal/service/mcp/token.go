@@ -45,13 +45,15 @@ type TokenResponse struct {
 }
 
 type TokenConfig struct {
-	Audience         string
-	Subject          string
-	Lifetime         time.Duration
-	Algorithm        string
-	CustomClaims     map[string]any
-	RefreshEnabled   bool
-	RefreshAbsExpiry time.Duration
+	Audience           string
+	Subject            string
+	Lifetime           time.Duration
+	Algorithm          string
+	CustomClaims       map[string]any
+	RefreshEnabled     bool
+	RefreshAbsExpiry   time.Duration
+	ClientWorkloadID   uuid.UUID
+	ClientWorkloadName string
 }
 
 type RefreshTokenEntry struct {
@@ -144,6 +146,7 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID, issue
 	}
 	customClaims["client_id"] = req.ClientID
 	customClaims["scope"] = pending.Scope
+	addClientWorkloadClaims(customClaims, cfg)
 
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		IssuerURL:    issuerURL,
@@ -205,6 +208,7 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, is
 	}
 	customClaims["client_id"] = req.ClientID
 	customClaims["scope"] = entry.Scope
+	addClientWorkloadClaims(customClaims, cfg)
 
 	token, err := s.issuer.IssueToken(identity.IssuanceRequest{
 		IssuerURL:    issuerURL,
@@ -252,6 +256,16 @@ func (s *TokenService) createRefreshTokenWithExpiry(clientID, tenantID uuid.UUID
 	s.mu.Unlock()
 
 	return token
+}
+
+func addClientWorkloadClaims(customClaims map[string]any, cfg *TokenConfig) {
+	if cfg.ClientWorkloadName == "" {
+		return
+	}
+	customClaims["client_workload_name"] = cfg.ClientWorkloadName
+	if cfg.ClientWorkloadID != uuid.Nil {
+		customClaims["client_workload_id"] = cfg.ClientWorkloadID.String()
+	}
 }
 
 func verifyPKCE(codeVerifier, codeChallenge string) bool {

@@ -53,7 +53,7 @@ export function SSOCallbackPage() {
       <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
         <div className="w-[400px] bg-white rounded-xl shadow-lg p-8">
           <div className="flex flex-col items-center mb-6">
-            <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mb-3" />
+            <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mb-3" />
             <h1 className="text-lg font-semibold text-gray-900">SSO Error</h1>
           </div>
           <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
@@ -62,7 +62,7 @@ export function SSOCallbackPage() {
           <button
             type="button"
             onClick={() => navigate('/login', { replace: true })}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-md transition-colors"
+            className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors"
           >
             Back to Sign In
           </button>
@@ -74,7 +74,7 @@ export function SSOCallbackPage() {
   return (
     <div className="h-screen w-screen bg-[#f5f5f5] flex items-center justify-center">
       <div className="w-[400px] bg-white rounded-xl shadow-lg p-8 text-center">
-        <img src="/dipole_logo.svg" alt="Dipole" className="h-12 w-12 mx-auto mb-4" />
+        <img src="/logo_black.svg" alt="Dipole" className="h-12 w-12 mx-auto mb-4" />
         <p className="text-sm text-gray-600">Completing sign in...</p>
       </div>
     </div>

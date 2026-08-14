@@ -75,11 +75,11 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
         type="button"
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center justify-between px-3 py-2 border rounded-md text-sm transition-colors ${
-          open ? 'border-orange-400 ring-2 ring-orange-100' : 'border-border'
+          open ? 'border-gray-400 ring-2 ring-gray-200' : 'border-border'
         } ${value ? 'text-gray-900' : 'text-gray-400'}`}
       >
         <span className="truncate">{displayLabel}</span>
-        <ChevronDown size={14} className={`shrink-0 text-orange-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`shrink-0 text-gray-600 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
@@ -90,7 +90,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
               type="button"
               onClick={() => setMode('relative')}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                mode === 'relative' ? 'bg-orange-500 text-white' : 'text-orange-500 hover:bg-orange-50'
+                mode === 'relative' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               Relative
@@ -99,7 +99,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
               type="button"
               onClick={() => setMode('absolute')}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                mode === 'absolute' ? 'bg-orange-500 text-white' : 'text-orange-500 hover:bg-orange-50'
+                mode === 'absolute' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               Absolute
@@ -119,7 +119,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                           key={val}
                           type="button"
                           onClick={() => handlePresetClick(val, row.unit)}
-                          className="text-xs text-orange-500 hover:text-orange-600 font-medium w-8 text-center"
+                          className="text-xs text-gray-600 hover:text-gray-700 font-medium w-8 text-center"
                         >
                           {val}
                         </button>
@@ -138,7 +138,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                     min="1"
                     value={customDuration}
                     onChange={(e) => setCustomDuration(e.target.value)}
-                    className="w-14 px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-400"
+                    className="w-14 px-2 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
                   />
                 </div>
                 <div className="relative flex-1">
@@ -159,7 +159,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                           type="button"
                           onClick={() => { setCustomUnit(u); setUnitOpen(false) }}
                           className={`w-full text-left px-3 py-2 text-xs transition-colors ${
-                            customUnit === u ? 'bg-gray-100 text-orange-600 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                            customUnit === u ? 'bg-gray-100 text-gray-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
                           }`}
                         >
                           {u}
@@ -171,7 +171,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                 <button
                   type="button"
                   onClick={handleCustomApply}
-                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
                 >
                   Apply
                 </button>
@@ -206,7 +206,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                     placeholder="DD/MM/YYYY"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-300"
+                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-300"
                   />
                 </div>
                 <div>
@@ -216,7 +216,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                     placeholder="00:00"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-300"
+                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-300"
                   />
                 </div>
                 <div>
@@ -226,7 +226,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                     placeholder="DD/MM/YYYY"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-300"
+                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-300"
                   />
                 </div>
                 <div>
@@ -236,7 +236,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                     placeholder="00:00"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-300"
+                    className="w-full px-2 py-1.5 border border-border rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-gray-300"
                   />
                 </div>
               </div>
@@ -244,7 +244,7 @@ export function TimespanPicker({ value, onChange }: TimespanPickerProps) {
                 <button
                   type="button"
                   onClick={handleAbsoluteApply}
-                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-md transition-colors"
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
                 >
                   Apply
                 </button>
@@ -294,10 +294,10 @@ function CalendarMonth({
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold text-gray-700">{monthName} {year}</span>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={onPrev} className="text-orange-500 hover:text-orange-600">
+          <button type="button" onClick={onPrev} className="text-gray-600 hover:text-gray-700">
             <ChevronLeft size={14} />
           </button>
-          <button type="button" onClick={onNext} className="text-orange-500 hover:text-orange-600">
+          <button type="button" onClick={onNext} className="text-gray-600 hover:text-gray-700">
             <ChevronRight size={14} />
           </button>
         </div>
@@ -316,8 +316,8 @@ function CalendarMonth({
               !day
                 ? ''
                 : selectedDate === formatDay(day)
-                  ? 'bg-orange-500 text-white font-medium'
-                  : 'text-orange-500 hover:bg-orange-50'
+                  ? 'bg-gray-800 text-white font-medium'
+                  : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
             {day ?? ''}

@@ -38,6 +38,9 @@ func (m *mockPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ st
 func (m *mockPolicyRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {
 	return m.policies, m.err
 }
+func (m *mockPolicyRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return m.policies, m.err
+}
 
 // mockTrustForAdapter satisfies the TrustValidator interface.
 type mockTrustForAdapter struct {
@@ -151,4 +154,10 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 	if result.PolicyID != policyID {
 		t.Errorf("expected policyID %s, got %s", policyID, result.PolicyID)
 	}
+}
+
+func (m *mockPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockPolicyRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
 }

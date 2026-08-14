@@ -52,23 +52,37 @@ func (r *AccessConditionRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 }
 
 func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error) {
+	countArgs := []interface{}{tenantID, opts.Search}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM access_conditions
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
-		tenantID, opts.Search).Scan(&total)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count access conditions: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	listArgs := []interface{}{tenantID, opts.Search}
+	n = 2
+	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
+	n++
+	listArgs = append(listArgs, opts.PerPage)
+	limitParam := fmt.Sprintf("$%d", n)
+	n++
+	listArgs = append(listArgs, offset)
+	offsetParam := fmt.Sprintf("$%d", n)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM policy_access_conditions pac WHERE pac.access_condition_id = access_conditions.id) AS policy_count
 		 FROM access_conditions
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, opts.Search, opts.PerPage, offset)
+		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
+		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list access conditions: %w", err)
 	}
@@ -108,4 +122,12 @@ func (r *AccessConditionRepo) Delete(ctx context.Context, tenantID uuid.UUID, id
 		return fmt.Errorf("delete access condition: %w", err)
 	}
 	return nil
+}
+
+func (r *AccessConditionRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {
+	var count int
+	_ = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM access_conditions WHERE tenant_id = $1 AND is_active = false`,
+		tenantID).Scan(&count)
+	return count
 }

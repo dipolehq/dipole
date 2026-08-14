@@ -32,6 +32,9 @@ func (m *mockRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, 
 func (m *mockRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {
 	return m.policies, m.err
 }
+func (m *mockRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return m.policies, m.err
+}
 
 type mockTrust struct{ attested bool }
 
@@ -412,4 +415,10 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 	if emitter.ctx.Result.Allowed {
 		t.Error("emitter received allowed result, expected denied")
 	}
+}
+
+func (m *mockRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
+
+func (m *mockRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
+	return false, nil
 }

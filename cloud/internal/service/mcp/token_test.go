@@ -392,6 +392,169 @@ func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
 	}
 }
 
+// When the resolver has a Client Workload name to offer, the issued token
+// must carry it as a custom claim, so left-side auth can read the MCP client
+// identity back per-request without a second DB lookup.
+func TestTokenExchange_EmbedsClientWorkloadClaims(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	cwID := uuid.New()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:           "https://mcp.example.com",
+			Subject:            "user@example.com",
+			Lifetime:           1 * time.Hour,
+			Algorithm:          "ES256",
+			ClientWorkloadID:   cwID,
+			ClientWorkloadName: "Claude Desktop",
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	tenantID := uuid.New()
+	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	resp, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, tenantID, "https://test-id.dipolehq.com")
+	if err != nil {
+		t.Fatalf("exchange failed: %v", err)
+	}
+
+	claims := decodeJWTClaims(t, resp.AccessToken)
+	if got := claims["client_workload_name"]; got != "Claude Desktop" {
+		t.Errorf("expected client_workload_name=%q, got %v", "Claude Desktop", got)
+	}
+	if got := claims["client_workload_id"]; got != cwID.String() {
+		t.Errorf("expected client_workload_id=%q, got %v", cwID.String(), got)
+	}
+}
+
+// When the resolver has no Client Workload name (lookup failed, or policy
+// predates this feature), the claim must be omitted entirely — never an
+// empty-string placeholder that a caller might mistake for a real value.
+func TestTokenExchange_NoClientWorkloadName_ClaimOmitted(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:  "https://mcp.example.com",
+			Subject:   "user@example.com",
+			Lifetime:  1 * time.Hour,
+			Algorithm: "ES256",
+			// ClientWorkloadName intentionally left empty.
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	tenantID := uuid.New()
+	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	resp, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, tenantID, "https://test-id.dipolehq.com")
+	if err != nil {
+		t.Fatalf("exchange failed: %v", err)
+	}
+
+	claims := decodeJWTClaims(t, resp.AccessToken)
+	if _, present := claims["client_workload_name"]; present {
+		t.Errorf("expected client_workload_name to be absent, got %v", claims["client_workload_name"])
+	}
+	if _, present := claims["client_workload_id"]; present {
+		t.Errorf("expected client_workload_id to be absent, got %v", claims["client_workload_id"])
+	}
+}
+
+// Refresh must re-resolve config and re-embed the same claims — a client's
+// identity should not disappear from the token after a refresh cycle.
+func TestRefreshToken_PreservesClientWorkloadClaims(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	cwID := uuid.New()
+	resolver := &mockTokenConfigResolver{
+		config: &TokenConfig{
+			Audience:           "https://mcp.example.com",
+			Subject:            "user@example.com",
+			Lifetime:           1 * time.Hour,
+			Algorithm:          "ES256",
+			RefreshEnabled:     true,
+			RefreshAbsExpiry:   24 * time.Hour,
+			ClientWorkloadID:   cwID,
+			ClientWorkloadName: "Gemini CLI",
+		},
+	}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	verifier := "test-verifier-string"
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	clientID := uuid.New()
+	tenantID := uuid.New()
+	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
+
+	resp1, err := svc.Exchange(&TokenRequest{
+		GrantType:    "authorization_code",
+		Code:         code,
+		RedirectURI:  "http://localhost/cb",
+		ClientID:     clientID.String(),
+		CodeVerifier: verifier,
+	}, tenantID, "https://test-id.dipolehq.com")
+	if err != nil {
+		t.Fatalf("initial exchange failed: %v", err)
+	}
+
+	resp2, err := svc.Exchange(&TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: resp1.RefreshToken,
+		ClientID:     clientID.String(),
+	}, tenantID, "https://test-id.dipolehq.com")
+	if err != nil {
+		t.Fatalf("refresh exchange failed: %v", err)
+	}
+
+	claims := decodeJWTClaims(t, resp2.AccessToken)
+	if got := claims["client_workload_name"]; got != "Gemini CLI" {
+		t.Errorf("expected client_workload_name=%q after refresh, got %v", "Gemini CLI", got)
+	}
+}
+
+func decodeJWTClaims(t *testing.T, token string) map[string]any {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("unmarshal claims: %v", err)
+	}
+	return claims
+}
+
 // Isolates the issuerURL guard specifically: uses an otherwise-valid code and
 // PKCE verifier so the ONLY thing that can fail is the empty issuerURL. Minting
 // a token with no iss (falling back silently to the platform issuer) is worse

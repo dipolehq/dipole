@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type EventRepo struct {
@@ -18,10 +19,15 @@ func (r *EventRepo) InsertAuthEvent(ctx context.Context, tenantID uuid.UUID, e *
 	e.ID = uuid.New()
 	e.TenantID = tenantID
 
+	source := e.Source
+	if source == "" {
+		source = "edge_proxy"
+	}
+
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO access_authorization_events (id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		e.ID, tenantID, e.EventType, e.ContextID, e.Severity, e.ClientIP, e.Timestamp, e.Payload, e.ResourceSetID)
+		`INSERT INTO access_authorization_events (id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		e.ID, tenantID, e.EventType, e.ContextID, e.Severity, e.ClientIP, e.Timestamp, e.Payload, e.ResourceSetID, source)
 	if err != nil {
 		return fmt.Errorf("insert auth event: %w", err)
 	}
@@ -57,7 +63,7 @@ func (r *EventRepo) InsertAuditLog(ctx context.Context, tenantID uuid.UUID, l *d
 }
 
 func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error) {
-	where, args := buildAuthEventFilters(tenantID, opts)
+	where, args := buildAuthEventFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_authorization_events WHERE `+where, args...).Scan(&total)
@@ -71,8 +77,8 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 	offsetParam := fmt.Sprintf("$%d", len(args))
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id
-		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source
+		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query auth events: %w", err)
@@ -82,7 +88,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 	var results []domain.AuthEvent
 	for rows.Next() {
 		var e domain.AuthEvent
-		if err := rows.Scan(&e.ID, &e.TenantID, &e.EventType, &e.ContextID, &e.Severity, &e.ClientIP, &e.Timestamp, &e.Payload, &e.ResourceSetID); err != nil {
+		if err := rows.Scan(&e.ID, &e.TenantID, &e.EventType, &e.ContextID, &e.Severity, &e.ClientIP, &e.Timestamp, &e.Payload, &e.ResourceSetID, &e.Source); err != nil {
 			return nil, 0, fmt.Errorf("scan auth event: %w", err)
 		}
 		results = append(results, e)
@@ -91,7 +97,7 @@ func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opt
 }
 
 func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error) {
-	where, args := buildWorkloadEventFilters(tenantID, opts)
+	where, args := buildWorkloadEventFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workload_events WHERE `+where, args...).Scan(&total)
@@ -106,7 +112,7 @@ func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID,
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, connection_id, event_type, policy_id, client_workload_id, server_workload_id, outcome, severity, timestamp, payload, resource_set_id
-		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query workload events: %w", err)
@@ -125,7 +131,7 @@ func (r *EventRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID,
 }
 
 func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error) {
-	where, args := buildAuditLogFilters(tenantID, opts)
+	where, args := buildAuditLogFilters(ctx, tenantID, opts)
 
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE `+where, args...).Scan(&total)
@@ -140,7 +146,7 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, actor_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp
-		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
 		args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query audit logs: %w", err)
@@ -158,12 +164,21 @@ func (r *EventRepo) QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts
 	return results, total, nil
 }
 
-func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildAuthEventFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR context_id ILIKE '%%' || $%d || '%%' OR client_ip ILIKE '%%' || $%d || '%%')", n, n, n))
+		args = append(args, opts.Search)
+	}
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)
@@ -172,6 +187,11 @@ func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (s
 		n++
 		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
 		args = append(args, opts.EventType)
+	}
+	if opts.Source != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("source = $%d", n))
+		args = append(args, opts.Source)
 	}
 	if opts.StartDate != nil {
 		n++
@@ -184,15 +204,26 @@ func buildAuthEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (s
 		args = append(args, *opts.EndDate)
 	}
 
+	appendResourceSetFilter(ctx, &clauses, &args, &n)
+
 	return strings.Join(clauses, " AND "), args
 }
 
-func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildWorkloadEventFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR connection_id ILIKE '%%' || $%d || '%%' OR outcome ILIKE '%%' || $%d || '%%')", n, n, n))
+		args = append(args, opts.Search)
+	}
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)
@@ -223,15 +254,26 @@ func buildWorkloadEventFilters(tenantID uuid.UUID, opts domain.EventQueryOptions
 		args = append(args, opts.ServerWorkloadIDs)
 	}
 
+	appendResourceSetFilter(ctx, &clauses, &args, &n)
+
 	return strings.Join(clauses, " AND "), args
 }
 
-func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
+func buildAuditLogFilters(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) (string, []interface{}) {
 	args := []interface{}{tenantID}
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
-	if opts.Severity != "" {
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(actor_email ILIKE '%%' || $%d || '%%' OR category ILIKE '%%' || $%d || '%%' OR activity ILIKE '%%' || $%d || '%%' OR target_name ILIKE '%%' || $%d || '%%')", n, n, n, n))
+		args = append(args, opts.Search)
+	}
+	if len(opts.Severities) > 0 {
+		n++
+		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
+		args = append(args, opts.Severities)
+	} else if opts.Severity != "" {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
 		args = append(args, opts.Severity)
@@ -252,6 +294,9 @@ func buildAuditLogFilters(tenantID uuid.UUID, opts domain.EventQueryOptions) (st
 		args = append(args, *opts.EndDate)
 	}
 
+	// Note: audit_logs does not have a resource_set_id column — it's tenant-wide.
+	// No resource set filter applied here.
+
 	return strings.Join(clauses, " AND "), args
 }
 
@@ -260,6 +305,19 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 
 	interval, truncInterval := resolveTimeGranularity(timeRange)
 
+	// Build resource-set filter fragment for dashboard queries.
+	// All dashboard queries use $1 = tenantID. If scope is present, $2 = resource_set_id.
+	rsClause := ""
+	weRsClause := "" // For workload_events queries with table alias "we"
+	aeRsClause := "" // For access_authorization_events queries with table alias "ae"
+	baseArgs := []interface{}{tenantID}
+	if s := scope.FromContext(ctx); s != nil {
+		rsClause = " AND resource_set_id = $2"
+		weRsClause = " AND we.resource_set_id = $2"
+		aeRsClause = " AND ae.resource_set_id = $2"
+		baseArgs = append(baseArgs, s.ResourceSetID)
+	}
+
 	// Aggregate counts for the time range from access_authorization_events.
 	err := r.pool.QueryRow(ctx,
 		`SELECT
@@ -267,8 +325,8 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval,
-		tenantID,
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+rsClause,
+		baseArgs...,
 	).Scan(&data.TotalLast6h, &data.AuthorizedLast6h, &data.DeniedLast6h)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard event counts: %w", err)
@@ -282,10 +340,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Warning') AS warning,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS error
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND timestamp >= NOW() - `+interval+`
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - `+interval+rsClause+`
 		 GROUP BY bucket
 		 ORDER BY bucket`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard time series: %w", err)
@@ -308,10 +366,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			COUNT(*) FILTER (WHERE severity = 'Info') AS authorized,
 			COUNT(*) FILTER (WHERE severity = 'Error') AS denied
 		 FROM access_authorization_events
-		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+`
+		 WHERE tenant_id = $1 AND event_type = 'access.authorization' AND timestamp >= NOW() - `+interval+rsClause+`
 		 GROUP BY bucket
 		 ORDER BY bucket`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard decision series: %w", err)
@@ -332,11 +390,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		`SELECT we.client_workload_id::text, COALESCE(cw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
 		 LEFT JOIN client_workloads cw ON cw.id = we.client_workload_id AND cw.tenant_id = we.tenant_id
-		 WHERE we.tenant_id = $1 AND we.client_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE we.tenant_id = $1 AND we.client_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'`+weRsClause+`
 		 GROUP BY we.client_workload_id, cw.name
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard top clients: %w", err)
@@ -357,11 +415,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		`SELECT we.server_workload_id::text, COALESCE(sw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
 		 LEFT JOIN server_workloads sw ON sw.id = we.server_workload_id AND sw.tenant_id = we.tenant_id
-		 WHERE we.tenant_id = $1 AND we.server_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE we.tenant_id = $1 AND we.server_workload_id IS NOT NULL AND we.timestamp >= NOW() - INTERVAL '24 hours'`+weRsClause+`
 		 GROUP BY we.server_workload_id, sw.name
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard top servers: %w", err)
@@ -383,10 +441,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		 FROM access_authorization_events
 		 WHERE tenant_id = $1 AND event_type = 'access.credential' AND severity = 'Info'
 		   AND timestamp >= NOW() - INTERVAL '24 hours'
-		   AND payload->'credentialProvider'->>'type' IS NOT NULL
+		   AND payload->'credentialProvider'->>'type' IS NOT NULL`+rsClause+`
 		 GROUP BY cp_type
 		 ORDER BY COUNT(*) DESC`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard credential usage: %w", err)
@@ -406,10 +464,10 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	rows, err = r.pool.Query(ctx,
 		`SELECT split_part(event_type, '.', 1) AS protocol, COUNT(*)
 		 FROM workload_events
-		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '24 hours'
+		 WHERE tenant_id = $1 AND timestamp >= NOW() - INTERVAL '24 hours'`+rsClause+`
 		 GROUP BY protocol
 		 ORDER BY COUNT(*) DESC`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard protocol usage: %w", err)
@@ -431,11 +489,11 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		 FROM access_authorization_events ae
 		 WHERE ae.tenant_id = $1 AND ae.event_type = 'access.authorization' AND ae.severity = 'Error'
 		   AND ae.timestamp >= NOW() - INTERVAL '24 hours'
-		   AND ae.payload->'accessPolicy'->>'id' IS NOT NULL
+		   AND ae.payload->'accessPolicy'->>'id' IS NOT NULL`+aeRsClause+`
 		 GROUP BY policy_id, ae.payload->'accessPolicy'->>'name'
 		 ORDER BY COUNT(*) DESC
 		 LIMIT 5`,
-		tenantID,
+		baseArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard policy failures: %w", err)
@@ -448,6 +506,33 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 			return nil, fmt.Errorf("scan policy failure: %w", err)
 		}
 		data.PolicyFailures = append(data.PolicyFailures, pf)
+	}
+
+	// Trust provider attestation results (last 24h).
+	attRows, err := r.pool.Query(ctx,
+		`SELECT result, COUNT(*) FROM (
+			SELECT jsonb_array_elements(payload->'trustProviders')->>'result' AS result
+			FROM access_authorization_events
+			WHERE tenant_id = $1 AND event_type = 'access.authorization'
+			  AND timestamp >= NOW() - INTERVAL '24 hours'
+			  AND payload->'trustProviders' IS NOT NULL
+			  AND jsonb_array_length(payload->'trustProviders') > 0`+rsClause+`
+		) sub
+		WHERE result IS NOT NULL
+		GROUP BY result
+		ORDER BY COUNT(*) DESC`,
+		baseArgs...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard attestation results: %w", err)
+	}
+	defer attRows.Close()
+	for attRows.Next() {
+		var tc domain.DashboardTypeCount
+		if err := attRows.Scan(&tc.Type, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan attestation result: %w", err)
+		}
+		data.AttestationResults = append(data.AttestationResults, tc)
 	}
 
 	return data, nil

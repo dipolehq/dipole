@@ -44,6 +44,10 @@ func NewComplianceService(policyRepo repository.AccessPolicyRepository) *Complia
 	return &ComplianceService{policyRepo: policyRepo}
 }
 
+func (s *ComplianceService) ListActiveWithRelations(ctx context.Context, tenantID uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
+	return s.policyRepo.ListActiveWithRelations(ctx, tenantID)
+}
+
 func (s *ComplianceService) CheckCompliance(ctx context.Context, tenantID uuid.UUID, rules []ComplianceRule) ([]PolicyComplianceResult, error) {
 	policies, _, err := s.policyRepo.List(ctx, tenantID, domain.ListOptions{Page: 1, PerPage: 1000})
 	if err != nil {

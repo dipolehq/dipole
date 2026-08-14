@@ -258,3 +258,7 @@ export async function saveCredentialProvider(
 }
 
 export { apiErrorMessage } from '@/shared/lib/api-client'
+
+export async function deleteCredentialProvider(id: string): Promise<void> {
+  await apiClient.delete(`${BASE}/${id}`)
+}
