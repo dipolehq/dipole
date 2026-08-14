@@ -85,30 +85,40 @@ export function CreateLogStreamPage() {
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
+        <PageHeader />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={createMutation.isPending}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          {createMutation.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+
       {error && (
-        <div className="px-6 py-2 bg-red-50 border-b border-red-200 text-sm text-red-700 shrink-0">
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
           {error}
         </div>
       )}
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
-        <PageHeader />
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60">
-            {createMutation.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-gray-400 rounded-md transition-colors">Cancel</button>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="flex h-full">
-          {/* Form — left 60% */}
-          <div className="w-[60%] px-6 py-6 overflow-y-auto">
-            <div className="space-y-5">
-              <div className="border border-border rounded-lg p-5">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Stream Details</h4>
+      <div className="flex-1 min-h-0 mx-4 border border-border bg-white overflow-y-auto">
+        <div className="grid grid-cols-[1fr_380px] h-full">
+          <div className="px-6 py-5 overflow-y-auto border-r border-border">
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Stream Details</h4>
                 <div className="space-y-4">
                   <FloatingInput label="Name" value={name} onChange={setName} required />
                   <FloatingTextarea label="Description (Optional)" value={description} onChange={setDescription} rows={2} />
@@ -118,8 +128,8 @@ export function CreateLogStreamPage() {
               </div>
 
               {destinationType === 'aws_s3' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">AWS S3 Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">AWS S3 Configuration</h4>
                   <div className="space-y-4">
                     <FloatingInput label="S3 Bucket Region" value={s3Region} onChange={setS3Region} />
                     <FloatingInput label="S3 Bucket Name" value={s3Bucket} onChange={setS3Bucket} />
@@ -137,8 +147,8 @@ export function CreateLogStreamPage() {
               )}
 
               {destinationType === 'gcs_bucket' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">GCS Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">GCS Configuration</h4>
                   <div className="space-y-4">
                     <div className="bg-gray-50 rounded-md p-4">
                       <label className="block text-[10px] text-gray-500 mb-0.5">OIDC Issuer URL</label>
@@ -154,8 +164,8 @@ export function CreateLogStreamPage() {
               )}
 
               {destinationType === 'crowdstrike_siem' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">CrowdStrike SIEM Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">CrowdStrike SIEM Configuration</h4>
                   <div className="space-y-4">
                     <div className="relative">
                       <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} />
@@ -172,8 +182,8 @@ export function CreateLogStreamPage() {
               )}
 
               {destinationType === 'splunk_siem' && (
-                <div className="border border-border rounded-lg p-5">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-4">Splunk SIEM Configuration</h4>
+                <div>
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">Splunk SIEM Configuration</h4>
                   <div className="space-y-4">
                     <div className="relative">
                       <FloatingInput label="Host/Port" value={hostPort} onChange={setHostPort} />
@@ -191,16 +201,15 @@ export function CreateLogStreamPage() {
             </div>
           </div>
 
-          {/* Help panel — right 40% */}
-          <div className="w-[40%] px-6 py-6 overflow-y-auto">
-            <div className="border border-border rounded-lg p-5 sticky top-0">
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                <span className="font-semibold text-gray-700">Log Streams</span> export access authorization events, audit logs, or workload events to external SIEM systems for centralized monitoring and compliance.
+          <div className="px-5 py-5 overflow-y-auto">
+            <div className="space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Log Streams</span> export access authorization events, audit logs, or workload events to external SIEM systems for centralized monitoring and compliance.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed mb-3">
-                Choose a <span className="font-semibold">Destination Type</span> based on where you want events delivered — AWS S3, GCS, CrowdStrike, or Splunk.
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Choose a <span className="font-semibold text-gray-800">Destination Type</span> based on where you want events delivered — AWS S3, GCS, CrowdStrike, or Splunk.
               </p>
-              <p className="text-xs text-gray-700 leading-relaxed">
+              <p className="text-xs text-gray-600 leading-relaxed">
                 For AWS S3 destinations, you&apos;ll need to configure a bucket policy allowing Dipole to write objects. The recommended policy is shown in the configuration section.
               </p>
             </div>
