@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '@/shared/components/PageHeader'
 import {
@@ -43,6 +43,19 @@ export function PolicyDetailPage() {
 
   // Local edit state — null means "use data from server", non-null means "user is editing"
   const [localValues, setLocalValues] = useState<PolicyFormValues | null>(null)
+
+  // Unsaved changes protection
+  const hasUnsavedChanges = localValues !== null
+
+  // Block browser close/refresh when editing
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
 
   if (!id || isError || (!isLoading && data === null)) {
     return (
@@ -108,18 +121,23 @@ export function PolicyDetailPage() {
 
   function handleToggleTrustProviderId(tpId: string) {
     const prev = currentValues.trustProviderIds
-    updateField(
-      'trustProviderIds',
-      prev.includes(tpId) ? prev.filter((v) => v !== tpId) : [...prev, tpId],
-    )
+    if (prev.includes(tpId)) {
+      // Removing — also clear inline form data since it may be stale
+      updateField('trustProviderIds', prev.filter((v) => v !== tpId))
+      updateField('trustProviders', [])
+    } else {
+      updateField('trustProviderIds', [...prev, tpId])
+    }
   }
 
   function handleToggleAccessConditionId(acId: string) {
     const prev = currentValues.accessConditionIds
-    updateField(
-      'accessConditionIds',
-      prev.includes(acId) ? prev.filter((v) => v !== acId) : [...prev, acId],
-    )
+    if (prev.includes(acId)) {
+      updateField('accessConditionIds', prev.filter((v) => v !== acId))
+      updateField('accessConditions', [])
+    } else {
+      updateField('accessConditionIds', [...prev, acId])
+    }
   }
 
   const disabled = !isEditing

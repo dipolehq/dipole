@@ -31,7 +31,7 @@ export function ServerWorkloadsPage() {
       items.map((item) => ({
         id: item.id,
         name: item.name,
-        type: item.type ?? item.appProtocol ?? '',
+        type: item.appProtocol ?? '',
         description: item.description ?? '',
         tags: item.tags ?? 0,
         policies: item.policies ?? 0,

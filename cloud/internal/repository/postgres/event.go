@@ -169,6 +169,11 @@ func buildAuthEventFilters(ctx context.Context, tenantID uuid.UUID, opts domain.
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR context_id ILIKE '%%' || $%d || '%%' OR client_ip ILIKE '%%' || $%d || '%%')", n, n, n))
+		args = append(args, opts.Search)
+	}
 	if len(opts.Severities) > 0 {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
@@ -209,6 +214,11 @@ func buildWorkloadEventFilters(ctx context.Context, tenantID uuid.UUID, opts dom
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR connection_id ILIKE '%%' || $%d || '%%' OR outcome ILIKE '%%' || $%d || '%%')", n, n, n))
+		args = append(args, opts.Search)
+	}
 	if len(opts.Severities) > 0 {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
@@ -254,6 +264,11 @@ func buildAuditLogFilters(ctx context.Context, tenantID uuid.UUID, opts domain.E
 	clauses := []string{"tenant_id = $1"}
 	n := 1
 
+	if opts.Search != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("(actor_email ILIKE '%%' || $%d || '%%' OR category ILIKE '%%' || $%d || '%%' OR activity ILIKE '%%' || $%d || '%%' OR target_name ILIKE '%%' || $%d || '%%')", n, n, n, n))
+		args = append(args, opts.Search)
+	}
 	if len(opts.Severities) > 0 {
 		n++
 		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))

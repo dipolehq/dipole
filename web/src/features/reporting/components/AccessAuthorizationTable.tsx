@@ -132,6 +132,7 @@ export function AccessAuthorizationTable({ data = [], total, page, pageSize, onP
       onSearch={onSearch}
       searchValue={searchValue}
       searchPlaceholder="Filter by IP, context, or workload..."
+      searchKeys={['clientIp', 'contextId', 'clientWorkloadName', 'serverWorkloadName', 'eventType']}
       severity={severity}
       onSeverityChange={onSeverityChange}
       renderExpanded={(row) => <ExpandedDetail row={row} />}

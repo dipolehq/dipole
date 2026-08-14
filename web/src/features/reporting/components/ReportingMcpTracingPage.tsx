@@ -65,7 +65,7 @@ function SeverityBadge({ severity }: { severity: string }) {
 }
 
 function PolicyCell({ name, status }: { name: string; status: McpPolicyStatus }) {
-  if (status === 'Unknown') return <span className="text-xs text-gray-600 font-medium">Unknown</span>
+  if (status === 'Unknown') return <span className="text-xs text-gray-600 font-medium">—</span>
   return <div className="truncate text-xs text-gray-700 font-medium">{name}</div>
 }
 
@@ -75,7 +75,7 @@ function WorkloadCell({ name, status, uri }: { name: string; status: 'Identified
       {status === 'Identified' ? (
         <div className="text-xs text-gray-700 font-medium truncate">{name}</div>
       ) : (
-        <div className="text-xs text-gray-600 font-medium">Unknown</div>
+        <div className="text-xs text-gray-600 font-medium">—</div>
       )}
       <div className="text-[11px] text-gray-400 truncate" title={uri}>{uri}</div>
     </div>

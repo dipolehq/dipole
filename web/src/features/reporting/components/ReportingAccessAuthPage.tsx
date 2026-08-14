@@ -13,8 +13,8 @@ export function ReportingAccessAuthPage() {
   const [severity, setSeverity] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['events', 'auth', page, PAGE_SIZE, severity],
-    queryFn: () => fetchAuthEvents({ page, perPage: PAGE_SIZE, severity, eventType: '' }),
+    queryKey: ['events', 'auth', page, PAGE_SIZE, severity, search],
+    queryFn: () => fetchAuthEvents({ page, perPage: PAGE_SIZE, severity, search, eventType: '' }),
     placeholderData: keepPreviousData,
   })
 

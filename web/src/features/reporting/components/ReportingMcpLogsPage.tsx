@@ -66,8 +66,8 @@ export function ReportingMcpLogsPage() {
   const [search, setSearch] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['events', 'mcp-logs', page, PAGE_SIZE],
-    queryFn: () => fetchAuthEvents({ page, perPage: PAGE_SIZE, severity: '', eventType: 'access.authorization', source: 'mcp_gateway' }),
+    queryKey: ['events', 'mcp-logs', page, PAGE_SIZE, search],
+    queryFn: () => fetchAuthEvents({ page, perPage: PAGE_SIZE, search, severity: '', eventType: 'access.authorization', source: 'mcp_gateway' }),
     placeholderData: keepPreviousData,
   })
 
@@ -118,6 +118,7 @@ export function ReportingMcpLogsPage() {
           onSearch={(q) => { setSearch(q); setPage(1) }}
           searchValue={search}
           searchPlaceholder="Filter by user, client, or server..."
+          searchKeys={['user', 'client', 'mcpServer', 'toolCalled', 'outcome']}
           renderExpanded={(row) => <ExpandedDetail row={row} />}
           onRefresh={() => queryClient.invalidateQueries({ queryKey: ['events', 'mcp-logs'] })}
           emptyMessage="No MCP access logs found."

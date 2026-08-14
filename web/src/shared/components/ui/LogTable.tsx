@@ -43,6 +43,8 @@ interface LogTableProps<TData> {
   /** Current search value (controlled) */
   searchValue?: string
   searchPlaceholder?: string
+  /** Keys to search client-side within current page data */
+  searchKeys?: string[]
   /** Severity filter value (server-side) */
   severity?: string
   /** Called when severity filter changes */
@@ -62,6 +64,7 @@ export function LogTable<TData>({
   onSearch,
   searchValue = '',
   searchPlaceholder = 'Filter...',
+  searchKeys = [],
   severity = '',
   onSeverityChange,
   renderExpanded,
@@ -71,8 +74,19 @@ export function LogTable<TData>({
   const inputRef = useRef<HTMLInputElement>(null)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
 
+  // Client-side search filtering within current page data
+  const filteredData = searchValue && searchKeys.length > 0
+    ? data.filter((row) => {
+        const search = searchValue.toLowerCase()
+        return searchKeys.some((key) => {
+          const val = (row as Record<string, unknown>)[key]
+          return typeof val === 'string' && val.toLowerCase().includes(search)
+        })
+      })
+    : data
+
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     // No client-side pagination/sorting/filtering — server handles it

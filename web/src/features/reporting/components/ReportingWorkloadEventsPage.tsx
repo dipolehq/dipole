@@ -59,8 +59,8 @@ export function ReportingWorkloadEventsPage() {
   const [severity, setSeverity] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['events', 'workload', page, PAGE_SIZE, severity],
-    queryFn: () => fetchWorkloadEvents({ page, perPage: PAGE_SIZE, severity, eventType: '' }),
+    queryKey: ['events', 'workload', page, PAGE_SIZE, severity, search],
+    queryFn: () => fetchWorkloadEvents({ page, perPage: PAGE_SIZE, severity, search, eventType: '' }),
     placeholderData: keepPreviousData,
   })
 
@@ -100,6 +100,7 @@ export function ReportingWorkloadEventsPage() {
           onSearch={(q) => { setSearch(q); setPage(1) }}
           searchValue={search}
           searchPlaceholder="Filter by connection or workload..."
+          searchKeys={['connectionId', 'eventType', 'clientWorkloadName', 'serverWorkloadName']}
           severity={severity}
           onSeverityChange={(v) => { setSeverity(v); setPage(1) }}
           renderExpanded={(row) => <ExpandedDetail row={row} />}

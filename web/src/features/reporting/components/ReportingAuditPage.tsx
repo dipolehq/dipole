@@ -58,8 +58,8 @@ export function ReportingAuditPage() {
   const [severity, setSeverity] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['events', 'audit', page, PAGE_SIZE, severity],
-    queryFn: () => fetchAuditLogs({ page, perPage: PAGE_SIZE, severity, eventType: '' }),
+    queryKey: ['events', 'audit', page, PAGE_SIZE, severity, search],
+    queryFn: () => fetchAuditLogs({ page, perPage: PAGE_SIZE, severity, search, eventType: '' }),
     placeholderData: keepPreviousData,
   })
 
@@ -98,6 +98,7 @@ export function ReportingAuditPage() {
           onSearch={(q) => { setSearch(q); setPage(1) }}
           searchValue={search}
           searchPlaceholder="Filter by actor or activity..."
+          searchKeys={['category', 'actor', 'activity', 'target']}
           severity={severity}
           onSeverityChange={(v) => { setSeverity(v); setPage(1) }}
           renderExpanded={(row) => <ExpandedDetail row={row} />}
