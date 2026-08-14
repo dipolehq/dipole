@@ -37,7 +37,7 @@ export function GettingStartedPanel() {
           <p className="text-xs text-gray-600 leading-relaxed flex-1">
             We're happy to provide a one-on-one demo that will help you better understand Dipole as well answer any questions you may have.
           </p>
-          <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium mt-4">
+          <a href="https://calendar.google.com/calendar/appointments/schedules/AcZssZ0N0iLlhp8Fe3A0fL4nysUU5ThEz6C7pK435UoWKt5b0tX8uUGA0StrHC6oHIsl29V3q9KLpHSK?gv=true" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-700 font-medium mt-4">
             <MonitorPlay size={12} />
             Request a Demo
           </a>
@@ -57,7 +57,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/edge-components"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] border border-border bg-white text-sm text-gray-700 hover:bg-gray-50 font-medium rounded-md transition-colors"
           >
             Deploy Dipole Edge
             <ArrowRight size={11} />
@@ -75,7 +75,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/access-policies/new"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] border border-border bg-white text-sm text-gray-700 hover:bg-gray-50 font-medium rounded-md transition-colors"
           >
             Add an Access Policy
             <ArrowRight size={11} />
@@ -92,8 +92,8 @@ export function GettingStartedPanel() {
             Use these logs to troubleshoot denied requests, verify policy evaluations, and maintain a full audit trail of all workload-to-workload communication.
           </p>
           <Link
-            to="/reporting"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors mt-4"
+            to="/reporting/access-authorization"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] border border-border bg-white text-sm text-gray-700 hover:bg-gray-50 font-medium rounded-md transition-colors mt-4"
           >
             Explore Reporting
             <ArrowRight size={11} />
@@ -111,7 +111,7 @@ export function GettingStartedPanel() {
           </p>
           <Link
             to="/"
-            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-md transition-colors mt-4"
+            className="inline-flex items-center justify-center gap-1.5 w-[170px] h-[36px] border border-border bg-white text-sm text-gray-700 hover:bg-gray-50 font-medium rounded-md transition-colors mt-4"
           >
             View Dashboard
             <ArrowRight size={11} />
@@ -121,15 +121,15 @@ export function GettingStartedPanel() {
 
       {/* Quick links footer */}
       <div className="flex items-center justify-end gap-6 pt-4 mt-auto">
-        <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
+        <a href="mailto:support@dipolehq.com" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
           <ExternalLink size={11} />
           Support
         </a>
-        <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
+        <a href="https://status.dipolehq.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
           <ExternalLink size={11} />
           Status
         </a>
-        <a href="#" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
+        <a href="https://docs.dipolehq.com" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium">
           <ExternalLink size={11} />
           Documentation
         </a>

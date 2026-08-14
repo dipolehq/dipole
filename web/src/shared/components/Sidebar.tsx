@@ -12,11 +12,13 @@ import {
   BarChart3,
   Users,
   BookOpen,
-  HelpCircle,
+  Headphones,
+  MessageSquarePlus,
   User,
   ChevronRight,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { FeedbackDialog } from '@/shared/components/FeedbackDialog'
 
 interface NavChild {
   label: string
@@ -28,6 +30,7 @@ interface NavItemConfig {
   path?: string
   icon: LucideIcon
   children?: NavChild[]
+  onClick?: () => void
 }
 
 interface NavSectionConfig {
@@ -96,8 +99,9 @@ const NAV_SECTIONS: NavSectionConfig[] = [
   {
     title: 'Support',
     items: [
-      { label: 'Documentation', path: '/help', icon: BookOpen },
-      { label: 'Help', path: '/help/contact', icon: HelpCircle },
+      { label: 'Documentation', path: '/docs', icon: BookOpen },
+      { label: 'Support', path: '/support', icon: Headphones },
+      { label: 'Feedback', icon: MessageSquarePlus },
     ],
   },
 ]
@@ -113,9 +117,21 @@ function NavItem({ item }: { item: NavItemConfig }) {
   const Icon = item.icon
 
   if (!hasChildren) {
+    if (!item.path) {
+      return (
+        <button
+          type="button"
+          onClick={item.onClick}
+          className="flex items-center gap-2.5 px-3 py-[7px] rounded-[6px] text-[13px] font-medium transition-all duration-200 select-none text-gray-600 hover:bg-gray-50 hover:text-gray-900 w-full text-left"
+        >
+          <Icon size={16} strokeWidth={1.5} className="shrink-0" />
+          <span className="truncate">{item.label}</span>
+        </button>
+      )
+    }
     return (
       <NavLink
-        to={item.path!}
+        to={item.path}
         end
         className={({ isActive }) =>
           `flex items-center gap-2.5 px-3 py-[7px] rounded-[6px] text-[13px] font-medium transition-all duration-200 select-none ${
@@ -188,6 +204,7 @@ function NavItem({ item }: { item: NavItemConfig }) {
 
 export function Sidebar() {
   const navigate = useNavigate()
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   function getUserDisplayName(): string {
     try {
@@ -203,6 +220,7 @@ export function Sidebar() {
   }
 
   return (
+    <>
     <aside className="fixed left-0 top-0 h-screen w-51 bg-white flex flex-col border-r border-gray-200">
       <div className="pl-6 flex items-center h-[44px] shrink-0 border-b border-gray-200 select-none pointer-events-none">
         <img src="/brand_black.svg" alt="Dipole" className="h-8" />
@@ -216,7 +234,7 @@ export function Sidebar() {
             </div>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => (
-                <NavItem key={item.label} item={item} />
+                <NavItem key={item.label} item={item.label === 'Feedback' ? { ...item, onClick: () => setFeedbackOpen(true) } : item} />
               ))}
             </div>
           </div>
@@ -251,5 +269,9 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+
+    <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+    </>
   )
 }
+

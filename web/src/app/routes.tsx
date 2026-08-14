@@ -39,6 +39,7 @@ import {
   AgentControllerDetailPage,
 } from '@/features/edge-components'
 import { HelpPage } from '@/features/help'
+import { SupportPage } from '@/features/help'
 import { ProfilePage } from '@/features/profile'
 import {
   AdminUsersPage,
@@ -143,7 +144,8 @@ export function AppRoutes() {
         />
         <Route path="/administration/log_streams/new" element={<CreateLogStreamPage />} />
         <Route path="/administration/log_streams/:id" element={<LogStreamDetailPage />} />
-        <Route path="/help" element={<HelpPage />} />
+        <Route path="/docs" element={<HelpPage />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </Layout>

@@ -339,6 +339,9 @@ func buildHTTPServer(
 	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)
+
+	feedbackHandler := rest.NewFeedbackHandler(cfg.ResendAPIKey, cfg.EmailFrom, "support@dipolehq.com")
+	feedbackHandler.RegisterRoutes(mux)
 	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.ResourceSets, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(auditEmitter)
