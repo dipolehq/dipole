@@ -31,6 +31,9 @@ func newSecurityPipeline(repo Repository, logger *slog.Logger, metrics *Metrics)
 }
 
 func (p *SecurityPipeline) Emit(ctx context.Context, event SecurityEvent) error {
+	if p.repo == nil {
+		return nil
+	}
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
 	}

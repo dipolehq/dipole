@@ -61,6 +61,9 @@ func (b *EventBus) EmitAudit(ctx context.Context, event AuditEvent) error {
 }
 
 func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, incoming []WorkloadEvent) error {
+	if b.workload.repo == nil {
+		return nil
+	}
 	for i := range incoming {
 		incoming[i].TenantID = tenantID
 		if incoming[i].Timestamp.IsZero() {

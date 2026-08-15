@@ -105,9 +105,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		return fmt.Errorf("dev bootstrap: %w", err)
 	}
 
-	tracingBus := mcpgw.NewTracingBus()
-
-	_ = eventbus.NewEventBus(nil, logger)
+	eventBus := eventbus.NewEventBus(postgres.NewEventPipelineRepo(pool), logger)
 
 	platformHosts := platform.NewHosts(cfg.PlatformDomain, cfg.Env)
 
@@ -183,15 +181,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwTokenStore := repos.MCPUserCredentials
 	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
 	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
-	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
-	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
-	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter, authEmitter, logger)
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, eventBus, logger)
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver, authEmitter)
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, eventBus, tenantHostResolver)
 
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
@@ -200,7 +196,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus, caService)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, eventBus, caService)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -276,7 +272,7 @@ func buildHTTPServer(
 	mcpDipole *rest.DipoleMCPServer,
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
-	tracingBus *mcpgw.TracingBus,
+	eventBus *eventbus.EventBus,
 	caService *pki.TenantCAService,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -328,7 +324,7 @@ func buildHTTPServer(
 	apHandler.SetAudit(auditEmitter)
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
-	rest.NewMCPTracingHandler(tracingBus).RegisterRoutes(mux)
+	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
 	rest.NewDashboardHandler(service.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,

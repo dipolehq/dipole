@@ -28,6 +28,9 @@ func newAuditPipeline(repo Repository, logger *slog.Logger, metrics *Metrics) *A
 }
 
 func (p *AuditPipeline) Emit(ctx context.Context, event AuditEvent) error {
+	if p.repo == nil {
+		return nil
+	}
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
 	}

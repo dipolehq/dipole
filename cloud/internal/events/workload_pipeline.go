@@ -99,6 +99,9 @@ func (p *WorkloadPipeline) Run(ctx context.Context) {
 }
 
 func (p *WorkloadPipeline) flush(batch []WorkloadEvent) {
+	if p.repo == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), workloadFlushTimeout)
 	defer cancel()
 

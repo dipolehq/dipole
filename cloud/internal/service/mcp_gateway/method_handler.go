@@ -17,18 +17,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/google/uuid"
 )
 
 const toolPrefixSeparator = "__"
 
 var ErrMethodNotFound = errors.New("method not found")
-
-type AuthEventEmitterInterface interface {
-	Emit(ctx context.Context, eval *events.EvaluationContext) error
-}
 
 func sanitizeToolName(name string) string {
 	name = strings.ToLower(name)
@@ -88,20 +83,18 @@ type RequestContext struct {
 }
 
 type MethodHandler struct {
-	rightAuth   *RightSideAuth
-	clients     MCPClientFactory
-	emitter     *GatewayEventEmitter
-	authEmitter AuthEventEmitterInterface
-	logger      *slog.Logger
+	rightAuth *RightSideAuth
+	clients   MCPClientFactory
+	events    *events.EventBus
+	logger    *slog.Logger
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter, authEmitter AuthEventEmitterInterface, logger *slog.Logger) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, eventBus *events.EventBus, logger *slog.Logger) *MethodHandler {
 	return &MethodHandler{
-		rightAuth:   rightAuth,
-		clients:     clients,
-		emitter:     emitter,
-		authEmitter: authEmitter,
-		logger:      logger,
+		rightAuth: rightAuth,
+		clients:   clients,
+		events:    eventBus,
+		logger:    logger,
 	}
 }
 
@@ -182,7 +175,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
-		h.emitRightSideAuthEvent(ctx, rCtx, serverName, toolName, false, err.Error())
+		h.emitRightSideAuth(ctx, rCtx, serverName, toolName, false, err.Error())
 		return nil, err
 	}
 
@@ -190,18 +183,12 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	result, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
 	if err != nil {
-		if h.emitter != nil {
-			h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 500)
-		}
+		h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, 500)
 		return nil, err
 	}
 
-	if h.emitter != nil {
-		h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
-		h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
-	}
-
-	h.emitRightSideAuthEvent(ctx, rCtx, cred.ServerWorkload.Name, toolName, true, "")
+	h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
+	h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, toolName, true, "")
 
 	return result, nil
 }
@@ -245,10 +232,7 @@ func (h *MethodHandler) handleResourcesRead(ctx context.Context, rCtx *RequestCo
 
 		content, err := client.ReadResource(ctx, cred.AccessToken, req.URI)
 		if err == nil && content != nil {
-			if h.emitter != nil {
-				h.emitter.EmitRequest(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID)
-				h.emitter.EmitResponse(rCtx.Scope.TenantID, rCtx.UserID, "MCP Client", cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
-			}
+			h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
 			return content, nil
 		}
 	}
@@ -269,44 +253,67 @@ func parsePrefixedToolName(prefixed string) (serverName, toolName string, err er
 	return serverName, toolName, nil
 }
 
-func (h *MethodHandler) emitRightSideAuthEvent(ctx context.Context, rCtx *RequestContext, serverName string, toolName string, allowed bool, denyReason string) {
-	if h.authEmitter == nil {
+func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, toolName string, allowed bool, denyReason string) {
+	if h.events == nil {
 		return
 	}
 
-	result := &domain.EvaluationResult{Allowed: allowed, DenyReason: denyReason}
-
-	// The "client" in right-side auth is the Gateway itself acting on behalf of the user.
-	clientWL := &domain.ClientWorkload{Name: "MCP Identity Gateway"}
-	serverWL := &domain.ServerWorkload{Name: serverName}
-
-	evalCtx := &events.EvaluationContext{
-		TenantID:       rCtx.Scope.TenantID,
-		SourceIP:       rCtx.UserID,
-		TargetHost:     serverName,
-		TargetPort:     443,
-		Result:         result,
-		ClientWorkload: clientWL,
-		ServerWorkload: serverWL,
-		Source:         "mcp_gateway",
+	severity := "Info"
+	if !allowed {
+		severity = "Error"
 	}
 
-	// Include user + tool info in the payload via a synthetic policy
-	if rCtx.UserID != "" || toolName != "" {
-		policyName := "Gateway → " + serverName
-		evalCtx.Policy = &domain.AccessPolicy{
-			ID:   uuid.New(),
-			Name: policyName,
-		}
-	}
+	policyName := "Gateway → " + serverName
 
 	go func() {
 		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if err := h.authEmitter.Emit(asyncCtx, evalCtx); err != nil {
+		if err := h.events.EmitSecurity(asyncCtx, events.SecurityEvent{
+			TenantID:       rCtx.Scope.TenantID,
+			SourceIP:       rCtx.UserID,
+			Source:         "mcp_gateway",
+			EventType:      "access.authorization",
+			Severity:       severity,
+			Allowed:        allowed,
+			DenyReason:     denyReason,
+			UserID:         rCtx.UserID,
+			ClientWorkload: "MCP Identity Gateway",
+			ServerWorkload: serverName,
+			ServerHost:     serverName,
+			ServerPort:     443,
+			PolicyName:     policyName,
+			ToolName:       toolName,
+		}); err != nil {
 			if h.logger != nil {
 				h.logger.Error("failed to emit MCP access log", "error", err, "server", serverName, "user", rCtx.UserID, "tool", toolName)
 			}
 		}
 	}()
+}
+
+func (h *MethodHandler) emitWorkload(rCtx *RequestContext, serverName string, serverID uuid.UUID, httpStatus int) {
+	if h.events == nil {
+		return
+	}
+
+	outcome := "Modified"
+	severity := "Info"
+	if httpStatus >= 400 {
+		outcome = "Error"
+		severity = "Error"
+	}
+
+	h.events.EmitWorkload(events.WorkloadEvent{
+		TenantID:         rCtx.Scope.TenantID,
+		EventType:        "mcp.request",
+		Severity:         severity,
+		ClientWorkload:   "MCP Client",
+		ServerWorkload:   serverName,
+		ServerWorkloadID: &serverID,
+		Outcome:          outcome,
+		HTTPMethod:       "POST",
+		HTTPPath:         "/mcp",
+		HTTPStatus:       httpStatus,
+		UserID:           rCtx.UserID,
+	})
 }

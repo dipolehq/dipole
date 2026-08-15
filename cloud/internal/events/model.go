@@ -65,16 +65,16 @@ type WorkloadEvent struct {
 }
 
 type TraceEntry struct {
-	ID             string
-	TenantID       uuid.UUID
-	Timestamp      time.Time
-	ClientIP       string
-	AccessPolicy   TracePolicyStatus
-	RedirectURI    string
-	ClientWorkload TraceWorkloadStatus
-	ResourceServer string
-	ServerWorkload TraceWorkloadStatus
-	Severity       string
+	ID             string              `json:"id"`
+	TenantID       uuid.UUID           `json:"-"`
+	Timestamp      time.Time           `json:"timestamp"`
+	ClientIP       string              `json:"clientIP"`
+	AccessPolicy   TracePolicyStatus   `json:"accessPolicy"`
+	RedirectURI    string              `json:"redirectUri"`
+	ClientWorkload TraceWorkloadStatus `json:"clientWorkload"`
+	ResourceServer string              `json:"resourceServer"`
+	ServerWorkload TraceWorkloadStatus `json:"serverWorkload"`
+	Severity       string              `json:"severity"`
 }
 
 type TracePolicyStatus struct {
