@@ -72,6 +72,7 @@ func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, inco
 		if incoming[i].ConnectionID == uuid.Nil {
 			incoming[i].ConnectionID = uuid.New()
 		}
+		incoming[i].Payload = redactPayload(incoming[i].Payload)
 	}
 	return b.workload.repo.InsertWorkloadEventBatch(ctx, incoming)
 }

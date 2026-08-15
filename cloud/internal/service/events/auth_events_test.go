@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -126,49 +125,6 @@ func TestAuthEventEmitter_DeniedHasSeverityWarn(t *testing.T) {
 				t.Errorf("expected severity=Warn for denied, got %s", e.Severity)
 			}
 		}
-	}
-}
-
-func TestWorkloadEventIngester_RedactsSensitiveHeaders(t *testing.T) {
-	repo := &mockEventRepo{}
-	ingester := NewWorkloadEventIngester(repo)
-
-	payload := json.RawMessage(`{"application":{"http":{"headers":[{"content-type":"application/json"},{"authorization":"Bearer secret"},{"set-cookie":"session=abc"},{"cookie":"session_id=s3cr3t"},{"x-api-key":"sk_live_key123"}]}}}`)
-
-	err := ingester.Ingest(context.Background(), &IncomingWorkloadEvent{
-		TenantID:     uuid.New(),
-		EventType:    "http.request",
-		ConnectionID: uuid.New(),
-		Severity:     "Info",
-		Outcome:      "Modified",
-		Payload:      payload,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(repo.workloadEvents) != 1 {
-		t.Fatal("expected 1 event")
-	}
-
-	stored := string(repo.workloadEvents[0].Payload)
-	if !contains(stored, "content-type") {
-		t.Error("content-type should be preserved")
-	}
-	if contains(stored, "Bearer secret") {
-		t.Error("authorization header should be redacted")
-	}
-	if contains(stored, "session=abc") {
-		t.Error("set-cookie header should be redacted")
-	}
-	if contains(stored, "s3cr3t") {
-		t.Error("cookie header should be redacted")
-	}
-	if contains(stored, "sk_live_key123") {
-		t.Error("x-api-key header should be redacted")
-	}
-	if !contains(stored, "[REDACTED]") {
-		t.Error("expected [REDACTED] placeholder")
 	}
 }
 

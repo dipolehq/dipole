@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
@@ -63,11 +63,6 @@ type ProxyAuthenticator interface {
 	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error)
 }
 
-// WorkloadEventPersister abstracts workload event ingestion and persistence.
-type WorkloadEventPersister interface {
-	Ingest(ctx context.Context, event *events.IncomingWorkloadEvent) error
-}
-
 type PolicyEvaluationServer struct {
 	pb.UnimplementedPolicyEvaluationServiceServer
 	evaluator     PolicyEvaluator
@@ -77,17 +72,17 @@ type PolicyEvaluationServer struct {
 	leafSigner    LeafCertSigner
 	hostnameAuthz HostnameAuthorizer
 	proxyAuth     ProxyAuthenticator
-	eventIngester WorkloadEventPersister
+	events        *events.EventBus
 	logger        *slog.Logger
 }
 
-func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, caProvider TenantCAProvider, eventIngester WorkloadEventPersister, logger *slog.Logger) *PolicyEvaluationServer {
+func NewPolicyEvaluationServer(evaluator PolicyEvaluator, registrar ProxyRegistrar, healthUpdater ProxyHealthUpdater, caProvider TenantCAProvider, eventBus *events.EventBus, logger *slog.Logger) *PolicyEvaluationServer {
 	return &PolicyEvaluationServer{
 		evaluator:     evaluator,
 		registrar:     registrar,
 		healthUpdater: healthUpdater,
 		caProvider:    caProvider,
-		eventIngester: eventIngester,
+		events:        eventBus,
 		logger:        logger,
 	}
 }
@@ -200,21 +195,22 @@ func (s *PolicyEvaluationServer) IngestEvents(stream grpc.ClientStreamingServer[
 			continue
 		}
 
+		mapped := make([]events.WorkloadEvent, 0, len(batch.Events))
 		for _, ev := range batch.Events {
-			incoming := mapWorkloadEvent(tenantID, ev)
-			if err := s.eventIngester.Ingest(stream.Context(), incoming); err != nil {
-				s.logger.Error("ingest: persist failed", "tenant_id", tenantID, "event_id", ev.EventId, "error", err)
-				continue
-			}
-			accepted++
+			mapped = append(mapped, mapWorkloadEvent(ev))
 		}
+
+		if err := s.events.IngestFromProxy(stream.Context(), tenantID, mapped); err != nil {
+			s.logger.Error("ingest: persist failed", "tenant_id", tenantID, "batch_size", len(mapped), "error", err)
+			continue
+		}
+		accepted += int32(len(mapped))
 	}
 	return stream.SendAndClose(&pb.EventAck{Accepted: accepted})
 }
 
-func mapWorkloadEvent(tenantID uuid.UUID, ev *pb.WorkloadEvent) *events.IncomingWorkloadEvent {
-	incoming := &events.IncomingWorkloadEvent{
-		TenantID:  tenantID,
+func mapWorkloadEvent(ev *pb.WorkloadEvent) events.WorkloadEvent {
+	w := events.WorkloadEvent{
 		EventType: ev.EventType,
 		Severity:  ev.Severity,
 		Outcome:   ev.Outcome,
@@ -223,41 +219,39 @@ func mapWorkloadEvent(tenantID uuid.UUID, ev *pb.WorkloadEvent) *events.Incoming
 
 	if ev.ConnectionId != "" {
 		if id, err := uuid.Parse(ev.ConnectionId); err == nil {
-			incoming.ConnectionID = id
+			w.ConnectionID = id
 		}
 	}
 
 	if ev.PolicyId != "" {
 		if id, err := uuid.Parse(ev.PolicyId); err == nil {
-			incoming.PolicyID = &id
+			w.PolicyID = &id
 		}
 	}
 
 	if ev.ClientWorkloadId != "" {
 		if id, err := uuid.Parse(ev.ClientWorkloadId); err == nil {
-			incoming.ClientWorkloadID = &id
+			w.ClientWorkloadID = &id
 		}
 	}
 
 	if ev.ServerWorkloadId != "" {
 		if id, err := uuid.Parse(ev.ServerWorkloadId); err == nil {
-			incoming.ServerWorkloadID = &id
+			w.ServerWorkloadID = &id
 		}
 	}
 
 	if ev.ResourceSetId != "" {
 		if id, err := uuid.Parse(ev.ResourceSetId); err == nil {
-			incoming.ResourceSetID = &id
+			w.ResourceSetID = &id
 		}
 	}
 
 	if ev.Timestamp > 0 {
-		incoming.Timestamp = time.Unix(ev.Timestamp, 0)
-	} else {
-		incoming.Timestamp = time.Now()
+		w.Timestamp = time.Unix(ev.Timestamp, 0)
 	}
 
-	return incoming
+	return w
 }
 
 func mapEvidence(c *pb.ClientEvidence) *domain.ClientEvidence {

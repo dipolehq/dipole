@@ -131,7 +131,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	authenticator.SetAPITokenRepo(repos.APITokens)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
-	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
 	resourceCounter := service.NewDBResourceCounter(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.AccessPolicies, repos.TrustProviders,
@@ -196,7 +195,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	)
 
 	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, eventBus, caService)
-	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
+	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
 	grpcHandler.SetProxyAuthenticator(repos.AgentProxies)
