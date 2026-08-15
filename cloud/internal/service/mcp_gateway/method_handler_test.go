@@ -7,21 +7,16 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	"github.com/google/uuid"
 )
 
-// testScope builds the per-request tenant scope that the transport layer
-// resolves from the request hostname. Tests must supply a valid one — the
-// right-side auth path fails closed without it.
 func testScope(tenantID uuid.UUID) TenantScope {
 	return TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}
 }
 
-// mapClientFactory resolves a client by server name, standing in for the real
-// factory which derives the endpoint from the policy's ServerInfo. Unknown names
-// yield a client that errors rather than nil, matching the factory contract and
-// the production behaviour of an unreachable server.
 type mapClientFactory map[string]MCPServerClient
 
 func (f mapClientFactory) ClientFor(server ServerInfo) MCPServerClient {
@@ -162,7 +157,7 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/list", nil)
 	if err != nil {
@@ -229,7 +224,7 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	// Call jira tool
 	jiraPrefix := toolPrefix(ServerInfo{ID: jiraID, Name: "jira"})
@@ -264,7 +259,7 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -277,7 +272,7 @@ func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -351,7 +346,7 @@ func TestToolsCall_EmitsAuditEventWithHumanReadableServerName(t *testing.T) {
 
 	sink := &recordingEventSink{}
 	emitter := NewGatewayEventEmitter(sink)
-	handler := NewMethodHandler(rightAuth, clients, emitter, nil)
+	handler := NewMethodHandler(rightAuth, clients, emitter, nil, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Customer Database MCP Server"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__list_customers"))
@@ -388,7 +383,7 @@ func TestToolsCall_FailurePath_EmitsAuditEventWithHumanReadableServerName(t *tes
 
 	sink := &recordingEventSink{}
 	emitter := NewGatewayEventEmitter(sink)
-	handler := NewMethodHandler(rightAuth, clients, emitter, nil)
+	handler := NewMethodHandler(rightAuth, clients, emitter, nil, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Payments API"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__charge"))
@@ -425,7 +420,7 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
 	clients := mapClientFactory{"My  Server!": client}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	// Step 1: tools/list
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/list", nil)
@@ -464,7 +459,7 @@ func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
 	if err != nil {
@@ -479,7 +474,7 @@ func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
 	if err != nil {
@@ -543,7 +538,7 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/list", nil)
 	if err != nil {
@@ -593,7 +588,7 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
@@ -629,11 +624,64 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 
 	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
 	if err == nil {
 		t.Fatal("expected error for resource not found")
+	}
+}
+
+// --- Regression test: context cancellation must not prevent auth event persistence ---
+
+type recordingAuthEmitter struct {
+	emitted []*events.EvaluationContext
+	err     error
+}
+
+func (e *recordingAuthEmitter) Emit(_ context.Context, eval *events.EvaluationContext) error {
+	e.emitted = append(e.emitted, eval)
+	return e.err
+}
+
+func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T) {
+	serverID := uuid.New()
+	tenantID := uuid.New()
+
+	client := &mockMCPClient{callResult: map[string]any{"ok": true}}
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "Test Server"}, CredentialType: "api_key"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	clients := mapClientFactory{"Test Server": client}
+
+	authEmitter := &recordingAuthEmitter{}
+	handler := NewMethodHandler(rightAuth, clients, nil, authEmitter, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled immediately
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Test Server"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__do_thing"))
+	_, _ = handler.HandleMethod(ctx, &RequestContext{UserID: "user@test.com", Scope: testScope(tenantID)}, "tools/call", params)
+
+	time.Sleep(100 * time.Millisecond)
+
+	if len(authEmitter.emitted) != 1 {
+		t.Fatalf("expected 1 auth event emitted despite cancelled context, got %d", len(authEmitter.emitted))
+	}
+
+	eval := authEmitter.emitted[0]
+	if eval.Source != "mcp_gateway" {
+		t.Errorf("expected source 'mcp_gateway', got %q", eval.Source)
+	}
+	if !eval.Result.Allowed {
+		t.Errorf("expected allowed=true, got false")
+	}
+	if eval.ServerWorkload.Name != "Test Server" {
+		t.Errorf("expected server name 'Test Server', got %q", eval.ServerWorkload.Name)
 	}
 }

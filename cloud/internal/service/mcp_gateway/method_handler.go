@@ -13,7 +13,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/service/events"
@@ -79,39 +81,27 @@ type MCPServerClient interface {
 	ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, error)
 }
 
-// RequestContext carries everything resolved about a single Gateway request:
-// who is calling (UserID, Claims, from the left-side token) and which tenant
-// they are calling as (Scope, from the request hostname). It is already threaded
-// through every method handler, so the tenant travels with it rather than being
-// held on MethodHandler.
 type RequestContext struct {
 	UserID string
 	Claims map[string]any
 	Scope  TenantScope
 }
 
-// MethodHandler holds no tenant state; each request supplies its own via
-// RequestContext.Scope.
-//
-// Downstream servers are not held either. Which servers a request may reach is
-// answered per request by that tenant's Access Policies, and a client is built
-// from the policy's ServerInfo. Previously a name-keyed client map was built once
-// at startup from one tenant's Server Workloads, which meant new servers needed a
-// restart to appear and a server name shared across tenants resolved to the
-// wrong endpoint.
 type MethodHandler struct {
 	rightAuth   *RightSideAuth
 	clients     MCPClientFactory
 	emitter     *GatewayEventEmitter
 	authEmitter AuthEventEmitterInterface
+	logger      *slog.Logger
 }
 
-func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter, authEmitter AuthEventEmitterInterface) *MethodHandler {
+func NewMethodHandler(rightAuth *RightSideAuth, clients MCPClientFactory, emitter *GatewayEventEmitter, authEmitter AuthEventEmitterInterface, logger *slog.Logger) *MethodHandler {
 	return &MethodHandler{
 		rightAuth:   rightAuth,
 		clients:     clients,
 		emitter:     emitter,
 		authEmitter: authEmitter,
+		logger:      logger,
 	}
 }
 
@@ -190,9 +180,6 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 		return nil, err
 	}
 
-	// Authorisation first, endpoint second. The credential lookup is what proves
-	// this tenant has a policy for that server name; the endpoint then comes from
-	// that policy, so an unauthorised name can never yield a client.
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
 		h.emitRightSideAuthEvent(ctx, rCtx, serverName, toolName, false, err.Error())
@@ -314,6 +301,12 @@ func (h *MethodHandler) emitRightSideAuthEvent(ctx context.Context, rCtx *Reques
 	}
 
 	go func() {
-		_ = h.authEmitter.Emit(ctx, evalCtx)
+		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := h.authEmitter.Emit(asyncCtx, evalCtx); err != nil {
+			if h.logger != nil {
+				h.logger.Error("failed to emit MCP access log", "error", err, "server", serverName, "user", rCtx.UserID, "tool", toolName)
+			}
+		}
 	}()
 }
