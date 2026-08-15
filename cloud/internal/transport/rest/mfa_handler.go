@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
@@ -26,14 +27,14 @@ type userByEmailResolver interface {
 type MFAHandler struct {
 	mfaSvc *service.MFAService
 	users  userByEmailResolver
-	audit  *AuditEmitter
+	audit  *events.EventBus
 }
 
 func NewMFAHandler(mfaSvc *service.MFAService, users userByEmailResolver) *MFAHandler {
 	return &MFAHandler{mfaSvc: mfaSvc, users: users}
 }
 
-func (h *MFAHandler) SetAudit(a *AuditEmitter) { h.audit = a }
+func (h *MFAHandler) SetAudit(a *events.EventBus) { h.audit = a }
 
 func (h *MFAHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/profile/mfa/status", h.GetStatus)
@@ -108,9 +109,7 @@ func (h *MFAHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.audit != nil {
-		h.audit.EmitAuditLog(r.Context(), tenantID, email, "Authentication", "MFA Enabled", "user", user.ID, email, clientIP(r), userAgent(r))
-	}
+	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Enabled", "user", user.ID, email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled successfully."})
 }
 
@@ -148,8 +147,6 @@ func (h *MFAHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.audit != nil {
-		h.audit.EmitAuditLog(r.Context(), tenantID, email, "Authentication", "MFA Disabled", "user", user.ID, email, clientIP(r), userAgent(r))
-	}
+	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Disabled", "user", user.ID, email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]string{"message": "MFA has been reset."})
 }

@@ -53,15 +53,11 @@ func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) 
 	}
 	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, rs.ID)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toResourceSetResponse(&rs))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toResourceSetResponse(saved))
 }
 
@@ -114,15 +110,11 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 	}
 	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toResourceSetResponse(&rs))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toResourceSetResponse(saved))
 }
 
@@ -146,9 +138,7 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

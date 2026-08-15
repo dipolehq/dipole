@@ -131,9 +131,7 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 		_ = h.tenants.Update(r.Context(), tenant)
 	}
 
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", apiToken.ID, name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", apiToken.ID, name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]any{
 		"token":         token,
 		"id":            apiToken.ID.String(),
@@ -188,9 +186,7 @@ func (h *APIHandlers) DeleteAccessToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "api_token", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -241,8 +237,6 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "password", uuid.Nil, "password-changed", clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Authentication", "password", uuid.Nil, "password-changed", clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]string{"message": "Password updated successfully."})
 }

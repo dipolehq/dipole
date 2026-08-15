@@ -171,8 +171,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	wellKnownHandler := rest.NewWellKnownHandler(issuer, tenantHostResolver, logger)
 
-	mcpAuditLogger := mcpserver.NewAuditLogger(repos.Events)
-	mcpToolService := mcpserver.NewToolService(repos.Events, mcpAuditLogger)
+	mcpToolService := mcpserver.NewToolService(repos.Events, eventBus)
 	mcpResourceService := mcpserver.NewResourceService()
 	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
@@ -297,31 +296,30 @@ func buildHTTPServer(
 	apiHandlers.SetPlanLimiter(planLimiter)
 	apiHandlers.SetHealthPinger(repos)
 
-	auditEmitter := events.NewAuditLogEmitter(repos.Events)
-	apiHandlers.SetAudit(auditEmitter)
+	apiHandlers.SetAudit(eventBus)
 
 	cwHandler := rest.NewClientWorkloadHandler(clientWorkloadSvc)
-	cwHandler.SetAudit(auditEmitter)
+	cwHandler.SetAudit(eventBus)
 	cwHandler.RegisterRoutes(mux)
 
 	swHandler := rest.NewServerWorkloadHandler(serverWorkloadSvc)
-	swHandler.SetAudit(auditEmitter)
+	swHandler.SetAudit(eventBus)
 	swHandler.RegisterRoutes(mux)
 
 	tpHandler := rest.NewTrustProviderHandler(trustProviderSvc)
-	tpHandler.SetAudit(auditEmitter)
+	tpHandler.SetAudit(eventBus)
 	tpHandler.RegisterRoutes(mux)
 
 	acHandler := rest.NewAccessConditionHandler(accessConditionSvc)
-	acHandler.SetAudit(auditEmitter)
+	acHandler.SetAudit(eventBus)
 	acHandler.RegisterRoutes(mux)
 
 	cpHandler := rest.NewCredentialProviderHandler(credentialProviderSvc)
-	cpHandler.SetAudit(auditEmitter)
+	cpHandler.SetAudit(eventBus)
 	cpHandler.RegisterRoutes(mux)
 
 	apHandler := rest.NewAccessPolicyHandler(accessPolicySvc)
-	apHandler.SetAudit(auditEmitter)
+	apHandler.SetAudit(eventBus)
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
@@ -334,7 +332,7 @@ func buildHTTPServer(
 
 	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
-	mfaHandler.SetAudit(auditEmitter)
+	mfaHandler.SetAudit(eventBus)
 	mfaHandler.RegisterRoutes(mux)
 
 	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
@@ -348,7 +346,7 @@ func buildHTTPServer(
 	feedbackHandler.RegisterRoutes(mux)
 	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
-	authHandler.SetAudit(auditEmitter)
+	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
 
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {

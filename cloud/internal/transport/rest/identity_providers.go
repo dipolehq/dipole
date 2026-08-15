@@ -49,15 +49,11 @@ func (h *APIHandlers) CreateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	}
 	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, idp.ID)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toIdpResponse(&idp))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toIdpResponse(saved))
 }
 
@@ -111,15 +107,11 @@ func (h *APIHandlers) UpdateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	}
 	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toIdpResponse(&idp))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toIdpResponse(saved))
 }
 
@@ -143,9 +135,7 @@ func (h *APIHandlers) DeleteIdentityProvider(w http.ResponseWriter, r *http.Requ
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -50,15 +50,11 @@ func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.users.GetByID(r.Context(), tenantID, u.ID)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
-		}
+		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toUserResponse(&u))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toUserResponse(saved))
 }
 
@@ -111,15 +107,11 @@ func (h *APIHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.users.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
-		}
+		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toUserResponse(&u))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", saved.ID, saved.Email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toUserResponse(saved))
 }
 
@@ -143,9 +135,7 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

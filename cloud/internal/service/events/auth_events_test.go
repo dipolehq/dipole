@@ -172,37 +172,6 @@ func TestWorkloadEventIngester_RedactsSensitiveHeaders(t *testing.T) {
 	}
 }
 
-func TestAuditLogEmitter_LogsCreated(t *testing.T) {
-	repo := &mockEventRepo{}
-	emitter := NewAuditLogEmitter(repo)
-
-	tenantID := uuid.New()
-	targetID := uuid.New()
-
-	emitter.Created(context.Background(), tenantID, "admin@corp.com", "Workloads", "client_workload", targetID, "MyApp", "1.2.3.4", "Mozilla/5.0 Chrome/120")
-
-	if len(repo.auditLogs) != 1 {
-		t.Fatal("expected 1 audit log")
-	}
-
-	log := repo.auditLogs[0]
-	if log.Activity != "Created" {
-		t.Errorf("expected activity=Created, got %s", log.Activity)
-	}
-	if log.Category != "Workloads" {
-		t.Errorf("expected category=Workloads, got %s", log.Category)
-	}
-	if log.ActorEmail != "admin@corp.com" {
-		t.Errorf("expected actor=admin@corp.com, got %s", log.ActorEmail)
-	}
-	if log.Result != "Success" {
-		t.Errorf("expected result=Success, got %s", log.Result)
-	}
-	if log.Browser != "Chrome" {
-		t.Errorf("expected browser=Chrome, got %s", log.Browser)
-	}
-}
-
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

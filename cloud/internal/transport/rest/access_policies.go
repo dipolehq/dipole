@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
@@ -24,14 +25,14 @@ type accessPolicyService interface {
 
 type AccessPolicyHandler struct {
 	svc   accessPolicyService
-	audit *AuditEmitter
+	audit *events.EventBus
 }
 
 func NewAccessPolicyHandler(svc accessPolicyService) *AccessPolicyHandler {
 	return &AccessPolicyHandler{svc: svc}
 }
 
-func (h *AccessPolicyHandler) SetAudit(a *AuditEmitter) { h.audit = a }
+func (h *AccessPolicyHandler) SetAudit(a *events.EventBus) { h.audit = a }
 
 func (h *AccessPolicyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/access-policies", h.List)
@@ -204,9 +205,7 @@ func (h *AccessPolicyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
 	// Read-after-write: return the authoritative state from the database.
 	saved, err := h.svc.Get(r.Context(), tenantID, p.ID)
 	if err != nil {
@@ -249,9 +248,7 @@ func (h *AccessPolicyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
 	// Read-after-write: return the authoritative state from the database.
 	saved, err := h.svc.Get(r.Context(), tenantID, id)
 	if err != nil {
@@ -272,8 +269,6 @@ func (h *AccessPolicyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
