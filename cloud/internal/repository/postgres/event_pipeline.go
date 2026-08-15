@@ -284,6 +284,39 @@ func (r *EventPipelineRepo) QueryAuditEvents(ctx context.Context, tenantID uuid.
 }
 
 func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
+	switch event.EventType {
+	case "access.request":
+		return buildRequestPayload(event)
+	case "access.authorization":
+		return buildAuthorizationPayload(event)
+	case "access.credential":
+		return buildCredentialPayload(event)
+	case "access.discovery":
+		return buildDiscoveryPayload(event)
+	default:
+		return buildAuthorizationPayload(event)
+	}
+}
+
+func buildRequestPayload(event *events.SecurityEvent) json.RawMessage {
+	payload := map[string]any{
+		"clientRequest": map[string]any{
+			"version": "1.0.0",
+			"network": map[string]any{
+				"sourceIP":          event.SourceIP,
+				"sourcePort":        0,
+				"transportProtocol": "TCP",
+				"proxyPort":         8080,
+				"targetHost":        event.ServerHost,
+				"targetPort":        event.ServerPort,
+			},
+		},
+	}
+	data, _ := json.Marshal(payload)
+	return data
+}
+
+func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 	outcome := map[string]any{"result": "Error"}
 	if event.Allowed {
 		outcome["result"] = "Authorized"
@@ -295,11 +328,17 @@ func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	cwBlock := map[string]any{"result": "NotFound"}
 	if event.ClientWorkload != "" {
 		cwBlock = map[string]any{"name": event.ClientWorkload, "result": "Identified"}
+		if event.ClientWorkloadID != nil {
+			cwBlock["id"] = event.ClientWorkloadID.String()
+		}
 	}
 
 	swBlock := map[string]any{"result": "NotFound"}
 	if event.ServerWorkload != "" {
 		swBlock = map[string]any{"name": event.ServerWorkload, "result": "Identified"}
+		if event.ServerWorkloadID != nil {
+			swBlock["id"] = event.ServerWorkloadID.String()
+		}
 	}
 
 	apBlock := map[string]any{"result": "NotFound"}
@@ -311,7 +350,26 @@ func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	tpBlocks := []map[string]any{}
-	if event.TrustProvider != "" {
+	if len(event.TrustResults) > 0 {
+		for _, tr := range event.TrustResults {
+			tp := map[string]any{
+				"id":   tr.ProviderID.String(),
+				"name": tr.ProviderName,
+			}
+			if tr.Attested {
+				tp["result"] = "Attested"
+			} else {
+				tp["result"] = "Unauthorized"
+				tp["reason"] = tr.Reason
+				if tr.Attribute != "" {
+					tp["attribute"] = tr.Attribute
+					tp["expectedValue"] = tr.ExpectedValue
+					tp["actualValue"] = tr.ActualValue
+				}
+			}
+			tpBlocks = append(tpBlocks, tp)
+		}
+	} else if event.TrustProvider != "" {
 		tp := map[string]any{"name": event.TrustProvider}
 		if event.TrustAttested {
 			tp["result"] = "Attested"
@@ -325,10 +383,16 @@ func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	if event.CredentialName != "" {
 		cpBlock["name"] = event.CredentialName
 		cpBlock["type"] = event.CredentialType
+		if event.CredentialProviderID != nil {
+			cpBlock["id"] = event.CredentialProviderID.String()
+		}
 		if event.Allowed {
 			cpBlock["result"] = "Retrieved"
+			if event.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = event.CredentialMaxAge
+			}
 		} else {
-			cpBlock["result"] = "Failed"
+			cpBlock["result"] = "Identified"
 		}
 	}
 
@@ -338,6 +402,7 @@ func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 		"serverWorkload":     swBlock,
 		"accessPolicy":       apBlock,
 		"trustProviders":     tpBlocks,
+		"accessConditions":   []map[string]any{},
 		"credentialProvider": cpBlock,
 	}
 
@@ -348,6 +413,65 @@ func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 		payload["userId"] = event.UserID
 	}
 
+	data, _ := json.Marshal(payload)
+	return data
+}
+
+func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
+	outcome := map[string]any{"result": "Unauthorized"}
+	if event.Allowed {
+		outcome["result"] = "Authorized"
+	}
+
+	cpBlock := map[string]any{}
+	if event.CredentialName != "" {
+		cpBlock["type"] = event.CredentialType
+		cpBlock["name"] = event.CredentialName
+		if event.CredentialProviderID != nil {
+			cpBlock["id"] = event.CredentialProviderID.String()
+		}
+		if event.Allowed {
+			cpBlock["result"] = "Retrieved"
+			if event.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = event.CredentialMaxAge
+			}
+		} else {
+			cpBlock["result"] = "Failed"
+			if event.DenyReason != "" {
+				cpBlock["reason"] = event.DenyReason
+			}
+		}
+	}
+
+	payload := map[string]any{
+		"outcome":            outcome,
+		"credentialProvider": cpBlock,
+	}
+	data, _ := json.Marshal(payload)
+	return data
+}
+
+func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
+	clientWorkloads := []map[string]any{}
+	for _, cw := range event.CandidateClientWorkloads {
+		clientWorkloads = append(clientWorkloads, map[string]any{
+			"id":   cw.ID.String(),
+			"name": cw.Name,
+		})
+	}
+
+	serverWorkloads := []map[string]any{}
+	for _, sw := range event.CandidateServerWorkloads {
+		serverWorkloads = append(serverWorkloads, map[string]any{
+			"id":   sw.ID.String(),
+			"name": sw.Name,
+		})
+	}
+
+	payload := map[string]any{
+		"clientWorkloads": clientWorkloads,
+		"serverWorkloads": serverWorkloads,
+	}
 	data, _ := json.Marshal(payload)
 	return data
 }

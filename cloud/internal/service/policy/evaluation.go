@@ -201,13 +201,17 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 	}
 
 	clientWL := ""
+	var clientWLID *uuid.UUID
 	if ec.clientWorkload != nil {
 		clientWL = ec.clientWorkload.Name
+		clientWLID = &ec.clientWorkload.ID
 	}
 
 	serverWL := ""
+	var serverWLID *uuid.UUID
 	if ec.serverWorkload != nil {
 		serverWL = ec.serverWorkload.Name
+		serverWLID = &ec.serverWorkload.ID
 	}
 
 	policyName := ""
@@ -217,40 +221,67 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 		policyID = &ec.policy.ID
 	}
 
-	trustProvider := ""
-	trustAttested := false
-	if len(ec.trustProviders) > 0 {
-		trustProvider = ec.trustProviders[0].Name
-		if ec.result != nil && len(ec.result.TrustResults) > 0 {
-			trustAttested = ec.result.TrustResults[0].Attested
+	var trustResults []events.TrustResult
+	if ec.result != nil {
+		for _, tr := range ec.result.TrustResults {
+			trustResults = append(trustResults, events.TrustResult{
+				ProviderID:    tr.ProviderID,
+				ProviderName:  tr.ProviderName,
+				Attested:      tr.Attested,
+				Reason:        tr.Reason,
+				Attribute:     tr.Attribute,
+				ExpectedValue: tr.ExpectedValue,
+				ActualValue:   tr.ActualValue,
+			})
 		}
 	}
 
 	credType := ""
 	credName := ""
+	var credProviderID *uuid.UUID
+	credMaxAge := 0
 	if ec.credentialProvider != nil {
 		credType = ec.credentialProvider.Type
 		credName = ec.credentialProvider.Name
+		credProviderID = &ec.credentialProvider.ID
+		if ec.result.Allowed {
+			credMaxAge = 60
+		}
+	}
+
+	candidateCW := make([]events.WorkloadRef, 0, len(ec.candidateClientWorkloads))
+	for _, cw := range ec.candidateClientWorkloads {
+		candidateCW = append(candidateCW, events.WorkloadRef{ID: cw.ID, Name: cw.Name})
+	}
+
+	candidateSW := make([]events.WorkloadRef, 0, len(ec.candidateServerWorkloads))
+	for _, sw := range ec.candidateServerWorkloads {
+		candidateSW = append(candidateSW, events.WorkloadRef{ID: sw.ID, Name: sw.Name})
 	}
 
 	base := events.SecurityEvent{
-		TenantID:       ec.tenantID,
-		ContextID:      contextID,
-		SourceIP:       ec.sourceIP,
-		Source:         "edge_proxy",
-		Severity:       "Info",
-		Allowed:        ec.result.Allowed,
-		DenyReason:     ec.result.DenyReason,
-		ClientWorkload: clientWL,
-		ServerWorkload: serverWL,
-		ServerHost:     ec.targetHost,
-		ServerPort:     ec.targetPort,
-		PolicyID:       policyID,
-		PolicyName:     policyName,
-		TrustProvider:  trustProvider,
-		TrustAttested:  trustAttested,
-		CredentialType: credType,
-		CredentialName: credName,
+		TenantID:                 ec.tenantID,
+		ContextID:                contextID,
+		SourceIP:                 ec.sourceIP,
+		Source:                   "edge_proxy",
+		Severity:                 "Info",
+		Allowed:                  ec.result.Allowed,
+		DenyReason:               ec.result.DenyReason,
+		ClientWorkload:           clientWL,
+		ClientWorkloadID:         clientWLID,
+		ServerWorkload:           serverWL,
+		ServerWorkloadID:         serverWLID,
+		ServerHost:               ec.targetHost,
+		ServerPort:               ec.targetPort,
+		PolicyID:                 policyID,
+		PolicyName:               policyName,
+		TrustResults:             trustResults,
+		CredentialType:           credType,
+		CredentialName:           credName,
+		CredentialProviderID:     credProviderID,
+		CredentialMaxAge:         credMaxAge,
+		CandidateClientWorkloads: candidateCW,
+		CandidateServerWorkloads: candidateSW,
 	}
 
 	request := base

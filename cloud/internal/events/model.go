@@ -17,28 +17,50 @@ import (
 )
 
 type SecurityEvent struct {
-	TenantID       uuid.UUID
-	ContextID      uuid.UUID
-	Timestamp      time.Time
-	SourceIP       string
-	Source         string
-	EventType      string
-	Severity       string
-	Allowed        bool
-	DenyReason     string
-	PolicyID       *uuid.UUID
-	PolicyName     string
-	UserID         string
-	ClientWorkload string
-	ServerWorkload string
-	ServerHost     string
-	ServerPort     int
-	TrustProvider  string
-	TrustAttested  bool
-	CredentialType string
-	CredentialName string
-	ToolName       string
-	ResourceSetID  *uuid.UUID
+	TenantID                 uuid.UUID
+	ContextID                uuid.UUID
+	Timestamp                time.Time
+	SourceIP                 string
+	Source                   string
+	EventType                string
+	Severity                 string
+	Allowed                  bool
+	DenyReason               string
+	PolicyID                 *uuid.UUID
+	PolicyName               string
+	UserID                   string
+	ClientWorkload           string
+	ClientWorkloadID         *uuid.UUID
+	ServerWorkload           string
+	ServerWorkloadID         *uuid.UUID
+	ServerHost               string
+	ServerPort               int
+	TrustProvider            string
+	TrustAttested            bool
+	TrustResults             []TrustResult
+	CredentialType           string
+	CredentialName           string
+	CredentialProviderID     *uuid.UUID
+	CredentialMaxAge         int
+	ToolName                 string
+	ResourceSetID            *uuid.UUID
+	CandidateClientWorkloads []WorkloadRef
+	CandidateServerWorkloads []WorkloadRef
+}
+
+type TrustResult struct {
+	ProviderID    uuid.UUID
+	ProviderName  string
+	Attested      bool
+	Reason        string
+	Attribute     string
+	ExpectedValue string
+	ActualValue   string
+}
+
+type WorkloadRef struct {
+	ID   uuid.UUID
+	Name string
 }
 
 type WorkloadEvent struct {
