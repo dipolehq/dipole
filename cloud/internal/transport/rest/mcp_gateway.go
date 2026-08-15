@@ -299,6 +299,8 @@ func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.U
 		return
 	}
 
+	contextID := uuid.New()
+
 	severity := "Info"
 	if !allowed {
 		severity = "Error"
@@ -309,19 +311,20 @@ func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.U
 		clientWL = clientWorkloadName
 	}
 
-	trustProvider := ""
-	trustAttested := false
+	var trustResults []events.TrustResult
 	if userID != "" {
-		trustProvider = "User Identity (SSO)"
-		trustAttested = allowed
+		trustResults = []events.TrustResult{{
+			ProviderName: "User Identity (SSO)",
+			Attested:     allowed,
+		}}
 	}
 
-	s.events.EmitSecurity(ctx, events.SecurityEvent{
+	base := events.SecurityEvent{
 		TenantID:       tenantID,
+		ContextID:      contextID,
 		SourceIP:       clientIP,
 		Source:         "mcp_gateway",
-		EventType:      "access.authorization",
-		Severity:       severity,
+		Severity:       "Info",
 		Allowed:        allowed,
 		DenyReason:     denyReason,
 		UserID:         userID,
@@ -329,9 +332,31 @@ func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.U
 		ServerWorkload: "MCP Identity Gateway",
 		ServerHost:     host,
 		ServerPort:     443,
-		TrustProvider:  trustProvider,
-		TrustAttested:  trustAttested,
-	})
+		TrustResults:   trustResults,
+	}
+
+	request := base
+	request.EventType = "access.request"
+	if !allowed {
+		request.Severity = "Error"
+	}
+	s.events.EmitSecurity(ctx, request)
+
+	auth := base
+	auth.EventType = "access.authorization"
+	auth.Severity = severity
+	s.events.EmitSecurity(ctx, auth)
+
+	discovery := base
+	discovery.EventType = "access.discovery"
+	if !allowed && clientWorkloadName == "" {
+		discovery.Severity = "Error"
+	}
+	if clientWorkloadName != "" {
+		discovery.CandidateClientWorkloads = []events.WorkloadRef{{Name: clientWorkloadName}}
+	}
+	discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: "MCP Identity Gateway"}}
+	s.events.EmitSecurity(ctx, discovery)
 }
 
 func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redirectURI string, resourceServer string, severity string, policyDetail string, clientWorkloadName string, userID string) {

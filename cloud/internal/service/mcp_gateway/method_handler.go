@@ -175,7 +175,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
-		h.emitRightSideAuth(ctx, rCtx, serverName, toolName, false, err.Error())
+		h.emitRightSideAuth(ctx, rCtx, serverName, nil, toolName, false, err.Error())
 		return nil, err
 	}
 
@@ -188,7 +188,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 	}
 
 	h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, 200)
-	h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, toolName, true, "")
+	h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, toolName, true, "")
 
 	return result, nil
 }
@@ -253,10 +253,12 @@ func parsePrefixedToolName(prefixed string) (serverName, toolName string, err er
 	return serverName, toolName, nil
 }
 
-func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, toolName string, allowed bool, denyReason string) {
+func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, serverID *uuid.UUID, toolName string, allowed bool, denyReason string) {
 	if h.events == nil {
 		return
 	}
+
+	contextID := uuid.New()
 
 	severity := "Info"
 	if !allowed {
@@ -265,25 +267,56 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 
 	policyName := "Gateway → " + serverName
 
+	base := events.SecurityEvent{
+		TenantID:         rCtx.Scope.TenantID,
+		ContextID:        contextID,
+		SourceIP:         rCtx.UserID,
+		Source:           "mcp_gateway",
+		Severity:         "Info",
+		Allowed:          allowed,
+		DenyReason:       denyReason,
+		UserID:           rCtx.UserID,
+		ClientWorkload:   "MCP Identity Gateway",
+		ServerWorkload:   serverName,
+		ServerWorkloadID: serverID,
+		ServerHost:       serverName,
+		ServerPort:       443,
+		PolicyName:       policyName,
+		ToolName:         toolName,
+	}
+
 	go func() {
 		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if err := h.events.EmitSecurity(asyncCtx, events.SecurityEvent{
-			TenantID:       rCtx.Scope.TenantID,
-			SourceIP:       rCtx.UserID,
-			Source:         "mcp_gateway",
-			EventType:      "access.authorization",
-			Severity:       severity,
-			Allowed:        allowed,
-			DenyReason:     denyReason,
-			UserID:         rCtx.UserID,
-			ClientWorkload: "MCP Identity Gateway",
-			ServerWorkload: serverName,
-			ServerHost:     serverName,
-			ServerPort:     443,
-			PolicyName:     policyName,
-			ToolName:       toolName,
-		}); err != nil {
+
+		request := base
+		request.EventType = "access.request"
+		if !allowed {
+			request.Severity = "Error"
+		}
+		h.events.EmitSecurity(asyncCtx, request)
+
+		auth := base
+		auth.EventType = "access.authorization"
+		auth.Severity = severity
+		h.events.EmitSecurity(asyncCtx, auth)
+
+		if allowed {
+			cred := base
+			cred.EventType = "access.credential"
+			h.events.EmitSecurity(asyncCtx, cred)
+		}
+
+		discovery := base
+		discovery.EventType = "access.discovery"
+		if !allowed {
+			discovery.Severity = "Error"
+		}
+		discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: serverName}}
+		if serverID != nil {
+			discovery.CandidateServerWorkloads[0].ID = *serverID
+		}
+		if err := h.events.EmitSecurity(asyncCtx, discovery); err != nil {
 			if h.logger != nil {
 				h.logger.Error("failed to emit MCP access log", "error", err, "server", serverName, "user", rCtx.UserID, "tool", toolName)
 			}

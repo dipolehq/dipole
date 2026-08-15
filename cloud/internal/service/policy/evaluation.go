@@ -286,6 +286,9 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 
 	request := base
 	request.EventType = "access.request"
+	if !ec.result.Allowed {
+		request.Severity = "Error"
+	}
 	s.events.EmitSecurity(ctx, request)
 
 	auth := base

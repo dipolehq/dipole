@@ -353,8 +353,10 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 	if len(event.TrustResults) > 0 {
 		for _, tr := range event.TrustResults {
 			tp := map[string]any{
-				"id":   tr.ProviderID.String(),
 				"name": tr.ProviderName,
+			}
+			if tr.ProviderID != (uuid.UUID{}) {
+				tp["id"] = tr.ProviderID.String()
 			}
 			if tr.Attested {
 				tp["result"] = "Attested"
