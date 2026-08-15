@@ -26,7 +26,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	mcpsvc "github.com/dipolehq/dipole/cloud/internal/service/mcp"
 	mcpgw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
@@ -117,8 +116,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	broker := credentials.NewCredentialBroker(encKey, issuer, repos.Tenants, platformHosts)
 	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
 	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
-	authEmitter := events.NewAuthEventEmitter(repos.Events)
-	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, authEmitter, logger)
+	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
