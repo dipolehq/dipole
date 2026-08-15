@@ -18,8 +18,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
 )
 
 type TrustValidator interface {
@@ -38,26 +38,22 @@ type CredentialBroker interface {
 	Retrieve(ctx context.Context, tenantID uuid.UUID, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
-type EventEmitter interface {
-	Emit(ctx context.Context, eval *events.EvaluationContext) error
-}
-
 type PolicyEvaluationService struct {
 	repo       repository.AccessPolicyRepository
 	trust      TrustValidator
 	conditions ConditionEvaluator
 	broker     CredentialBroker
-	emitter    EventEmitter
+	events     *events.EventBus
 	logger     *slog.Logger
 }
 
-func NewPolicyEvaluationService(repo repository.AccessPolicyRepository, trust TrustValidator, conditions ConditionEvaluator, broker CredentialBroker, emitter EventEmitter, logger *slog.Logger) *PolicyEvaluationService {
+func NewPolicyEvaluationService(repo repository.AccessPolicyRepository, trust TrustValidator, conditions ConditionEvaluator, broker CredentialBroker, eventBus *events.EventBus, logger *slog.Logger) *PolicyEvaluationService {
 	return &PolicyEvaluationService{
 		repo:       repo,
 		trust:      trust,
 		conditions: conditions,
 		broker:     broker,
-		emitter:    emitter,
+		events:     eventBus,
 		logger:     logger,
 	}
 }
@@ -190,34 +186,131 @@ type eventContext struct {
 }
 
 func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventContext) {
-	if s.emitter == nil || ec.result == nil {
+	if s.events == nil || ec.result == nil {
 		return
 	}
 
-	evalCtx := &events.EvaluationContext{
-		TenantID:                 ec.tenantID,
-		SourceIP:                 ec.sourceIP,
-		TargetHost:               ec.targetHost,
-		TargetPort:               ec.targetPort,
-		Result:                   ec.result,
-		ClientWorkload:           ec.clientWorkload,
-		ServerWorkload:           ec.serverWorkload,
-		CandidateClientWorkloads: ec.candidateClientWorkloads,
-		CandidateServerWorkloads: ec.candidateServerWorkloads,
-		Source:                   "edge_proxy",
+	contextID := uuid.New()
+
+	severity := "Info"
+	if !ec.result.Allowed {
+		severity = "Warn"
+		if ec.result.DenyReason == "InternalError" {
+			severity = "Error"
+		}
 	}
 
+	clientWL := ""
+	var clientWLID *uuid.UUID
+	if ec.clientWorkload != nil {
+		clientWL = ec.clientWorkload.Name
+		clientWLID = &ec.clientWorkload.ID
+	}
+
+	serverWL := ""
+	var serverWLID *uuid.UUID
+	if ec.serverWorkload != nil {
+		serverWL = ec.serverWorkload.Name
+		serverWLID = &ec.serverWorkload.ID
+	}
+
+	policyName := ""
+	var policyID *uuid.UUID
 	if ec.policy != nil {
-		evalCtx.Policy = ec.policy
-	}
-	if ec.credentialProvider != nil {
-		evalCtx.CredentialProvider = ec.credentialProvider
-	}
-	if ec.trustProviders != nil {
-		evalCtx.TrustProviders = ec.trustProviders
+		policyName = ec.policy.Name
+		policyID = &ec.policy.ID
 	}
 
-	if err := s.emitter.Emit(ctx, evalCtx); err != nil {
+	var trustResults []events.TrustResult
+	if ec.result != nil {
+		for _, tr := range ec.result.TrustResults {
+			trustResults = append(trustResults, events.TrustResult{
+				ProviderID:    tr.ProviderID,
+				ProviderName:  tr.ProviderName,
+				Attested:      tr.Attested,
+				Reason:        tr.Reason,
+				Attribute:     tr.Attribute,
+				ExpectedValue: tr.ExpectedValue,
+				ActualValue:   tr.ActualValue,
+			})
+		}
+	}
+
+	credType := ""
+	credName := ""
+	var credProviderID *uuid.UUID
+	credMaxAge := 0
+	if ec.credentialProvider != nil {
+		credType = ec.credentialProvider.Type
+		credName = ec.credentialProvider.Name
+		credProviderID = &ec.credentialProvider.ID
+		if ec.result.Allowed {
+			credMaxAge = 60
+		}
+	}
+
+	candidateCW := make([]events.WorkloadRef, 0, len(ec.candidateClientWorkloads))
+	for _, cw := range ec.candidateClientWorkloads {
+		candidateCW = append(candidateCW, events.WorkloadRef{ID: cw.ID, Name: cw.Name})
+	}
+
+	candidateSW := make([]events.WorkloadRef, 0, len(ec.candidateServerWorkloads))
+	for _, sw := range ec.candidateServerWorkloads {
+		candidateSW = append(candidateSW, events.WorkloadRef{ID: sw.ID, Name: sw.Name})
+	}
+
+	base := events.SecurityEvent{
+		TenantID:                 ec.tenantID,
+		ContextID:                contextID,
+		SourceIP:                 ec.sourceIP,
+		Source:                   "edge_proxy",
+		Severity:                 "Info",
+		Allowed:                  ec.result.Allowed,
+		DenyReason:               ec.result.DenyReason,
+		ClientWorkload:           clientWL,
+		ClientWorkloadID:         clientWLID,
+		ServerWorkload:           serverWL,
+		ServerWorkloadID:         serverWLID,
+		ServerHost:               ec.targetHost,
+		ServerPort:               ec.targetPort,
+		PolicyID:                 policyID,
+		PolicyName:               policyName,
+		TrustResults:             trustResults,
+		CredentialType:           credType,
+		CredentialName:           credName,
+		CredentialProviderID:     credProviderID,
+		CredentialMaxAge:         credMaxAge,
+		CandidateClientWorkloads: candidateCW,
+		CandidateServerWorkloads: candidateSW,
+	}
+
+	request := base
+	request.EventType = "access.request"
+	if !ec.result.Allowed {
+		request.Severity = "Error"
+	}
+	s.events.EmitSecurity(ctx, request)
+
+	auth := base
+	auth.EventType = "access.authorization"
+	auth.Severity = severity
+	s.events.EmitSecurity(ctx, auth)
+
+	if ec.credentialProvider != nil {
+		cred := base
+		cred.EventType = "access.credential"
+		if !ec.result.Allowed {
+			cred.Severity = "Error"
+		}
+		s.events.EmitSecurity(ctx, cred)
+	}
+
+	discovery := base
+	discovery.EventType = "access.discovery"
+	if !ec.result.Allowed && ec.clientWorkload == nil {
+		discovery.Severity = "Error"
+	}
+	if err := s.events.EmitSecurity(ctx, discovery); err != nil {
 		s.logger.Error("failed to emit auth events", "tenant_id", ec.tenantID, "error", err)
 	}
 }

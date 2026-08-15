@@ -20,12 +20,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/config"
+	eventbus "github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	mcpsvc "github.com/dipolehq/dipole/cloud/internal/service/mcp"
 	mcpgw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
@@ -104,7 +104,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		return fmt.Errorf("dev bootstrap: %w", err)
 	}
 
-	tracingBus := mcpgw.NewTracingBus()
+	eventBus := eventbus.NewEventBus(postgres.NewEventPipelineRepo(pool), logger)
 
 	platformHosts := platform.NewHosts(cfg.PlatformDomain, cfg.Env)
 
@@ -116,8 +116,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	broker := credentials.NewCredentialBroker(encKey, issuer, repos.Tenants, platformHosts)
 	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
 	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
-	authEmitter := events.NewAuthEventEmitter(repos.Events)
-	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, authEmitter, logger)
+	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
 	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
@@ -130,7 +129,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	authenticator.SetAPITokenRepo(repos.APITokens)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
-	workloadIngester := events.NewWorkloadEventIngester(repos.Events)
 
 	resourceCounter := service.NewDBResourceCounter(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.AccessPolicies, repos.TrustProviders,
@@ -170,8 +168,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	wellKnownHandler := rest.NewWellKnownHandler(issuer, tenantHostResolver, logger)
 
-	mcpAuditLogger := mcpserver.NewAuditLogger(repos.Events)
-	mcpToolService := mcpserver.NewToolService(repos.Events, mcpAuditLogger)
+	mcpToolService := mcpserver.NewToolService(repos.Events, eventBus)
 	mcpResourceService := mcpserver.NewResourceService()
 	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
 
@@ -180,15 +177,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwTokenStore := repos.MCPUserCredentials
 	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
 	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
-	gwEventSink := mcpgw.NewDBEventSink(repos.Events, logger)
-	gwEventEmitter := mcpgw.NewGatewayEventEmitter(gwEventSink)
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
-	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwEventEmitter, authEmitter, logger)
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, eventBus, logger)
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
 
-	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tracingBus, tenantHostResolver, authEmitter)
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, eventBus, tenantHostResolver)
 
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
@@ -197,8 +192,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, tracingBus, caService)
-	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, workloadIngester, logger)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, eventBus, caService)
+	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
 	grpcHandler.SetProxyAuthenticator(repos.AgentProxies)
@@ -273,7 +268,7 @@ func buildHTTPServer(
 	mcpDipole *rest.DipoleMCPServer,
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
-	tracingBus *mcpgw.TracingBus,
+	eventBus *eventbus.EventBus,
 	caService *pki.TenantCAService,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -298,34 +293,33 @@ func buildHTTPServer(
 	apiHandlers.SetPlanLimiter(planLimiter)
 	apiHandlers.SetHealthPinger(repos)
 
-	auditEmitter := events.NewAuditLogEmitter(repos.Events)
-	apiHandlers.SetAudit(auditEmitter)
+	apiHandlers.SetAudit(eventBus)
 
 	cwHandler := rest.NewClientWorkloadHandler(clientWorkloadSvc)
-	cwHandler.SetAudit(auditEmitter)
+	cwHandler.SetAudit(eventBus)
 	cwHandler.RegisterRoutes(mux)
 
 	swHandler := rest.NewServerWorkloadHandler(serverWorkloadSvc)
-	swHandler.SetAudit(auditEmitter)
+	swHandler.SetAudit(eventBus)
 	swHandler.RegisterRoutes(mux)
 
 	tpHandler := rest.NewTrustProviderHandler(trustProviderSvc)
-	tpHandler.SetAudit(auditEmitter)
+	tpHandler.SetAudit(eventBus)
 	tpHandler.RegisterRoutes(mux)
 
 	acHandler := rest.NewAccessConditionHandler(accessConditionSvc)
-	acHandler.SetAudit(auditEmitter)
+	acHandler.SetAudit(eventBus)
 	acHandler.RegisterRoutes(mux)
 
 	cpHandler := rest.NewCredentialProviderHandler(credentialProviderSvc)
-	cpHandler.SetAudit(auditEmitter)
+	cpHandler.SetAudit(eventBus)
 	cpHandler.RegisterRoutes(mux)
 
 	apHandler := rest.NewAccessPolicyHandler(accessPolicySvc)
-	apHandler.SetAudit(auditEmitter)
+	apHandler.SetAudit(eventBus)
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
-	rest.NewMCPTracingHandler(tracingBus).RegisterRoutes(mux)
+	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
 	rest.NewDashboardHandler(service.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
@@ -335,7 +329,7 @@ func buildHTTPServer(
 
 	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
-	mfaHandler.SetAudit(auditEmitter)
+	mfaHandler.SetAudit(eventBus)
 	mfaHandler.RegisterRoutes(mux)
 
 	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
@@ -349,7 +343,7 @@ func buildHTTPServer(
 	feedbackHandler.RegisterRoutes(mux)
 	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
-	authHandler.SetAudit(auditEmitter)
+	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
 
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {

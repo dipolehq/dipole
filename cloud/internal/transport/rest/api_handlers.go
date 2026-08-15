@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
@@ -61,7 +62,7 @@ type APIHandlers struct {
 	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
 	planLimiter            *service.PlanLimiter
-	audit                  *AuditEmitter
+	audit                  *events.EventBus
 	healthPinger           HealthPinger
 }
 
@@ -101,7 +102,7 @@ func NewAPIHandlers(
 
 func (h *APIHandlers) SetPlanLimiter(l *service.PlanLimiter) { h.planLimiter = l }
 
-func (h *APIHandlers) SetAudit(a *AuditEmitter) { h.audit = a }
+func (h *APIHandlers) SetAudit(a *events.EventBus) { h.audit = a }
 
 func (h *APIHandlers) SetHealthPinger(p HealthPinger) { h.healthPinger = p }
 

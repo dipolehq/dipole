@@ -66,15 +66,11 @@ func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.logStreams.GetByID(r.Context(), tenantID, ls.ID)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toLogStreamResponse(&ls))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toLogStreamResponse(saved))
 }
 
@@ -127,15 +123,11 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, err := h.logStreams.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toLogStreamResponse(&ls))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toLogStreamResponse(saved))
 }
 
@@ -159,9 +151,7 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

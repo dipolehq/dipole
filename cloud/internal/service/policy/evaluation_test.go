@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 )
 
 type mockRepo struct {
@@ -57,15 +57,33 @@ func (m *mockBroker) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.Credenti
 	return m.cred, m.err
 }
 
-type mockEmitter struct {
-	called bool
-	ctx    *events.EvaluationContext
+type recordingEventRepo struct {
+	securityEvents []*events.SecurityEvent
 }
 
-func (m *mockEmitter) Emit(_ context.Context, eval *events.EvaluationContext) error {
-	m.called = true
-	m.ctx = eval
+func (r *recordingEventRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
+	r.securityEvents = append(r.securityEvents, event)
 	return nil
+}
+
+func (r *recordingEventRepo) InsertWorkloadEventBatch(_ context.Context, _ []events.WorkloadEvent) error {
+	return nil
+}
+
+func (r *recordingEventRepo) InsertAuditEvent(_ context.Context, _ *events.AuditEvent) error {
+	return nil
+}
+
+func (r *recordingEventRepo) QuerySecurityEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.SecurityEvent, int, error) {
+	return nil, 0, nil
+}
+
+func (r *recordingEventRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.WorkloadEvent, int, error) {
+	return nil, 0, nil
+}
+
+func (r *recordingEventRepo) QueryAuditEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.AuditEvent, int, error) {
+	return nil, 0, nil
 }
 
 func newTestService(policies []domain.AccessPolicyWithRelations, repoErr error, cred *domain.Credential, brokerErr error) *PolicyEvaluationService {
@@ -74,7 +92,7 @@ func newTestService(policies []domain.AccessPolicyWithRelations, repoErr error, 
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{cred: cred, err: brokerErr},
-		&mockEmitter{},
+		nil,
 		slog.Default(),
 	)
 }
@@ -284,7 +302,7 @@ func TestEvaluate_CredentialRetrievalFails_ReturnsDeny(t *testing.T) {
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{err: fmt.Errorf("decryption failed")},
-		&mockEmitter{},
+		nil,
 		slog.Default(),
 	)
 
@@ -304,7 +322,7 @@ func TestEvaluate_DBError_ReturnsError(t *testing.T) {
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{},
-		&mockEmitter{},
+		nil,
 		slog.Default(),
 	)
 
@@ -340,7 +358,8 @@ func TestEvaluate_ZeroTrustProviders_ReturnsDeny(t *testing.T) {
 }
 
 func TestEvaluate_EmitterCalledOnAllow(t *testing.T) {
-	emitter := &mockEmitter{}
+	repo := &recordingEventRepo{}
+	bus := events.NewEventBus(repo, nil)
 	policies := []domain.AccessPolicyWithRelations{{
 		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
 		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
@@ -354,7 +373,7 @@ func TestEvaluate_EmitterCalledOnAllow(t *testing.T) {
 		&mockTrust{attested: true},
 		&mockConditions{passed: true},
 		&mockBroker{cred: &domain.Credential{Value: "token"}},
-		emitter,
+		bus,
 		slog.Default(),
 	)
 
@@ -367,19 +386,24 @@ func TestEvaluate_EmitterCalledOnAllow(t *testing.T) {
 	if !result.Allowed {
 		t.Fatal("expected allow")
 	}
-	if !emitter.called {
-		t.Error("emitter was not called on allow decision")
+	if len(repo.securityEvents) < 3 {
+		t.Fatalf("expected at least 3 security events (request+authorization+discovery), got %d", len(repo.securityEvents))
 	}
-	if emitter.ctx == nil {
-		t.Fatal("emitter context is nil")
-	}
-	if !emitter.ctx.Result.Allowed {
-		t.Error("emitter received denied result, expected allowed")
+
+	contextID := repo.securityEvents[0].ContextID
+	for _, ev := range repo.securityEvents {
+		if ev.ContextID != contextID {
+			t.Error("all events should share the same contextID")
+		}
+		if ev.Source != "edge_proxy" {
+			t.Errorf("expected source 'edge_proxy', got %q", ev.Source)
+		}
 	}
 }
 
 func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
-	emitter := &mockEmitter{}
+	repo := &recordingEventRepo{}
+	bus := events.NewEventBus(repo, nil)
 	policies := []domain.AccessPolicyWithRelations{{
 		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
 		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
@@ -393,7 +417,7 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 		&mockTrust{attested: false},
 		&mockConditions{passed: true},
 		&mockBroker{},
-		emitter,
+		bus,
 		slog.Default(),
 	)
 
@@ -406,14 +430,17 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 	if result.Allowed {
 		t.Fatal("expected deny")
 	}
-	if !emitter.called {
-		t.Error("emitter was not called on deny decision")
+	if len(repo.securityEvents) < 3 {
+		t.Fatalf("expected at least 3 security events emitted on deny, got %d", len(repo.securityEvents))
 	}
-	if emitter.ctx == nil {
-		t.Fatal("emitter context is nil")
+	hasAuth := false
+	for _, ev := range repo.securityEvents {
+		if ev.EventType == "access.authorization" && !ev.Allowed {
+			hasAuth = true
+		}
 	}
-	if emitter.ctx.Result.Allowed {
-		t.Error("emitter received allowed result, expected denied")
+	if !hasAuth {
+		t.Error("expected an access.authorization event with Allowed=false")
 	}
 }
 

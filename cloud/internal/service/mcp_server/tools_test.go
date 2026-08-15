@@ -136,35 +136,6 @@ func TestMapEventType(t *testing.T) {
 	}
 }
 
-func TestAuditLogger_LogsToolCall(t *testing.T) {
-	repo := &mockEventRepo{}
-	logger := NewAuditLogger(repo)
-	tenantID := uuid.New()
-
-	logger.LogToolCall(t.Context(), tenantID, "get_auth_events", "user@corp.com")
-
-	if len(repo.auditLogs) != 1 {
-		t.Fatalf("expected 1 audit log, got %d", len(repo.auditLogs))
-	}
-
-	log := repo.auditLogs[0]
-	if log.Category != "Analysis" {
-		t.Errorf("expected category=Analysis, got %s", log.Category)
-	}
-	if log.Activity != "QueryAuthEvents" {
-		t.Errorf("expected activity=QueryAuthEvents, got %s", log.Activity)
-	}
-	if log.TargetType != "mcp_server_query" {
-		t.Errorf("expected target_type=mcp_server_query, got %s", log.TargetType)
-	}
-	if log.Severity != "Info" {
-		t.Errorf("expected severity=Info, got %s", log.Severity)
-	}
-	if log.ActorEmail != "user@corp.com" {
-		t.Errorf("expected actorEmail=user@corp.com, got %s", log.ActorEmail)
-	}
-}
-
 type mockEventRepo struct {
 	auditLogs      []*domain.AuditLog
 	authEvents     []domain.AuthEvent

@@ -44,9 +44,7 @@ func (h *APIHandlers) UpdateSignOnPolicy(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "SignOnPolicies", "sign_on_policy", uuid.Nil, "sign-on-policy", clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "SignOnPolicies", "sign_on_policy", uuid.Nil, "sign-on-policy", clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]any{
 		"requireSso": req.RequireSSO,
 		"requireMfa": req.RequireMFA,
@@ -98,9 +96,7 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "GlobalPolicyCompliance", "global_policy_compliance", uuid.Nil, "global-policy-compliance", clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "GlobalPolicyCompliance", "global_policy_compliance", uuid.Nil, "global-policy-compliance", clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]any{
 		"apTrustProvider":            req.APTrustProvider,
 		"apAccessCondition":          req.APAccessCondition,

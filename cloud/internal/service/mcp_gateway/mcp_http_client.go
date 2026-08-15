@@ -82,22 +82,22 @@ func mcpBaseURL(server ServerInfo) string {
 	return baseURL
 }
 
-func (c *HTTPMCPClient) ListTools(ctx context.Context, token string) ([]MCPTool, error) {
-	result, err := c.call(ctx, token, "tools/list", nil)
+func (c *HTTPMCPClient) ListTools(ctx context.Context, token string) ([]MCPTool, http.Header, error) {
+	result, respHeaders, err := c.call(ctx, token, "tools/list", nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var resp struct {
 		Tools []MCPTool `json:"tools"`
 	}
 	if err := remarshal(result, &resp); err != nil {
-		return nil, fmt.Errorf("parse tools/list response: %w", err)
+		return nil, nil, fmt.Errorf("parse tools/list response: %w", err)
 	}
-	return resp.Tools, nil
+	return resp.Tools, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) CallTool(ctx context.Context, token string, toolName string, args json.RawMessage) (any, error) {
+func (c *HTTPMCPClient) CallTool(ctx context.Context, token string, toolName string, args json.RawMessage) (any, http.Header, error) {
 	params := map[string]any{
 		"name": toolName,
 	}
@@ -107,70 +107,71 @@ func (c *HTTPMCPClient) CallTool(ctx context.Context, token string, toolName str
 	return c.call(ctx, token, "tools/call", params)
 }
 
-func (c *HTTPMCPClient) ListResources(ctx context.Context, token string) ([]MCPResource, error) {
-	result, err := c.call(ctx, token, "resources/list", nil)
+func (c *HTTPMCPClient) ListResources(ctx context.Context, token string) ([]MCPResource, http.Header, error) {
+	result, respHeaders, err := c.call(ctx, token, "resources/list", nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var resp struct {
 		Resources []MCPResource `json:"resources"`
 	}
 	if err := remarshal(result, &resp); err != nil {
-		return nil, fmt.Errorf("parse resources/list response: %w", err)
+		return nil, nil, fmt.Errorf("parse resources/list response: %w", err)
 	}
-	return resp.Resources, nil
+	return resp.Resources, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, error) {
+func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, http.Header, error) {
 	params := map[string]any{
 		"uri": uri,
 	}
-	result, err := c.call(ctx, token, "resources/read", params)
+	result, respHeaders, err := c.call(ctx, token, "resources/read", params)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var content MCPResourceContent
 	if err := remarshal(result, &content); err != nil {
-		return nil, fmt.Errorf("parse resources/read response: %w", err)
+		return nil, nil, fmt.Errorf("parse resources/read response: %w", err)
 	}
-	return &content, nil
+	return &content, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, params any) (any, error) {
+func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, params any) (any, http.Header, error) {
 	if method != "initialize" {
 		if err := c.ensureSession(ctx, token); err != nil {
-			return nil, fmt.Errorf("session initialization failed: %w", err)
+			return nil, nil, fmt.Errorf("session initialization failed: %w", err)
 		}
 	}
 
 	res, err := c.doRequest(ctx, token, method, params, c.currentSessionID())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c.recordSessionID(res.receivedSessionID)
 
 	if res.staleSession {
 		if err := c.reinitialize(ctx, token); err != nil {
-			return nil, fmt.Errorf("session expired and re-initialization failed: %w", err)
+			return nil, nil, fmt.Errorf("session expired and re-initialization failed: %w", err)
 		}
 		res, err = c.doRequest(ctx, token, method, params, c.currentSessionID())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		c.recordSessionID(res.receivedSessionID)
 		if res.staleSession {
-			return nil, fmt.Errorf("MCP server rejected session immediately after re-initialization")
+			return nil, nil, fmt.Errorf("MCP server rejected session immediately after re-initialization")
 		}
 	}
-	return res.result, nil
+	return res.result, res.responseHeaders, nil
 }
 
 type requestOutcome struct {
 	result            any
 	receivedSessionID string
 	staleSession      bool
+	responseHeaders   http.Header
 }
 
 type transientUpstreamError struct {
@@ -262,7 +263,7 @@ func (c *HTTPMCPClient) doRequest(ctx context.Context, token string, method stri
 		return requestOutcome{}, fmt.Errorf("MCP server error (code %d): %s", rpcResp.Error.Code, rpcResp.Error.Message)
 	}
 
-	return requestOutcome{result: rpcResp.Result, receivedSessionID: receivedSessionID}, nil
+	return requestOutcome{result: rpcResp.Result, receivedSessionID: receivedSessionID, responseHeaders: resp.Header}, nil
 }
 
 func (c *HTTPMCPClient) currentSessionID() string {

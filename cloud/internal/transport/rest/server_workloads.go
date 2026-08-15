@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
@@ -24,14 +25,14 @@ type serverWorkloadService interface {
 
 type ServerWorkloadHandler struct {
 	svc   serverWorkloadService
-	audit *AuditEmitter
+	audit *events.EventBus
 }
 
 func NewServerWorkloadHandler(svc serverWorkloadService) *ServerWorkloadHandler {
 	return &ServerWorkloadHandler{svc: svc}
 }
 
-func (h *ServerWorkloadHandler) SetAudit(a *AuditEmitter) { h.audit = a }
+func (h *ServerWorkloadHandler) SetAudit(a *events.EventBus) { h.audit = a }
 
 func (h *ServerWorkloadHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/server-workloads", h.List)
@@ -192,9 +193,7 @@ func (h *ServerWorkloadHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", sw.ID, sw.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", sw.ID, sw.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toServerWorkloadResponse(&sw))
 }
 
@@ -234,9 +233,7 @@ func (h *ServerWorkloadHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", sw.ID, sw.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", sw.ID, sw.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toServerWorkloadResponse(&sw))
 }
 
@@ -252,8 +249,6 @@ func (h *ServerWorkloadHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Workloads", "server_workload", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }

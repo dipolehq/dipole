@@ -126,9 +126,7 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	if h.audit != nil {
-		h.audit.Created(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusCreated, toAgentControllerResponse(ac))
 }
 
@@ -181,15 +179,11 @@ func (h *APIHandlers) UpdateAgentController(w http.ResponseWriter, r *http.Reque
 	}
 	saved, err := h.agentControllers.GetByID(r.Context(), tenantID, id)
 	if err != nil || saved == nil {
-		if h.audit != nil {
-			h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
-		}
+		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", ac.ID, ac.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toAgentControllerResponse(&ac))
 		return
 	}
-	if h.audit != nil {
-		h.audit.Updated(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", saved.ID, saved.Name, clientIP(r), userAgent(r))
-	}
+	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", saved.ID, saved.Name, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, toAgentControllerResponse(saved))
 }
 
@@ -213,9 +207,7 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 		respondDomainError(w, err)
 		return
 	}
-	if h.audit != nil {
-		h.audit.Deleted(r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", id, "", clientIP(r), userAgent(r))
-	}
+	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

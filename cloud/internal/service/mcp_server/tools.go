@@ -16,18 +16,19 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
 const maxPerPage = 100
 
 type ToolService struct {
-	eventRepo   repository.EventRepository
-	auditLogger *AuditLogger
+	eventRepo repository.EventRepository
+	events    *events.EventBus
 }
 
-func NewToolService(eventRepo repository.EventRepository, auditLogger *AuditLogger) *ToolService {
-	return &ToolService{eventRepo: eventRepo, auditLogger: auditLogger}
+func NewToolService(eventRepo repository.EventRepository, eventBus *events.EventBus) *ToolService {
+	return &ToolService{eventRepo: eventRepo, events: eventBus}
 }
 
 func (s *ToolService) ListTools() any {
@@ -35,8 +36,14 @@ func (s *ToolService) ListTools() any {
 }
 
 func (s *ToolService) CallTool(name string, args map[string]any, tenantID uuid.UUID, resourceSetID *uuid.UUID) (any, error) {
-	if s.auditLogger != nil {
-		s.auditLogger.LogToolCall(context.Background(), tenantID, name, "")
+	if s.events != nil {
+		s.events.EmitAudit(context.Background(), events.AuditEvent{
+			TenantID:   tenantID,
+			Category:   "Analysis",
+			Activity:   mapToolToActivity(name),
+			TargetType: "mcp_server_query",
+			TargetName: name,
+		})
 	}
 
 	switch name {
@@ -237,4 +244,17 @@ func strArg(args map[string]any, key string, defaultVal string) string {
 		return defaultVal
 	}
 	return s
+}
+
+func mapToolToActivity(toolName string) string {
+	switch toolName {
+	case "get_audit_logs":
+		return "QueryAuditLogs"
+	case "get_auth_events":
+		return "QueryAuthEvents"
+	case "get_workload_events":
+		return "QueryWorkloadEvents"
+	default:
+		return "QueryUnknown"
+	}
 }

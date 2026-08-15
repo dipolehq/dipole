@@ -28,9 +28,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
-	"github.com/dipolehq/dipole/cloud/internal/service/events"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 	"github.com/google/uuid"
 )
@@ -75,8 +74,7 @@ type MCPGatewayServer struct {
 	methodHandler  GatewayMethodHandler
 	consentHandler ConsentCallbackHandler
 	resolver       *TenantHostResolver
-	tracingBus     *gw.TracingBus
-	authEmitter    *events.AuthEventEmitter
+	events         *events.EventBus
 	logger         *slog.Logger
 }
 
@@ -85,17 +83,15 @@ func NewMCPGatewayServer(
 	handler GatewayMethodHandler,
 	consentHandler ConsentCallbackHandler,
 	logger *slog.Logger,
-	tracingBus *gw.TracingBus,
+	eventBus *events.EventBus,
 	resolver *TenantHostResolver,
-	authEmitter *events.AuthEventEmitter,
 ) *MCPGatewayServer {
 	return &MCPGatewayServer{
 		auth:           auth,
 		methodHandler:  handler,
 		consentHandler: consentHandler,
 		resolver:       resolver,
-		tracingBus:     tracingBus,
-		authEmitter:    authEmitter,
+		events:         eventBus,
 		logger:         logger,
 	}
 }
@@ -139,11 +135,16 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	clientIP := r.Header.Get("X-Forwarded-For")
+	if clientIP == "" {
+		clientIP = r.RemoteAddr
+	}
+
 	token := extractBearerToken(r)
 	if token == "" {
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`"`)
-		s.emitTracing(r, scope.TenantID, "", "", "Error", "Missing token")
+		s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Error", "Missing token", "", "")
 		writeGatewayError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
 		return
 	}
@@ -152,14 +153,14 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`", error="invalid_token"`)
-		s.emitTracing(r, scope.TenantID, "", "", "Error", "Invalid token: "+err.Error())
-		s.emitMCPAuthEvent(r, scope.TenantID, "", "", false, err.Error())
+		s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Error", "Invalid token", "", "")
+		s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, "", "", false, err.Error())
 		writeGatewayError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	s.emitTracing(r, scope.TenantID, authResult.UserID, "", "Info", "Authenticated")
-	s.emitMCPAuthEvent(r, scope.TenantID, authResult.UserID, authResult.ClientWorkloadName, true, "")
+	s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Info", "Authenticated", authResult.ClientWorkloadName, authResult.UserID)
+	authContextID := s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, authResult.UserID, authResult.ClientWorkloadName, true, "")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -179,9 +180,14 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rCtx := &gw.RequestContext{
-		UserID: authResult.UserID,
-		Claims: authResult.Claims,
-		Scope:  scope,
+		UserID:        authResult.UserID,
+		Claims:        authResult.Claims,
+		Scope:         scope,
+		RequestID:     rpcReq.ID,
+		AuthContextID: authContextID,
+		MCPSessionID:  r.Header.Get("Mcp-Session-Id"),
+		ClientIP:      clientIP,
+		Headers:       redactRequestHeaders(r),
 	}
 
 	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)
@@ -293,80 +299,122 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, metadata)
 }
 
-func (s *MCPGatewayServer) emitMCPAuthEvent(r *http.Request, tenantID uuid.UUID, userID string, clientWorkloadName string, allowed bool, denyReason string) {
-	if s.authEmitter == nil {
-		return
+func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.UUID, clientIP string, host string, userID string, clientWorkloadName string, allowed bool, denyReason string) uuid.UUID {
+	contextID := uuid.New()
+
+	if s.events == nil {
+		return contextID
 	}
 
-	clientIP := r.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = r.RemoteAddr
+	severity := "Info"
+	if !allowed {
+		severity = "Error"
 	}
 
-	result := &domain.EvaluationResult{Allowed: allowed, DenyReason: denyReason}
-
-	var clientWL *domain.ClientWorkload
+	clientWL := "Unknown"
 	if clientWorkloadName != "" {
-		clientWL = &domain.ClientWorkload{Name: clientWorkloadName}
+		clientWL = clientWorkloadName
 	}
 
-	var serverWL *domain.ServerWorkload
-	serverWL = &domain.ServerWorkload{Name: "MCP Identity Gateway"}
-
-	evalCtx := &events.EvaluationContext{
-		TenantID:       tenantID,
-		SourceIP:       clientIP,
-		TargetHost:     r.Host,
-		TargetPort:     443,
-		Result:         result,
-		ClientWorkload: clientWL,
-		ServerWorkload: serverWL,
-		Source:         "mcp_gateway",
-	}
-
-	// Include user identity in the payload via a synthetic trust result
+	var trustResults []events.TrustResult
 	if userID != "" {
-		evalCtx.TrustProviders = []domain.TrustProvider{
-			{Name: "User Identity (SSO)", Type: "oidc_id_token"},
-		}
-		result.TrustResults = []domain.TrustProviderResult{
-			{ProviderName: "User Identity (SSO)", Attested: allowed},
-		}
+		trustResults = []events.TrustResult{{
+			ProviderName: "User Identity (SSO)",
+			Attested:     allowed,
+		}}
 	}
 
-	go func() {
-		if err := s.authEmitter.Emit(r.Context(), evalCtx); err != nil {
-			if s.logger != nil {
-				s.logger.Debug("failed to emit MCP left-side auth event", "error", err)
-			}
-		}
-	}()
+	base := events.SecurityEvent{
+		TenantID:       tenantID,
+		ContextID:      contextID,
+		SourceIP:       clientIP,
+		Source:         "mcp_gateway",
+		Severity:       "Info",
+		Allowed:        allowed,
+		DenyReason:     denyReason,
+		UserID:         userID,
+		ClientWorkload: clientWL,
+		ServerWorkload: "MCP Identity Gateway",
+		ServerHost:     host,
+		ServerPort:     443,
+		TrustResults:   trustResults,
+	}
+
+	request := base
+	request.EventType = "access.request"
+	if !allowed {
+		request.Severity = "Error"
+	}
+	s.events.EmitSecurity(ctx, request)
+
+	auth := base
+	auth.EventType = "access.authorization"
+	auth.Severity = severity
+	s.events.EmitSecurity(ctx, auth)
+
+	discovery := base
+	discovery.EventType = "access.discovery"
+	if !allowed && clientWorkloadName == "" {
+		discovery.Severity = "Error"
+	}
+	if clientWorkloadName != "" {
+		discovery.CandidateClientWorkloads = []events.WorkloadRef{{Name: clientWorkloadName}}
+	}
+	discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: "MCP Identity Gateway"}}
+	s.events.EmitSecurity(ctx, discovery)
+
+	return contextID
 }
 
-func (s *MCPGatewayServer) emitTracing(r *http.Request, tenantID uuid.UUID, userID string, resource string, severity string, detail string) {
-	if s.tracingBus == nil {
+func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redirectURI string, resourceServer string, severity string, policyDetail string, clientWorkloadName string, userID string) {
+	if s.events == nil {
 		return
 	}
 
-	clientIP := r.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = r.RemoteAddr
+	cwName := clientWorkloadName
+	cwStatus := "Identified"
+	if cwName == "" {
+		cwName = userID
+	}
+	if cwName == "" {
+		cwName = "Unknown"
+		cwStatus = "Unknown"
 	}
 
-	entry := gw.TracingEntry{
+	policyStatus := "Active"
+	if severity == "Error" {
+		policyStatus = "Unknown"
+	}
+
+	s.events.EmitTrace(events.TraceEntry{
 		TenantID:       tenantID,
 		ClientIP:       clientIP,
 		Severity:       severity,
-		RedirectURI:    r.Header.Get("Origin"),
-		ResourceServer: resource,
-		AccessPolicy:   gw.TracingPolicy{Name: detail, Status: severity},
-		ClientWorkload: gw.TracingWL{Name: userID, Status: "Identified"},
-		ServerWorkload: gw.TracingWL{Name: resource, Status: "Unknown"},
-	}
+		RedirectURI:    redirectURI,
+		ResourceServer: resourceServer,
+		AccessPolicy:   events.TracePolicyStatus{Name: policyDetail, Status: policyStatus},
+		ClientWorkload: events.TraceWorkloadStatus{Name: cwName, Status: cwStatus},
+		ServerWorkload: events.TraceWorkloadStatus{Name: "Dipole MCP Gateway", Status: "Identified"},
+	})
+}
 
-	if userID == "" {
-		entry.ClientWorkload = gw.TracingWL{Name: "Unknown", Status: "Unknown"}
-	}
+var sensitiveHeaders = map[string]bool{
+	"authorization": true,
+	"cookie":        true,
+	"set-cookie":    true,
+	"x-api-key":     true,
+}
 
-	s.tracingBus.Emit(entry)
+func redactRequestHeaders(r *http.Request) []map[string]string {
+	headers := make([]map[string]string, 0, len(r.Header))
+	for name, values := range r.Header {
+		if sensitiveHeaders[strings.ToLower(name)] {
+			headers = append(headers, map[string]string{"[REDACTED]": "[REDACTED]"})
+			continue
+		}
+		for _, v := range values {
+			headers = append(headers, map[string]string{name: v})
+		}
+	}
+	return headers
 }

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -127,7 +126,7 @@ func TestReportHealth_UpdateFails_NotAcknowledged(t *testing.T) {
 }
 
 func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
-	tenantID := uuid.New()
+
 	connID := uuid.New()
 	policyID := uuid.New()
 	cwID := uuid.New()
@@ -148,11 +147,8 @@ func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 		Payload:          []byte(`{"network":{"serverWorkloadHost":"api.stripe.com"}}`),
 	}
 
-	incoming := mapWorkloadEvent(tenantID, ev)
+	incoming := mapWorkloadEvent(ev)
 
-	if incoming.TenantID != tenantID {
-		t.Errorf("tenantID = %s, want %s", incoming.TenantID, tenantID)
-	}
 	if incoming.ConnectionID != connID {
 		t.Errorf("connectionID = %s, want %s", incoming.ConnectionID, connID)
 	}
@@ -186,7 +182,6 @@ func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 }
 
 func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
-	tenantID := uuid.New()
 
 	ev := &pb.WorkloadEvent{
 		EventId:   uuid.New().String(),
@@ -196,11 +191,8 @@ func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
 		Payload:   []byte(`{}`),
 	}
 
-	incoming := mapWorkloadEvent(tenantID, ev)
+	incoming := mapWorkloadEvent(ev)
 
-	if incoming.TenantID != tenantID {
-		t.Errorf("tenantID = %s, want %s", incoming.TenantID, tenantID)
-	}
 	if incoming.PolicyID != nil {
 		t.Error("policyID should be nil for empty string")
 	}
@@ -220,7 +212,7 @@ func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
 		t.Errorf("eventType = %q, want %q", incoming.EventType, "tcp.open")
 	}
 	// Timestamp should default to approximately now when not set
-	if time.Since(incoming.Timestamp) > 5*time.Second {
-		t.Errorf("timestamp should be approximately now when not set, got %v", incoming.Timestamp)
+	if !incoming.Timestamp.IsZero() {
+		t.Errorf("timestamp should be zero when not set in proto, got %v", incoming.Timestamp)
 	}
 }
