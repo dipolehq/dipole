@@ -318,7 +318,7 @@ func TestHTTPMCPClient_ListTools_HappyPath(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(t, srv)
-	tools, err := client.ListTools(context.Background(), "tok")
+	tools, _, err := client.ListTools(context.Background(), "tok")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestHTTPMCPClient_ConcurrentCalls_InitializeOnlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := client.ListTools(context.Background(), "tok")
+			_, _, err := client.ListTools(context.Background(), "tok")
 			errs <- err
 		}()
 	}
@@ -385,13 +385,13 @@ func TestHTTPMCPClient_StaleSession_RetriesAndSucceeds(t *testing.T) {
 
 	client := newTestClient(t, srv)
 
-	if _, err := client.ListTools(context.Background(), "tok"); err != nil {
+	if _, _, err := client.ListTools(context.Background(), "tok"); err != nil {
 		t.Fatalf("initial call failed: %v", err)
 	}
 
 	s.invalidateOnce.Store(true)
 
-	tools, err := client.ListTools(context.Background(), "tok")
+	tools, _, err := client.ListTools(context.Background(), "tok")
 	if err != nil {
 		t.Fatalf("expected the client to recover from a stale session automatically, got error: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestHTTPMCPClient_404WithoutSession_IsNotTreatedAsSessionExpiry(t *testing.
 	defer srv.Close()
 
 	client := newTestClient(t, srv)
-	_, err := client.ListTools(context.Background(), "tok")
+	_, _, err := client.ListTools(context.Background(), "tok")
 	if err == nil {
 		t.Fatal("expected an error for a 404 with no session involved, got nil")
 	}
@@ -431,7 +431,7 @@ func TestHTTPMCPClient_202OnRequest_IsAnError(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(t, srv)
-	_, err := client.CallTool(context.Background(), "tok", "some_tool", nil)
+	_, _, err := client.CallTool(context.Background(), "tok", "some_tool", nil)
 	if err == nil {
 		t.Fatal("expected 202 Accepted on a tools/call request to be an error, got nil")
 	}
@@ -458,7 +458,7 @@ func TestHTTPMCPClient_ContextDeadline_BoundsSlowServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := client.ListTools(ctx, "tok")
+	_, _, err := client.ListTools(ctx, "tok")
 	if err == nil {
 		t.Fatal("expected the call to fail once the caller's context deadline elapsed, got nil")
 	}

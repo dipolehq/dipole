@@ -160,7 +160,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Info", "Authenticated", authResult.ClientWorkloadName, authResult.UserID)
-	s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, authResult.UserID, authResult.ClientWorkloadName, true, "")
+	authContextID := s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, authResult.UserID, authResult.ClientWorkloadName, true, "")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -180,9 +180,14 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rCtx := &gw.RequestContext{
-		UserID: authResult.UserID,
-		Claims: authResult.Claims,
-		Scope:  scope,
+		UserID:        authResult.UserID,
+		Claims:        authResult.Claims,
+		Scope:         scope,
+		RequestID:     rpcReq.ID,
+		AuthContextID: authContextID,
+		MCPSessionID:  r.Header.Get("Mcp-Session-Id"),
+		ClientIP:      clientIP,
+		Headers:       redactRequestHeaders(r),
 	}
 
 	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)
@@ -294,12 +299,12 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, metadata)
 }
 
-func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.UUID, clientIP string, host string, userID string, clientWorkloadName string, allowed bool, denyReason string) {
-	if s.events == nil {
-		return
-	}
-
+func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.UUID, clientIP string, host string, userID string, clientWorkloadName string, allowed bool, denyReason string) uuid.UUID {
 	contextID := uuid.New()
+
+	if s.events == nil {
+		return contextID
+	}
 
 	severity := "Info"
 	if !allowed {
@@ -357,6 +362,8 @@ func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.U
 	}
 	discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: "MCP Identity Gateway"}}
 	s.events.EmitSecurity(ctx, discovery)
+
+	return contextID
 }
 
 func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redirectURI string, resourceServer string, severity string, policyDetail string, clientWorkloadName string, userID string) {
@@ -389,4 +396,25 @@ func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redire
 		ClientWorkload: events.TraceWorkloadStatus{Name: cwName, Status: cwStatus},
 		ServerWorkload: events.TraceWorkloadStatus{Name: "Dipole MCP Gateway", Status: "Identified"},
 	})
+}
+
+var sensitiveHeaders = map[string]bool{
+	"authorization": true,
+	"cookie":        true,
+	"set-cookie":    true,
+	"x-api-key":     true,
+}
+
+func redactRequestHeaders(r *http.Request) []map[string]string {
+	headers := make([]map[string]string, 0, len(r.Header))
+	for name, values := range r.Header {
+		if sensitiveHeaders[strings.ToLower(name)] {
+			headers = append(headers, map[string]string{"[REDACTED]": "[REDACTED]"})
+			continue
+		}
+		for _, v := range values {
+			headers = append(headers, map[string]string{name: v})
+		}
+	}
+	return headers
 }

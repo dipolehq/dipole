@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -29,20 +30,20 @@ func (f mapClientFactory) ClientFor(server ServerInfo) MCPServerClient {
 
 type unreachableMCPClient struct{}
 
-func (unreachableMCPClient) ListTools(context.Context, string) ([]MCPTool, error) {
-	return nil, errors.New("unreachable MCP server")
+func (unreachableMCPClient) ListTools(context.Context, string) ([]MCPTool, http.Header, error) {
+	return nil, nil, errors.New("unreachable MCP server")
 }
 
-func (unreachableMCPClient) CallTool(context.Context, string, string, json.RawMessage) (any, error) {
-	return nil, errors.New("unreachable MCP server")
+func (unreachableMCPClient) CallTool(context.Context, string, string, json.RawMessage) (any, http.Header, error) {
+	return nil, nil, errors.New("unreachable MCP server")
 }
 
-func (unreachableMCPClient) ListResources(context.Context, string) ([]MCPResource, error) {
-	return nil, errors.New("unreachable MCP server")
+func (unreachableMCPClient) ListResources(context.Context, string) ([]MCPResource, http.Header, error) {
+	return nil, nil, errors.New("unreachable MCP server")
 }
 
-func (unreachableMCPClient) ReadResource(context.Context, string, string) (*MCPResourceContent, error) {
-	return nil, errors.New("unreachable MCP server")
+func (unreachableMCPClient) ReadResource(context.Context, string, string) (*MCPResourceContent, http.Header, error) {
+	return nil, nil, errors.New("unreachable MCP server")
 }
 
 type mockDecrypter struct {
@@ -62,33 +63,33 @@ type mockMCPClient struct {
 	lastTool   string
 }
 
-func (c *mockMCPClient) ListTools(_ context.Context, token string) ([]MCPTool, error) {
+func (c *mockMCPClient) ListTools(_ context.Context, token string) ([]MCPTool, http.Header, error) {
 	c.lastToken = token
-	return c.tools, nil
+	return c.tools, nil, nil
 }
 
-func (c *mockMCPClient) CallTool(_ context.Context, token string, toolName string, _ json.RawMessage) (any, error) {
+func (c *mockMCPClient) CallTool(_ context.Context, token string, toolName string, _ json.RawMessage) (any, http.Header, error) {
 	c.lastToken = token
 	c.lastTool = toolName
 	if c.callErr != nil {
-		return nil, c.callErr
+		return nil, nil, c.callErr
 	}
-	return c.callResult, nil
+	return c.callResult, nil, nil
 }
 
-func (c *mockMCPClient) ListResources(_ context.Context, token string) ([]MCPResource, error) {
+func (c *mockMCPClient) ListResources(_ context.Context, token string) ([]MCPResource, http.Header, error) {
 	c.lastToken = token
-	return c.resources, nil
+	return c.resources, nil, nil
 }
 
-func (c *mockMCPClient) ReadResource(_ context.Context, token string, uri string) (*MCPResourceContent, error) {
+func (c *mockMCPClient) ReadResource(_ context.Context, token string, uri string) (*MCPResourceContent, http.Header, error) {
 	c.lastToken = token
 	for _, r := range c.resources {
 		if r.URI == uri {
-			return &MCPResourceContent{URI: uri, Text: "content"}, nil
+			return &MCPResourceContent{URI: uri, Text: "content"}, nil, nil
 		}
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 type mockRightSidePolicyFinder struct {
