@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/config"
+	eventbus "github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
@@ -105,6 +106,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	}
 
 	tracingBus := mcpgw.NewTracingBus()
+
+	_ = eventbus.NewEventBus(nil, logger)
 
 	platformHosts := platform.NewHosts(cfg.PlatformDomain, cfg.Env)
 
