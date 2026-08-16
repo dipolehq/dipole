@@ -1,3 +1,4 @@
+// issuer_test.go tests JWT issuance, signature verification, per-tenant discovery document isolation, and JWKS.
 package identity
 
 import (
@@ -171,9 +172,6 @@ func TestIssueToken_DynamicClaim_Missing_Error(t *testing.T) {
 	}
 }
 
-// The discovery document must echo back the issuer URL it was asked for, not a
-// process-wide one — one process serves every tenant, and OIDC requires the
-// document's issuer to equal the URL the relying party fetched it from.
 func TestDiscoveryDocument_EchoesRequestedIssuer(t *testing.T) {
 	issuer, err := NewIdentityIssuer("https://platform-id.dipolehq.com")
 	if err != nil {
@@ -189,17 +187,11 @@ func TestDiscoveryDocument_EchoesRequestedIssuer(t *testing.T) {
 		t.Errorf("jwks_uri = %v", doc["jwks_uri"])
 	}
 
-	// Deliberately absent: this issuer runs no interactive OAuth flow, and
-	// /connect/token is only served on the MCP Authorization Server host. A
-	// token_endpoint here would point relying parties at an endpoint that
-	// rejects them.
 	if _, present := doc["token_endpoint"]; present {
 		t.Error("discovery document advertises a token_endpoint that this host does not serve")
 	}
 }
 
-// Two tenants fetching discovery from their own hostnames must each see their
-// own issuer, from the same running process.
 func TestDiscoveryDocument_PerTenantIsolation(t *testing.T) {
 	issuer, err := NewIdentityIssuer("https://platform-id.dipolehq.com")
 	if err != nil {

@@ -1,29 +1,4 @@
-/*
-Package identity provides the OIDC Identity Issuance Service.
-
-IdentityIssuer acts as an OIDC provider — signs JWTs with ES256 or RS256,
-serves discovery and JWKS endpoints, and supports dynamic claim resolution.
-Used by credential providers (AWS STS, Azure WIF, GCP WIF) that exchange
-our OIDC tokens for native cloud credentials.
-
-# Issuer URL is per tenant, the signing key is not
-
-The `iss` claim must be the REQUESTING TENANT's identity host
-(https://<tenantSubdomain>-id.<domain>), because OIDC requires `iss` to match
-the URL a relying party fetched discovery from, and AWS STS / Azure Entra /
-GCP WIF all enforce that. A wrong `iss` makes federation fail.
-
-The SIGNING KEY, by contrast, is deliberately shared across all tenants — the
-same way GitHub Actions signs OIDC tokens for every customer with one key set.
-Per-tenant `iss` is what scopes a token to a tenant, and `iss` is always
-server-derived (never caller-supplied), so a shared key cannot be used to forge
-another tenant's token.
-
-Callers set IssuanceRequest.IssuerURL for any token an external party will
-verify. Tokens we verify ourselves (admin sessions, MFA challenges, Edge API
-access tokens) may leave it empty and fall back to the platform issuer, since
-nothing fetches discovery for those.
-*/
+// issuer.go implements the OIDC Identity Issuance Service: signs and verifies JWTs (ES256/RS256), and serves discovery and JWKS.
 package identity
 
 import (
@@ -36,15 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/google/uuid"
 )
 
 type IdentityIssuer struct {
-	// platformIssuerURL is used for tokens that only we verify. It is NOT a
-	// per-tenant URL and nothing fetches OIDC discovery from it.
 	platformIssuerURL string
 
 	es256Key *ecdsa.PrivateKey
@@ -60,12 +33,7 @@ type IssuanceRequest struct {
 	Algorithm    string
 	CustomClaims map[string]interface{}
 	TrustClaims  map[string]interface{}
-
-	// IssuerURL sets the `iss` claim. REQUIRED for any token an external system
-	// will verify (AWS STS, Azure Entra, GCP WIF, an MCP server), because those
-	// systems fetch discovery from this URL and reject a mismatch. Leave empty
-	// only for tokens we verify ourselves.
-	IssuerURL string
+	IssuerURL    string
 }
 
 func NewIdentityIssuer(platformIssuerURL string) (*IdentityIssuer, error) {
@@ -88,81 +56,29 @@ func NewIdentityIssuer(platformIssuerURL string) (*IdentityIssuer, error) {
 	}, nil
 }
 
-// VerifyTokenSignature verifies a JWT was signed by this issuer's keys.
 func (i *IdentityIssuer) VerifyTokenSignature(token string) error {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.ES256, jose.RS256})
+	if err != nil {
 		return fmt.Errorf("invalid JWT format")
 	}
 
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return fmt.Errorf("decode header: %w", err)
-	}
-	var header struct {
-		Alg string `json:"alg"`
-	}
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return fmt.Errorf("parse header: %w", err)
-	}
+	alg := jws.Signatures[0].Header.Algorithm
 
-	signingInput := parts[0] + "." + parts[1]
-	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return fmt.Errorf("decode signature: %w", err)
-	}
-
-	hash := crypto.SHA256.New()
-	hash.Write([]byte(signingInput))
-	digest := hash.Sum(nil)
-
-	switch header.Alg {
-	case "ES256":
-		if !ecdsa.VerifyASN1(i.es256Key.Public().(*ecdsa.PublicKey), digest, ecdsaFixedToASN1(sigBytes, 32)) {
-			return fmt.Errorf("ES256 signature verification failed")
-		}
-	case "RS256":
-		if err := rsa.VerifyPKCS1v15(i.rs256Key.Public().(*rsa.PublicKey), crypto.SHA256, digest, sigBytes); err != nil {
-			return fmt.Errorf("RS256 signature verification failed")
-		}
+	var pubKey interface{}
+	switch alg {
+	case string(jose.ES256):
+		pubKey = i.es256Key.Public()
+	case string(jose.RS256):
+		pubKey = i.rs256Key.Public()
 	default:
-		return fmt.Errorf("unsupported algorithm: %s", header.Alg)
+		return fmt.Errorf("unsupported algorithm: %s", alg)
+	}
+
+	if _, err := jws.Verify(pubKey); err != nil {
+		return fmt.Errorf("%s signature verification failed", alg)
 	}
 
 	return nil
-}
-
-// ecdsaFixedToASN1 converts a fixed-size ECDSA signature (r || s) to ASN.1 DER format.
-func ecdsaFixedToASN1(sig []byte, keySize int) []byte {
-	if len(sig) != keySize*2 {
-		return sig
-	}
-	r := new(big.Int).SetBytes(sig[:keySize])
-	s := new(big.Int).SetBytes(sig[keySize:])
-
-	// ASN.1 DER: SEQUENCE { INTEGER r, INTEGER s }
-	rBytes := r.Bytes()
-	sBytes := s.Bytes()
-
-	// Add leading zero if high bit set (positive integer encoding)
-	if len(rBytes) > 0 && rBytes[0]&0x80 != 0 {
-		rBytes = append([]byte{0}, rBytes...)
-	}
-	if len(sBytes) > 0 && sBytes[0]&0x80 != 0 {
-		sBytes = append([]byte{0}, sBytes...)
-	}
-
-	// Build DER: 0x30 <len> 0x02 <rlen> <r> 0x02 <slen> <s>
-	inner := make([]byte, 0, 2+len(rBytes)+2+len(sBytes))
-	inner = append(inner, 0x02, byte(len(rBytes)))
-	inner = append(inner, rBytes...)
-	inner = append(inner, 0x02, byte(len(sBytes)))
-	inner = append(inner, sBytes...)
-
-	out := make([]byte, 0, 2+len(inner))
-	out = append(out, 0x30, byte(len(inner)))
-	out = append(out, inner...)
-	return out
 }
 
 func (i *IdentityIssuer) IssueToken(req IssuanceRequest) (string, error) {
@@ -224,25 +140,10 @@ func (i *IdentityIssuer) IssueToken(req IssuanceRequest) (string, error) {
 	return signJWT(payload, key, alg, kid)
 }
 
-// DiscoveryDocument builds the OIDC discovery document for a specific issuer
-// URL. The URL is a parameter rather than a field because one process serves
-// every tenant: the document returned from https://<tenant>-id.<domain> must
-// advertise that same URL as its issuer, or relying parties reject our tokens.
 func (i *IdentityIssuer) DiscoveryDocument(issuerURL string) map[string]interface{} {
 	if issuerURL == "" {
 		issuerURL = i.platformIssuerURL
 	}
-	// Deliberately advertises only what a relying party needs to VERIFY a token
-	// we signed: the issuer and the key set. There is no `token_endpoint`,
-	// because this issuer doesn't run an interactive OAuth flow — tokens are
-	// minted internally by the Credential Broker and handed straight to the
-	// relying party (AWS STS, Azure Entra, GCP WIF), which only ever fetches
-	// discovery + JWKS to check the signature.
-	//
-	// Previously a `token_endpoint` on this host was advertised but not served
-	// (that route only answers on the MCP Authorization Server host), so it
-	// pointed callers at an endpoint that rejects them. Advertising nothing is
-	// better than advertising something broken.
 	return map[string]interface{}{
 		"issuer":                                issuerURL,
 		"jwks_uri":                              issuerURL + "/.well-known/openid-configuration/jwks",
@@ -255,8 +156,7 @@ func (i *IdentityIssuer) DiscoveryDocument(issuerURL string) map[string]interfac
 func (i *IdentityIssuer) JWKS() map[string]interface{} {
 	keys := []map[string]interface{}{}
 
-	// ES256 key — extract X, Y from uncompressed public key bytes (0x04 || X || Y)
-	ecPubBytes := elliptic.Marshal(i.es256Key.PublicKey.Curve, i.es256Key.PublicKey.X, i.es256Key.PublicKey.Y)
+	ecPubBytes, _ := i.es256Key.PublicKey.Bytes()
 	coordSize := (i.es256Key.PublicKey.Curve.Params().BitSize + 7) / 8
 	xBytes := ecPubBytes[1 : 1+coordSize]
 	yBytes := ecPubBytes[1+coordSize:]
@@ -271,7 +171,6 @@ func (i *IdentityIssuer) JWKS() map[string]interface{} {
 		"alg": "ES256",
 	})
 
-	// RS256 key
 	keys = append(keys, map[string]interface{}{
 		"kty": "RSA",
 		"kid": i.rs256Kid,
@@ -290,85 +189,31 @@ func base64URLEncodeInt(n int) string {
 }
 
 func signJWT(payload map[string]interface{}, key crypto.Signer, alg, kid string) (string, error) {
-	header := map[string]string{"alg": alg, "kid": kid, "typ": "JWT"}
-
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", err
-	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
 
-	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	signingInput := headerB64 + "." + payloadB64
-
-	var signature []byte
+	var sigAlg jose.SignatureAlgorithm
 	switch alg {
 	case "ES256":
-		hash := crypto.SHA256.New()
-		hash.Write([]byte(signingInput))
-		sig, err := ecdsa.SignASN1(rand.Reader, key.(*ecdsa.PrivateKey), hash.Sum(nil))
-		if err != nil {
-			return "", err
-		}
-		signature = ecdsaASN1ToFixed(sig, 32)
+		sigAlg = jose.ES256
 	case "RS256":
-		hash := crypto.SHA256.New()
-		hash.Write([]byte(signingInput))
-		sig, err := rsa.SignPKCS1v15(rand.Reader, key.(*rsa.PrivateKey), crypto.SHA256, hash.Sum(nil))
-		if err != nil {
-			return "", err
-		}
-		signature = sig
+		sigAlg = jose.RS256
 	default:
 		return "", fmt.Errorf("unsupported algorithm: %s", alg)
 	}
 
-	sigB64 := base64.RawURLEncoding.EncodeToString(signature)
-	return signingInput + "." + sigB64, nil
-}
+	jwk := jose.JSONWebKey{Key: key, KeyID: kid, Algorithm: alg, Use: "sig"}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: sigAlg, Key: jwk}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		return "", err
+	}
 
-// ecdsaASN1ToFixed converts ASN.1 DER-encoded ECDSA signature to fixed-size
-// format (r || s, each padded to keySize bytes) as required by JWS.
-func ecdsaASN1ToFixed(asn1Sig []byte, keySize int) []byte {
-	// Parse ASN.1: SEQUENCE { INTEGER r, INTEGER s }
-	r, s := parseECDSASignature(asn1Sig)
-	out := make([]byte, keySize*2)
-	rBytes := r.Bytes()
-	sBytes := s.Bytes()
-	copy(out[keySize-len(rBytes):keySize], rBytes)
-	copy(out[2*keySize-len(sBytes):], sBytes)
-	return out
-}
+	obj, err := signer.Sign(payloadJSON)
+	if err != nil {
+		return "", err
+	}
 
-func parseECDSASignature(sig []byte) (*big.Int, *big.Int) {
-	// ASN.1 DER: 0x30 <len> 0x02 <rlen> <r> 0x02 <slen> <s>
-	r := new(big.Int)
-	s := new(big.Int)
-	if len(sig) < 6 {
-		return r, s
-	}
-	// Skip outer SEQUENCE tag and length
-	pos := 2
-	// Parse r INTEGER
-	if sig[pos] != 0x02 {
-		return r, s
-	}
-	pos++
-	rLen := int(sig[pos])
-	pos++
-	r.SetBytes(sig[pos : pos+rLen])
-	pos += rLen
-	// Parse s INTEGER
-	if sig[pos] != 0x02 {
-		return r, s
-	}
-	pos++
-	sLen := int(sig[pos])
-	pos++
-	s.SetBytes(sig[pos : pos+sLen])
-	return r, s
+	return obj.CompactSerialize()
 }
