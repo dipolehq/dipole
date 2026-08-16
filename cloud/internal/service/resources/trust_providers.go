@@ -1,8 +1,8 @@
 /*
-Package service — trust_providers.go implements business logic and
-validation for Trust Providers, sitting between transport and repository.
+Package resources — trust_providers.go implements business logic and
+validation for Trust Providers.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 )
 
@@ -27,7 +28,7 @@ type TrustProviderService struct {
 	tenants repository.TenantRepository
 	region  string
 	hosts   *platform.Hosts
-	limiter *PlanLimiter
+	limiter *service.PlanLimiter
 }
 
 func NewTrustProviderService(
@@ -39,7 +40,7 @@ func NewTrustProviderService(
 	return &TrustProviderService{repo: repo, tenants: tenants, region: region, hosts: hosts}
 }
 
-func (s *TrustProviderService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *TrustProviderService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *TrustProviderService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.TrustProvider, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -58,7 +59,7 @@ func (s *TrustProviderService) Get(ctx context.Context, tenantID, id uuid.UUID) 
 
 func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, tp *domain.TrustProvider) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceTrustProviders); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceTrustProviders); err != nil {
 			return err
 		}
 	}

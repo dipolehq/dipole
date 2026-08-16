@@ -1,8 +1,8 @@
 /*
-Package service — credential_providers.go implements business logic for
+Package resources — credential_providers.go implements business logic for
 Credential Providers including encryption/decryption of config at rest.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -14,19 +14,20 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 type CredentialProviderService struct {
 	repo          repository.CredentialProviderRepository
 	encryptionKey []byte
-	limiter       *PlanLimiter
+	limiter       *service.PlanLimiter
 }
 
 func NewCredentialProviderService(repo repository.CredentialProviderRepository, encryptionKey []byte) *CredentialProviderService {
 	return &CredentialProviderService{repo: repo, encryptionKey: encryptionKey}
 }
 
-func (s *CredentialProviderService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *CredentialProviderService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *CredentialProviderService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.CredentialProvider, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -58,7 +59,7 @@ func (s *CredentialProviderService) Get(ctx context.Context, tenantID, id uuid.U
 
 func (s *CredentialProviderService) Create(ctx context.Context, tenantID uuid.UUID, cp *domain.CredentialProvider, configJSON json.RawMessage) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceCredentialProviders); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceCredentialProviders); err != nil {
 			return err
 		}
 	}

@@ -1,8 +1,8 @@
 /*
-Package service — client_workloads.go implements business logic and
-validation for Client Workloads, sitting between transport and repository.
+Package resources — client_workloads.go implements business logic and
+validation for Client Workloads.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 var validClientIdentifierTypes = map[string]struct{}{
@@ -54,14 +55,14 @@ var validClientIdentifierTypes = map[string]struct{}{
 
 type ClientWorkloadService struct {
 	repo    repository.ClientWorkloadRepository
-	limiter *PlanLimiter
+	limiter *service.PlanLimiter
 }
 
 func NewClientWorkloadService(repo repository.ClientWorkloadRepository) *ClientWorkloadService {
 	return &ClientWorkloadService{repo: repo}
 }
 
-func (s *ClientWorkloadService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *ClientWorkloadService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *ClientWorkloadService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ClientWorkload, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -80,7 +81,7 @@ func (s *ClientWorkloadService) Get(ctx context.Context, tenantID, id uuid.UUID)
 
 func (s *ClientWorkloadService) Create(ctx context.Context, tenantID uuid.UUID, cw *domain.ClientWorkload) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceClientWorkloads); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceClientWorkloads); err != nil {
 			return err
 		}
 	}

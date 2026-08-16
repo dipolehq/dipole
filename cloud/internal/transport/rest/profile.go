@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -91,13 +91,13 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 	// Body is optional for backward compatibility (existing UI sends empty body).
 	_ = decodeJSON(r, &req)
 
-	token, err := service.GenerateAPIToken()
+	token, err := auth.GenerateAPIToken()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to generate token")
 		return
 	}
 
-	hash := service.HashAPIToken(token)
+	hash := auth.HashAPIToken(token)
 
 	var rsID *uuid.UUID
 	if req.ResourceSetID != nil && *req.ResourceSetID != "" {
@@ -225,7 +225,7 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash and update.
-	newHash, err := service.HashPassword(req.NewPassword)
+	newHash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to hash password")
 		return

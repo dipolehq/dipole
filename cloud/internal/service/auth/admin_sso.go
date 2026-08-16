@@ -5,7 +5,7 @@ AdminSSOService handles OIDC and SAML SSO for admin users. On first login via
 SSO, users are auto-created with a configured default role (if enabled).
 Super Admin can always bypass SSO via native login.
 */
-package service
+package auth
 
 import (
 	"context"

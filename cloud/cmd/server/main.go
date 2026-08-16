@@ -24,6 +24,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
@@ -33,6 +34,8 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
+	"github.com/dipolehq/dipole/cloud/internal/service/reporting"
+	"github.com/dipolehq/dipole/cloud/internal/service/resources"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 	grpctransport "github.com/dipolehq/dipole/cloud/internal/transport/grpc"
 	"github.com/dipolehq/dipole/cloud/internal/transport/rest"
@@ -118,13 +121,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
-	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
-	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
-	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts)
-	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
-	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
-	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
-	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
+	clientWorkloadSvc := resources.NewClientWorkloadService(repos.ClientWorkloads)
+	serverWorkloadSvc := resources.NewServerWorkloadService(repos.ServerWorkloads)
+	trustProviderSvc := resources.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts)
+	accessConditionSvc := resources.NewAccessConditionService(repos.AccessConditions)
+	credentialProviderSvc := resources.NewCredentialProviderService(repos.CredentialProviders, encKey)
+	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies)
+	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
 	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
@@ -157,7 +160,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpCodeStore := mcpsvc.NewAuthCodeStore()
 	mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 	mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
-	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: service.NewHTTPOIDCClient()})
+	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: auth.NewHTTPOIDCClient()})
 	mcpIdPService := mcpsvc.NewIdPService(mcpIdPResolver)
 	mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
 	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, repos.ClientWorkloads, encKey)
@@ -222,11 +225,11 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		}
 	}()
 
-	logStreamSvc := service.NewLogStreamService(repos.Events, repos.LogStreams, logger)
-	logStreamSvc.RegisterExporter("splunk_siem", service.NewSplunkExporter())
-	logStreamSvc.RegisterExporter("crowdstrike_siem", service.NewCrowdStrikeExporter())
-	logStreamSvc.RegisterExporter("aws_s3", &service.S3Exporter{})
-	logStreamSvc.RegisterExporter("gcs_bucket", &service.GCSExporter{})
+	logStreamSvc := reporting.NewLogStreamService(repos.Events, repos.LogStreams, logger)
+	logStreamSvc.RegisterExporter("splunk_siem", reporting.NewSplunkExporter())
+	logStreamSvc.RegisterExporter("crowdstrike_siem", reporting.NewCrowdStrikeExporter())
+	logStreamSvc.RegisterExporter("aws_s3", &reporting.S3Exporter{})
+	logStreamSvc.RegisterExporter("gcs_bucket", &reporting.GCSExporter{})
 
 	wg.Add(1)
 	go func() {
@@ -255,12 +258,12 @@ func buildHTTPServer(
 	repos *postgres.Repositories,
 	encKey []byte,
 	planLimiter *service.PlanLimiter,
-	clientWorkloadSvc *service.ClientWorkloadService,
-	serverWorkloadSvc *service.ServerWorkloadService,
-	trustProviderSvc *service.TrustProviderService,
-	accessConditionSvc *service.AccessConditionService,
-	credentialProviderSvc *service.CredentialProviderService,
-	accessPolicySvc *service.AccessPolicyService,
+	clientWorkloadSvc *resources.ClientWorkloadService,
+	serverWorkloadSvc *resources.ServerWorkloadService,
+	trustProviderSvc *resources.TrustProviderService,
+	accessConditionSvc *resources.AccessConditionService,
+	credentialProviderSvc *resources.CredentialProviderService,
+	accessPolicySvc *resources.AccessPolicyService,
 	authenticator rest.APIAuthenticator,
 	registrationSvc *registration.RegistrationService,
 	edgeAPI *rest.EdgeAPIHandler,
@@ -285,7 +288,7 @@ func buildHTTPServer(
 		repos.SignOnPolicies,
 		repos.LogStreams,
 		repos.GlobalPolicyCompliance,
-		service.NewComplianceService(repos.AccessPolicies),
+		reporting.NewComplianceService(repos.AccessPolicies),
 		repos.TenantProfiles,
 		registrationSvc,
 		repos.Tenants,
@@ -321,35 +324,35 @@ func buildHTTPServer(
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
 	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
-	rest.NewDashboardHandler(service.NewDashboardService(
+	rest.NewDashboardHandler(reporting.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
 	)).RegisterRoutes(mux)
 	rest.NewTlsDecryptHandler(caService).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
-	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
+	mfaSvc := auth.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
 	mfaHandler.SetAudit(eventBus)
 	mfaHandler.RegisterRoutes(mux)
 
-	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
+	loginSvc := auth.NewLoginService(repos.Users, repos.Tenants, issuer)
 	loginSvc.SetMFA(repos.UserMFA, encKey)
 	loginSvc.SetRoles(repos.Roles)
-	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
+	passwordResetSvc := auth.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)
 
 	feedbackHandler := rest.NewFeedbackHandler(cfg.ResendAPIKey, cfg.EmailFrom, "support@dipolehq.com")
 	feedbackHandler.RegisterRoutes(mux)
-	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
+	signupSvc := auth.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
 
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
-		oidcClient := service.NewHTTPOIDCClient()
-		ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
+		oidcClient := auth.NewHTTPOIDCClient()
+		ssoSvc := auth.NewAdminSSOService(repos.Users, oidcClient)
 		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID).RegisterRoutes(mux)
 	}
 
@@ -372,7 +375,7 @@ func buildHTTPServer(
 	}
 }
 
-func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, logger *slog.Logger) {
+func runLogStreamScheduler(ctx context.Context, svc *reporting.LogStreamService, logger *slog.Logger) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
@@ -398,7 +401,7 @@ func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
 }
 
 type oidcDiscoveryAdapter struct {
-	client *service.HTTPOIDCClient
+	client *auth.HTTPOIDCClient
 }
 
 func (a *oidcDiscoveryAdapter) FetchDiscovery(ctx context.Context, discoveryURL string) (*mcpsvc.OIDCDiscovery, error) {

@@ -4,7 +4,7 @@ dashboard.go provides admin dashboard statistics.
 DashboardService computes entity counts and recent event aggregates for the
 admin UI dashboard summary view.
 */
-package service
+package reporting
 
 import (
 	"context"

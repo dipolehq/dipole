@@ -9,7 +9,7 @@ password_reset.go implements the "forgot password" flow:
   - ResetPassword: validates the raw token (hash-matches a non-expired,
     unused record), updates the user's password, and marks the token used.
 */
-package service
+package auth
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 const (
@@ -37,7 +38,7 @@ const (
 type PasswordResetService struct {
 	users        repository.UserRepository
 	resetRepo    repository.PasswordResetTokenRepository
-	emailSvc     EmailService
+	emailSvc     service.EmailService
 	resetBaseURL string
 }
 
@@ -51,7 +52,7 @@ func NewPasswordResetService(
 	}
 }
 
-func (s *PasswordResetService) SetEmail(emailSvc EmailService, resetBaseURL string) {
+func (s *PasswordResetService) SetEmail(emailSvc service.EmailService, resetBaseURL string) {
 	s.emailSvc = emailSvc
 	s.resetBaseURL = resetBaseURL
 }

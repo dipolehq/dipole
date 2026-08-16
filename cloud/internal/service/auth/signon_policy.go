@@ -5,7 +5,7 @@ Controls how admins authenticate: require_sso forces IdP login (except Super Adm
 require_mfa enforces multi-factor with a grace period for first-time setup.
 Super Admin always has native login access regardless of policy settings.
 */
-package service
+package auth
 
 import (
 	"errors"

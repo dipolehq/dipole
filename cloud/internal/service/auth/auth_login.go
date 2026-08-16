@@ -5,7 +5,7 @@ LoginService validates credentials, generates session tokens (JWTs), and
 provides the POST /api/v1/auth/login endpoint logic. Passwords are hashed
 with bcrypt. Session tokens are short-lived JWTs signed by the Identity Issuer.
 */
-package service
+package auth
 
 import (
 	"context"

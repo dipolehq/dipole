@@ -1,8 +1,12 @@
 /*
-Package service — auth.go implements API token authentication: hashing,
-generation, and resolving a Bearer token to its owning tenant.
+Package auth implements admin and API authentication: API token hashing and
+validation, email+password login, SSO, MFA, password reset, sign-on policy
+enforcement, and tenant signup.
+
+auth.go implements API token authentication: hashing, generation, and
+resolving a Bearer token to its owning tenant.
 */
-package service
+package auth
 
 import (
 	"context"

@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 )
 
 type userByEmailResolver interface {
@@ -25,12 +25,12 @@ type userByEmailResolver interface {
 }
 
 type MFAHandler struct {
-	mfaSvc *service.MFAService
+	mfaSvc *auth.MFAService
 	users  userByEmailResolver
 	audit  *events.EventBus
 }
 
-func NewMFAHandler(mfaSvc *service.MFAService, users userByEmailResolver) *MFAHandler {
+func NewMFAHandler(mfaSvc *auth.MFAService, users userByEmailResolver) *MFAHandler {
 	return &MFAHandler{mfaSvc: mfaSvc, users: users}
 }
 

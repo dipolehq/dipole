@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
@@ -26,14 +26,14 @@ type identityProviderStore interface {
 
 type SSOHandler struct {
 	idpRepo  identityProviderStore
-	ssoSvc   *service.AdminSSOService
+	ssoSvc   *auth.AdminSSOService
 	issuer   *identity.IdentityIssuer
 	tenantID uuid.UUID
 }
 
 func NewSSOHandler(
 	idpRepo identityProviderStore,
-	ssoSvc *service.AdminSSOService,
+	ssoSvc *auth.AdminSSOService,
 	issuer *identity.IdentityIssuer,
 	tenantID uuid.UUID,
 ) *SSOHandler {
@@ -103,7 +103,7 @@ func (h *SSOHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idpConfig := &service.IdentityProviderConfig{
+	idpConfig := &auth.IdentityProviderConfig{
 		ID:       idp.ID,
 		TenantID: h.tenantID,
 		Name:     idp.Name,
@@ -181,7 +181,7 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idpConfig := &service.IdentityProviderConfig{
+	idpConfig := &auth.IdentityProviderConfig{
 		ID:              idp.ID,
 		TenantID:        h.tenantID,
 		Name:            idp.Name,

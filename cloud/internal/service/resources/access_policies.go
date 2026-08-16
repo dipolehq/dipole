@@ -1,8 +1,8 @@
 /*
-Package service — access_policies.go implements business logic and
-validation for Access Policies, sitting between transport and repository.
+Package resources — access_policies.go implements business logic and
+validation for Access Policies.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -12,18 +12,19 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 type AccessPolicyService struct {
 	repo    repository.AccessPolicyRepository
-	limiter *PlanLimiter
+	limiter *service.PlanLimiter
 }
 
 func NewAccessPolicyService(repo repository.AccessPolicyRepository) *AccessPolicyService {
 	return &AccessPolicyService{repo: repo}
 }
 
-func (s *AccessPolicyService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *AccessPolicyService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *AccessPolicyService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessPolicy, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -42,7 +43,7 @@ func (s *AccessPolicyService) Get(ctx context.Context, tenantID, id uuid.UUID) (
 
 func (s *AccessPolicyService) Create(ctx context.Context, tenantID uuid.UUID, p *domain.AccessPolicy) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceAccessPolicies); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceAccessPolicies); err != nil {
 			return err
 		}
 	}

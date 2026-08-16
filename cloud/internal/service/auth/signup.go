@@ -4,7 +4,7 @@ signup.go implements self-serve tenant provisioning for new customers.
 Creates a tenant (with unique subdomain), admin user, default resource set,
 and issues a session JWT for immediate login after signup.
 */
-package service
+package auth
 
 import (
 	"context"

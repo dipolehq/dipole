@@ -1,8 +1,8 @@
 /*
-Package service — server_workloads.go implements business logic and
-validation for Server Workloads, sitting between transport and repository.
+Package resources — server_workloads.go implements business logic and
+validation for Server Workloads.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -12,18 +12,19 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 type ServerWorkloadService struct {
 	repo    repository.ServerWorkloadRepository
-	limiter *PlanLimiter
+	limiter *service.PlanLimiter
 }
 
 func NewServerWorkloadService(repo repository.ServerWorkloadRepository) *ServerWorkloadService {
 	return &ServerWorkloadService{repo: repo}
 }
 
-func (s *ServerWorkloadService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *ServerWorkloadService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *ServerWorkloadService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ServerWorkload, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -42,7 +43,7 @@ func (s *ServerWorkloadService) Get(ctx context.Context, tenantID, id uuid.UUID)
 
 func (s *ServerWorkloadService) Create(ctx context.Context, tenantID uuid.UUID, sw *domain.ServerWorkload) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceServerWorkloads); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceServerWorkloads); err != nil {
 			return err
 		}
 	}

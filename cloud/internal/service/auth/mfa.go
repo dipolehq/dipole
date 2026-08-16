@@ -12,7 +12,7 @@ MFAService is stateless with respect to tenant: every method takes tenantID as
 an explicit parameter resolved per-request from the caller's JWT, rather than
 baked in at construction. This lets a single instance serve every tenant.
 */
-package service
+package auth
 
 import (
 	"context"

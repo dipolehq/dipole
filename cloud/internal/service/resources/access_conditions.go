@@ -1,8 +1,13 @@
 /*
-Package service — access_conditions.go implements business logic and
-validation for Access Conditions, sitting between transport and repository.
+Package resources implements business logic and validation for the core
+policy entities — Client Workloads, Server Workloads, Trust Providers,
+Credential Providers, Access Conditions, and Access Policies — sitting
+between transport and repository.
+
+access_conditions.go implements business logic and validation for Access
+Conditions.
 */
-package service
+package resources
 
 import (
 	"context"
@@ -12,18 +17,19 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 type AccessConditionService struct {
 	repo    repository.AccessConditionRepository
-	limiter *PlanLimiter
+	limiter *service.PlanLimiter
 }
 
 func NewAccessConditionService(repo repository.AccessConditionRepository) *AccessConditionService {
 	return &AccessConditionService{repo: repo}
 }
 
-func (s *AccessConditionService) SetLimiter(l *PlanLimiter) { s.limiter = l }
+func (s *AccessConditionService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *AccessConditionService) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error) {
 	return s.repo.List(ctx, tenantID, opts)
@@ -42,7 +48,7 @@ func (s *AccessConditionService) Get(ctx context.Context, tenantID, id uuid.UUID
 
 func (s *AccessConditionService) Create(ctx context.Context, tenantID uuid.UUID, ac *domain.AccessCondition) error {
 	if s.limiter != nil {
-		if err := s.limiter.Check(ctx, tenantID, ResourceAccessConditions); err != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceAccessConditions); err != nil {
 			return err
 		}
 	}

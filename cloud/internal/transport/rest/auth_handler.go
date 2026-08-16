@@ -8,18 +8,18 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
-	loginSvc    *service.LoginService
-	passwordSvc *service.PasswordResetService
-	signupSvc   *service.SignupService
+	loginSvc    *auth.LoginService
+	passwordSvc *auth.PasswordResetService
+	signupSvc   *auth.SignupService
 	audit       *events.EventBus
 }
 
-func NewAuthHandler(loginSvc *service.LoginService, passwordSvc *service.PasswordResetService, signupSvc *service.SignupService) *AuthHandler {
+func NewAuthHandler(loginSvc *auth.LoginService, passwordSvc *auth.PasswordResetService, signupSvc *auth.SignupService) *AuthHandler {
 	return &AuthHandler{loginSvc: loginSvc, passwordSvc: passwordSvc, signupSvc: signupSvc}
 }
 
@@ -47,7 +47,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.loginSvc.Login(r.Context(), &service.LoginRequest{
+	resp, err := h.loginSvc.Login(r.Context(), &auth.LoginRequest{
 		Email:    req.Email,
 		Password: req.Password,
 		TenantID: req.TenantID,
@@ -72,7 +72,7 @@ func (h *AuthHandler) HandleForgotPassword(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp, err := h.passwordSvc.ForgotPassword(r.Context(), &service.ForgotPasswordRequest{
+	resp, err := h.passwordSvc.ForgotPassword(r.Context(), &auth.ForgotPasswordRequest{
 		Email: req.Email,
 	})
 	if err != nil {
@@ -93,7 +93,7 @@ func (h *AuthHandler) HandleResetPassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err := h.passwordSvc.ResetPassword(r.Context(), &service.ResetPasswordRequest{
+	err := h.passwordSvc.ResetPassword(r.Context(), &auth.ResetPasswordRequest{
 		Token:       req.Token,
 		NewPassword: req.NewPassword,
 	})
@@ -200,7 +200,7 @@ func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.signupSvc.Signup(r.Context(), &service.SignupRequest{
+	resp, err := h.signupSvc.Signup(r.Context(), &auth.SignupRequest{
 		FirstName:   req.FirstName,
 		LastName:    req.LastName,
 		CompanyName: req.CompanyName,

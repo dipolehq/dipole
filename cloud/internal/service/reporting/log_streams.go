@@ -6,7 +6,7 @@ export worker that periodically batches events and sends them to configured
 destinations (AWS S3, GCS, Splunk HEC, CrowdStrike SIEM). Events are tracked
 by last_exported_at to avoid re-exporting. Failed exports retry next cycle.
 */
-package service
+package reporting
 
 import (
 	"bytes"

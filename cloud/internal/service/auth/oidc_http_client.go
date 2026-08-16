@@ -3,7 +3,7 @@ oidc_http_client.go provides the concrete HTTP implementation of the OIDCClient
 interface used by AdminSSOService. Handles OIDC discovery with 1-hour caching
 and authorization code exchange.
 */
-package service
+package auth
 
 import (
 	"context"

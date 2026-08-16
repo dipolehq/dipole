@@ -1,11 +1,15 @@
 /*
+Package reporting implements read-only aggregation and reporting services —
+admin dashboard statistics, global policy compliance checking, and event
+export to external SIEM/storage systems.
+
 compliance.go implements Global Policy Compliance checking.
 
 ComplianceService evaluates Access Policies against org-wide compliance rules
 (e.g., "all policies must have a Trust Provider"). Reports which policies
 comply and which don't — advisory only, does not block policy creation.
 */
-package service
+package reporting
 
 import (
 	"context"
