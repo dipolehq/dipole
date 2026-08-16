@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -18,7 +19,7 @@ type mockTokenConfigResolver struct {
 	config *TokenConfig
 }
 
-func (r *mockTokenConfigResolver) ResolveTokenConfig(_ uuid.UUID, _ uuid.UUID) (*TokenConfig, error) {
+func (r *mockTokenConfigResolver) ResolveTokenConfig(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*TokenConfig, error) {
 	return r.config, nil
 }
 
@@ -44,7 +45,6 @@ func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 
 	svc := NewTokenService(codeStore, issuer, resolver)
 
-	// Create a code with a known verifier
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 	hash := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
@@ -55,7 +55,6 @@ func setupTokenService(t *testing.T) (*TokenService, *AuthCodeStore, string) {
 
 	code := codeStore.Create(clientID, tenantID, "http://localhost:7777/cb", challenge, "openid", nil, policyID)
 
-	// Store context for tests
 	t.Setenv("TEST_CLIENT_ID", clientID.String())
 	t.Setenv("TEST_TENANT_ID", tenantID.String())
 
@@ -86,7 +85,7 @@ func TestTokenExchange_ValidPKCE_ReturnsToken(t *testing.T) {
 	policyID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost:7777/cb", challenge, "openid", nil, policyID)
 
-	resp, err := svc.Exchange(&TokenRequest{
+	resp, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost:7777/cb",
@@ -127,7 +126,7 @@ func TestTokenExchange_WrongVerifier_Fails(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	_, err := svc.Exchange(&TokenRequest{
+	_, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -148,7 +147,7 @@ func TestTokenExchange_InvalidCode_Fails(t *testing.T) {
 	}
 	svc := NewTokenService(codeStore, issuer, resolver)
 
-	_, err := svc.Exchange(&TokenRequest{
+	_, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         "nonexistent-code",
 		RedirectURI:  "http://localhost/cb",
@@ -184,8 +183,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	// Exchange code for token + refresh token
-	resp1, err := svc.Exchange(&TokenRequest{
+	resp1, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -199,8 +197,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 		t.Fatal("expected refresh_token")
 	}
 
-	// Use refresh token → should succeed
-	resp2, err := svc.Exchange(&TokenRequest{
+	resp2, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: resp1.RefreshToken,
 		ClientID:     clientID.String(),
@@ -218,8 +215,7 @@ func TestRefreshToken_SingleUse(t *testing.T) {
 		t.Error("new refresh_token should be different from old one")
 	}
 
-	// Reuse old refresh token → should fail (single-use)
-	_, err = svc.Exchange(&TokenRequest{
+	_, err = svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: resp1.RefreshToken,
 		ClientID:     clientID.String(),
@@ -237,7 +233,7 @@ func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
 	}
 	svc := NewTokenService(codeStore, issuer, resolver)
 
-	_, err := svc.Exchange(&TokenRequest{
+	_, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType: "implicit",
 	}, uuid.New(), "https://test-id.dipolehq.com")
 
@@ -246,11 +242,6 @@ func TestTokenExchange_UnsupportedGrantType(t *testing.T) {
 	}
 }
 
-// An authorization code belongs to the tenant that issued it. Redeeming it
-// against another tenant's hostname must fail here, explicitly, rather than
-// downstream when the code's policy happens not to be found under the redeeming
-// tenant — that protection is incidental and would vanish if the policy lookup
-// were ever cached or relaxed.
 func TestTokenExchange_CodeFromAnotherTenant_Rejected(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -273,7 +264,7 @@ func TestTokenExchange_CodeFromAnotherTenant_Rejected(t *testing.T) {
 	redeemingTenant := uuid.New()
 	code := codeStore.Create(clientID, issuingTenant, "http://localhost:7777/cb", challenge, "openid", nil, uuid.New())
 
-	_, err := svc.Exchange(&TokenRequest{
+	_, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost:7777/cb",
@@ -286,8 +277,6 @@ func TestTokenExchange_CodeFromAnotherTenant_Rejected(t *testing.T) {
 	}
 }
 
-// Same for refresh tokens: the entry records its tenant, and a refresh presented
-// on another tenant's hostname must be refused.
 func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -311,7 +300,7 @@ func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 	issuingTenant := uuid.New()
 	code := codeStore.Create(clientID, issuingTenant, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	issued, err := svc.Exchange(&TokenRequest{
+	issued, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -325,7 +314,7 @@ func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 		t.Fatal("expected a refresh token")
 	}
 
-	_, err = svc.Exchange(&TokenRequest{
+	_, err = svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: issued.RefreshToken,
 		ClientID:     clientID.String(),
@@ -336,12 +325,7 @@ func TestRefreshToken_FromAnotherTenant_Rejected(t *testing.T) {
 	}
 }
 
-// The token's iss claim must be the per-tenant identity host passed by the
-// handler, not the shared platform issuer. External systems (customer MCP
-// servers, AWS STS, Azure Entra) fetch OIDC discovery from this URL and
-// reject a token whose iss doesn't match.
 func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
-	// Platform issuer is deliberately different from the per-tenant one we pass.
 	issuer, _ := identity.NewIdentityIssuer("https://shared-platform-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
 	resolver := &mockTokenConfigResolver{
@@ -363,7 +347,7 @@ func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
 	perTenantIssuer := "https://mytenant-id.dipolehq.com"
-	resp, err := svc.Exchange(&TokenRequest{
+	resp, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -374,7 +358,6 @@ func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
 		t.Fatalf("exchange failed: %v", err)
 	}
 
-	// Decode the token and check iss
 	parts := strings.Split(resp.AccessToken, ".")
 	if len(parts) != 3 {
 		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
@@ -392,9 +375,6 @@ func TestTokenExchange_IssuerIsPerTenant(t *testing.T) {
 	}
 }
 
-// When the resolver has a Client Workload name to offer, the issued token
-// must carry it as a custom claim, so left-side auth can read the MCP client
-// identity back per-request without a second DB lookup.
 func TestTokenExchange_EmbedsClientWorkloadClaims(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -419,7 +399,7 @@ func TestTokenExchange_EmbedsClientWorkloadClaims(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	resp, err := svc.Exchange(&TokenRequest{
+	resp, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -439,9 +419,6 @@ func TestTokenExchange_EmbedsClientWorkloadClaims(t *testing.T) {
 	}
 }
 
-// When the resolver has no Client Workload name (lookup failed, or policy
-// predates this feature), the claim must be omitted entirely — never an
-// empty-string placeholder that a caller might mistake for a real value.
 func TestTokenExchange_NoClientWorkloadName_ClaimOmitted(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -451,7 +428,6 @@ func TestTokenExchange_NoClientWorkloadName_ClaimOmitted(t *testing.T) {
 			Subject:   "user@example.com",
 			Lifetime:  1 * time.Hour,
 			Algorithm: "ES256",
-			// ClientWorkloadName intentionally left empty.
 		},
 	}
 	svc := NewTokenService(codeStore, issuer, resolver)
@@ -464,7 +440,7 @@ func TestTokenExchange_NoClientWorkloadName_ClaimOmitted(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	resp, err := svc.Exchange(&TokenRequest{
+	resp, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -484,8 +460,6 @@ func TestTokenExchange_NoClientWorkloadName_ClaimOmitted(t *testing.T) {
 	}
 }
 
-// Refresh must re-resolve config and re-embed the same claims — a client's
-// identity should not disappear from the token after a refresh cycle.
 func TestRefreshToken_PreservesClientWorkloadClaims(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -512,7 +486,7 @@ func TestRefreshToken_PreservesClientWorkloadClaims(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	resp1, err := svc.Exchange(&TokenRequest{
+	resp1, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -523,7 +497,7 @@ func TestRefreshToken_PreservesClientWorkloadClaims(t *testing.T) {
 		t.Fatalf("initial exchange failed: %v", err)
 	}
 
-	resp2, err := svc.Exchange(&TokenRequest{
+	resp2, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: resp1.RefreshToken,
 		ClientID:     clientID.String(),
@@ -555,11 +529,6 @@ func decodeJWTClaims(t *testing.T, token string) map[string]any {
 	return claims
 }
 
-// Isolates the issuerURL guard specifically: uses an otherwise-valid code and
-// PKCE verifier so the ONLY thing that can fail is the empty issuerURL. Minting
-// a token with no iss (falling back silently to the platform issuer) is worse
-// than refusing to mint one, since that failure surfaces later, at a relying
-// party, with no context linking it back to this call.
 func TestTokenExchange_EmptyIssuerURL_Rejected(t *testing.T) {
 	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
 	codeStore := NewAuthCodeStore()
@@ -573,7 +542,7 @@ func TestTokenExchange_EmptyIssuerURL_Rejected(t *testing.T) {
 	tenantID := uuid.New()
 	code := codeStore.Create(clientID, tenantID, "http://localhost/cb", challenge, "openid", nil, uuid.New())
 
-	_, err := svc.Exchange(&TokenRequest{
+	_, err := svc.Exchange(context.Background(), &TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         code,
 		RedirectURI:  "http://localhost/cb",
@@ -583,5 +552,38 @@ func TestTokenExchange_EmptyIssuerURL_Rejected(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error for empty issuerURL")
+	}
+}
+
+func TestTokenService_SweepExpired_RemovesUsedAndExpiredRefreshTokens(t *testing.T) {
+	issuer, _ := identity.NewIdentityIssuer("https://test-id.dipolehq.com")
+	codeStore := NewAuthCodeStore()
+	resolver := &mockTokenConfigResolver{config: &TokenConfig{Audience: "a", Subject: "s", Lifetime: time.Hour, Algorithm: "ES256"}}
+	svc := NewTokenService(codeStore, issuer, resolver)
+
+	usedToken := svc.createRefreshToken(uuid.New(), uuid.New(), nil, uuid.New(), "openid", time.Hour)
+	svc.mu.Lock()
+	svc.refreshTokens[usedToken].Used = true
+	svc.mu.Unlock()
+
+	expiredToken := svc.createRefreshToken(uuid.New(), uuid.New(), nil, uuid.New(), "openid", -time.Hour)
+	liveToken := svc.createRefreshToken(uuid.New(), uuid.New(), nil, uuid.New(), "openid", time.Hour)
+
+	svc.SweepExpired(time.Now().UTC())
+
+	svc.mu.RLock()
+	_, usedStillPresent := svc.refreshTokens[usedToken]
+	_, expiredStillPresent := svc.refreshTokens[expiredToken]
+	_, liveStillPresent := svc.refreshTokens[liveToken]
+	svc.mu.RUnlock()
+
+	if usedStillPresent {
+		t.Error("expected used refresh token to be swept")
+	}
+	if expiredStillPresent {
+		t.Error("expected expired refresh token to be swept")
+	}
+	if !liveStillPresent {
+		t.Error("expected live refresh token to remain")
 	}
 }

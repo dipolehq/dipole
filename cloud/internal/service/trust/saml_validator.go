@@ -63,9 +63,12 @@ func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return nil, fmt.Errorf("get IdP certificate: %w", err)
 	}
 
-	claims, err := v.validateSAMLResponse(samlResponse, idpCert)
+	claims, expired, err := v.validateSAMLResponse(samlResponse, idpCert)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
+	}
+	if expired {
+		return &domain.TrustProviderResult{Attested: false, Reason: "AssertionExpired"}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
@@ -134,24 +137,29 @@ func (v *SAMLValidator) getIdPCertificate(ctx context.Context, cfg samlConfig) (
 	return nil, fmt.Errorf("no signing certificate found in IdP metadata")
 }
 
-func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x509.Certificate) (map[string]interface{}, error) {
+// samlClockSkew tolerates minor clock drift between the IdP and this server
+// when checking assertion validity windows, matching the default used by the
+// crewjam/saml Service Provider implementation.
+const samlClockSkew = 180 * time.Second
+
+func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x509.Certificate) (claims map[string]interface{}, expired bool, err error) {
 	responseBytes, err := base64.StdEncoding.DecodeString(responseBase64)
 	if err != nil {
-		return nil, fmt.Errorf("decode SAML response: %w", err)
+		return nil, false, fmt.Errorf("decode SAML response: %w", err)
 	}
 
 	// Verify XML digital signature using IdP certificate
 	if err := verifySAMLSignature(responseBytes, idpCert); err != nil {
-		return nil, fmt.Errorf("signature verification failed: %w", err)
+		return nil, false, fmt.Errorf("signature verification failed: %w", err)
 	}
 
 	var response saml.Response
 	if err := xml.Unmarshal(responseBytes, &response); err != nil {
-		return nil, fmt.Errorf("parse SAML response XML: %w", err)
+		return nil, false, fmt.Errorf("parse SAML response XML: %w", err)
 	}
 
 	// Extract claims from the SAML assertion
-	claims := map[string]interface{}{}
+	claims = map[string]interface{}{}
 
 	if response.Issuer != nil {
 		claims["iss"] = response.Issuer.Value
@@ -169,7 +177,11 @@ func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x50
 			for _, ar := range response.Assertion.Conditions.AudienceRestrictions {
 				claims["aud"] = ar.Audience.Value
 			}
+			if assertionExpired(response.Assertion.Conditions.NotBefore, response.Assertion.Conditions.NotOnOrAfter) {
+				return claims, true, nil
+			}
 		}
+
 		for _, stmt := range response.Assertion.AttributeStatements {
 			for _, attr := range stmt.Attributes {
 				if len(attr.Values) > 0 {
@@ -179,7 +191,24 @@ func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x50
 		}
 	}
 
-	return claims, nil
+	return claims, false, nil
+}
+
+// assertionExpired reports whether now falls outside the assertion's
+// [NotBefore, NotOnOrAfter) validity window, allowing samlClockSkew of
+// tolerance in each direction. A captured SAMLResponse can otherwise be
+// replayed for as long as the IdP's validity window remains open, since
+// nothing else in this flow is bound to a single use of the assertion.
+// Zero-value times (field absent from the assertion) are not enforced.
+func assertionExpired(notBefore, notOnOrAfter time.Time) bool {
+	now := time.Now().UTC()
+	if !notBefore.IsZero() && notBefore.Add(-samlClockSkew).After(now) {
+		return true
+	}
+	if !notOnOrAfter.IsZero() && notOnOrAfter.Add(samlClockSkew).Before(now) {
+		return true
+	}
+	return false
 }
 
 func verifySAMLSignature(responseXML []byte, idpCert *x509.Certificate) error {

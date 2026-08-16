@@ -1,24 +1,15 @@
-/*
-token_config_resolver.go resolves token configuration from Access Policy
-Credential Providers for MCP token issuance.
-
-PolicyTokenConfigResolver loads the Access Policy by ID, finds the associated
-Credential Provider (typically OIDC ID Token type for MCP flows), and extracts
-the audience, subject, lifetime, algorithm, and refresh settings needed to
-issue the access token.
-*/
+// token_config_resolver.go implements PolicyTokenConfigResolver, which resolves token issuance settings from an Access Policy's Credential Provider.
 package mcp
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
@@ -49,9 +40,7 @@ type oidcCPConfig struct {
 	RefreshAbsExpiry int            `json:"refresh_absolute_expiry_seconds"`
 }
 
-func (r *PolicyTokenConfigResolver) ResolveTokenConfig(policyID uuid.UUID, tenantID uuid.UUID) (*TokenConfig, error) {
-	ctx := context.Background()
-
+func (r *PolicyTokenConfigResolver) ResolveTokenConfig(ctx context.Context, policyID uuid.UUID, tenantID uuid.UUID) (*TokenConfig, error) {
 	policy, err := r.policyRepo.GetByID(ctx, tenantID, policyID)
 	if err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
@@ -87,11 +76,6 @@ func (r *PolicyTokenConfigResolver) ResolveTokenConfig(policyID uuid.UUID, tenan
 		refreshAbsExpiry = 24 * time.Hour
 	}
 
-	// Resolve the Client Workload name for embedding in the issued token.
-	// Best-effort: a lookup failure here must never block token issuance —
-	// the MCP client identity is a nice-to-have for observability, not a
-	// security decision (that already happened when the policy matched the
-	// redirect_uri at /authorize time).
 	var clientWorkloadID uuid.UUID
 	var clientWorkloadName string
 	if r.cwRepo != nil {
@@ -123,7 +107,7 @@ func (r *PolicyTokenConfigResolver) decryptAndParse(cp *domain.CredentialProvide
 	var plaintext []byte
 	if len(r.encKey) > 0 && len(cp.ConfigEncrypted) > 0 {
 		var err error
-		plaintext, err = decryptAESGCM(cp.ConfigEncrypted, r.encKey)
+		plaintext, err = crypto.Decrypt(cp.ConfigEncrypted, r.encKey)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt credential provider config: %w", err)
 		}
@@ -136,21 +120,4 @@ func (r *PolicyTokenConfigResolver) decryptAndParse(cp *domain.CredentialProvide
 		return nil, fmt.Errorf("parse credential provider config: %w", err)
 	}
 	return &cfg, nil
-}
-
-func decryptAESGCM(ciphertext, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-	nonce, ct := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	return gcm.Open(nil, nonce, ct, nil)
 }

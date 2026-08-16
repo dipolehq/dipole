@@ -209,7 +209,7 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		RefreshToken: r.FormValue("refresh_token"),
 	}
 
-	resp, err := s.tokens.Exchange(req, tenantID, issuerURL)
+	resp, err := s.tokens.Exchange(r.Context(), req, tenantID, issuerURL)
 	if err != nil {
 		errCode := "invalid_grant"
 		if err.Error() == "unsupported_grant_type" {

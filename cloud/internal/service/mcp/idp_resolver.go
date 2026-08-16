@@ -1,8 +1,4 @@
-/*
-idp_resolver.go resolves the tenant's Identity Provider configuration for
-MCP SSO flows. Fetches the OIDC discovery document or parses SAML metadata
-to dynamically resolve IdP endpoints.
-*/
+// idp_resolver.go implements DBIdentityProviderResolver, which resolves a tenant's Identity Provider configuration for MCP SSO flows via OIDC discovery or SAML metadata.
 package mcp
 
 import (

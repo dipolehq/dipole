@@ -1,13 +1,8 @@
-/*
-token.go implements the OAuth token exchange for MCP authorization.
-
-TokenService validates authorization codes (with PKCE verification),
-issues JWT access tokens via the IdentityIssuer, and manages refresh tokens.
-Supports both authorization_code and refresh_token grant types.
-*/
+// token.go implements TokenService, which exchanges authorization codes and refresh tokens for JWT access tokens.
 package mcp
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -76,7 +71,7 @@ type TokenService struct {
 }
 
 type TokenConfigResolver interface {
-	ResolveTokenConfig(policyID uuid.UUID, tenantID uuid.UUID) (*TokenConfig, error)
+	ResolveTokenConfig(ctx context.Context, policyID uuid.UUID, tenantID uuid.UUID) (*TokenConfig, error)
 }
 
 func NewTokenService(codeStore *AuthCodeStore, issuer *identity.IdentityIssuer, configResolver TokenConfigResolver) *TokenService {
@@ -88,36 +83,27 @@ func NewTokenService(codeStore *AuthCodeStore, issuer *identity.IdentityIssuer, 
 	}
 }
 
-func (s *TokenService) Exchange(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
+func (s *TokenService) Exchange(ctx context.Context, req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
 	if issuerURL == "" {
 		return nil, errors.New("token issuer URL is required")
 	}
 
 	switch req.GrantType {
 	case "authorization_code":
-		return s.exchangeCode(req, tenantID, issuerURL)
+		return s.exchangeCode(ctx, req, tenantID, issuerURL)
 	case "refresh_token":
-		return s.exchangeRefresh(req, tenantID, issuerURL)
+		return s.exchangeRefresh(ctx, req, tenantID, issuerURL)
 	default:
 		return nil, errors.New("unsupported_grant_type")
 	}
 }
 
-func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
+func (s *TokenService) exchangeCode(ctx context.Context, req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
 	pending, err := s.codeStore.Consume(req.Code)
 	if err != nil {
 		return nil, ErrInvalidGrant
 	}
 
-	// The code was issued for one tenant; this exchange arrived on some tenant's
-	// hostname. They must agree.
-	//
-	// Redeeming another tenant's code already failed downstream, because the
-	// policy referenced by the code isn't found under the redeeming tenant. That
-	// protection was incidental — it depended on the policy lookup staying
-	// tenant-scoped, and would disappear if that lookup were ever cached or
-	// relaxed. Checked explicitly here, and reported as invalid_grant so nothing
-	// is revealed about codes belonging to other tenants.
 	if pending.TenantID != tenantID {
 		return nil, ErrInvalidGrant
 	}
@@ -135,7 +121,7 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID, issue
 		return nil, ErrPKCEFailed
 	}
 
-	cfg, err := s.tokenConfig.ResolveTokenConfig(pending.PolicyID, tenantID)
+	cfg, err := s.tokenConfig.ResolveTokenConfig(ctx, pending.PolicyID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +161,7 @@ func (s *TokenService) exchangeCode(req *TokenRequest, tenantID uuid.UUID, issue
 	return resp, nil
 }
 
-func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
+func (s *TokenService) exchangeRefresh(ctx context.Context, req *TokenRequest, tenantID uuid.UUID, issuerURL string) (*TokenResponse, error) {
 	s.mu.Lock()
 	entry, ok := s.refreshTokens[req.RefreshToken]
 	if !ok || entry.Used || time.Now().UTC().After(entry.AbsoluteExpiresAt) {
@@ -185,9 +171,6 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, is
 	entry.Used = true
 	s.mu.Unlock()
 
-	// Same reasoning as the authorization-code path: the refresh token belongs to
-	// one tenant, and this request arrived on some tenant's hostname. Checked
-	// explicitly rather than relying on the downstream policy lookup to fail.
 	if entry.TenantID != tenantID {
 		return nil, ErrRefreshTokenInvalid
 	}
@@ -197,7 +180,7 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, is
 		return nil, ErrClientIDMismatchT
 	}
 
-	cfg, err := s.tokenConfig.ResolveTokenConfig(entry.PolicyID, tenantID)
+	cfg, err := s.tokenConfig.ResolveTokenConfig(ctx, entry.PolicyID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +206,6 @@ func (s *TokenService) exchangeRefresh(req *TokenRequest, tenantID uuid.UUID, is
 		return nil, err
 	}
 
-	// New refresh token inherits the SAME absolute expiry (does NOT reset)
 	newRT := s.createRefreshTokenWithExpiry(entry.ClientID, tenantID, entry.UserClaims, entry.PolicyID, entry.Scope, entry.AbsoluteExpiresAt)
 
 	return &TokenResponse{
@@ -256,6 +238,17 @@ func (s *TokenService) createRefreshTokenWithExpiry(clientID, tenantID uuid.UUID
 	s.mu.Unlock()
 
 	return token
+}
+
+func (s *TokenService) SweepExpired(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for token, entry := range s.refreshTokens {
+		if entry.Used || now.After(entry.AbsoluteExpiresAt) {
+			delete(s.refreshTokens, token)
+		}
+	}
 }
 
 func addClientWorkloadClaims(customClaims map[string]any, cfg *TokenConfig) {

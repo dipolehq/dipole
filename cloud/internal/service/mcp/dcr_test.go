@@ -93,8 +93,6 @@ func TestDCR_MissingResponseType_Error(t *testing.T) {
 	}
 }
 
-// RFC 7591 §2: when grant_types and response_types are omitted, defaults are
-// authorization_code and code respectively. Claude.ai sends neither.
 func TestDCR_OmittedGrantAndResponseTypes_DefaultsApplied(t *testing.T) {
 	repo := newMockClientRepo()
 	svc := NewDCRService(repo)

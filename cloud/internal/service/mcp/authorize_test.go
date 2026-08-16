@@ -2,9 +2,11 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -151,9 +153,6 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 		t.Error("IdP redirect should contain state param")
 	}
 
-	// The redirect_uri handed to the IdP must be built from the hostname this
-	// request arrived on — that's what the customer registered with the IdP.
-	// A mismatch surfaces as redirect_uri_mismatch.
 	parsed, perr := url.Parse(result.IdPRedirect)
 	if perr != nil {
 		t.Fatalf("IdP redirect is not a valid URL: %v", perr)
@@ -161,14 +160,11 @@ func TestAuthorize_SSOOn_RedirectsToIdP(t *testing.T) {
 	if got, want := parsed.Query().Get("redirect_uri"), "https://647251-mcp.dipolehq.com/callback/oidc"; got != want {
 		t.Errorf("redirect_uri = %q, want %q", got, want)
 	}
-	// Percent-encoded, not raw — providers treat raw "://" inconsistently.
 	if strings.Contains(parsed.RawQuery, "redirect_uri=https://") {
 		t.Error("redirect_uri is not percent-encoded in the query string")
 	}
 }
 
-// Without a resolved hostname we'd send the IdP a malformed redirect_uri and
-// fail opaquely at the provider, so this must fail loudly instead.
 func TestAuthorize_SSOOn_MissingServerBaseURL_Fails(t *testing.T) {
 	dcrSvc := NewDCRService(newMockClientRepo())
 	codeStore := NewAuthCodeStore()
@@ -202,7 +198,6 @@ func TestAuthorize_SSOOn_MissingServerBaseURL_Fails(t *testing.T) {
 		CodeChallenge:       "challenge",
 		CodeChallengeMethod: "S256",
 		Resource:            "https://mcp.example.com",
-		// ServerBaseURL deliberately omitted.
 	}, "1.2.3.4")
 
 	if err == nil {
@@ -322,5 +317,70 @@ func TestAuthorize_ConditionFailed_Error(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "outside business hours") {
 		t.Errorf("error should mention reason, got: %v", err)
+	}
+}
+
+func TestAuthorize_MultipleSSOTrustProviders_Rejected(t *testing.T) {
+	repo := newMockClientRepo()
+	dcrSvc := NewDCRService(repo)
+	codeStore := NewAuthCodeStore()
+
+	tenantID := uuid.New()
+	resp, _ := dcrSvc.Register(context.Background(), tenantID, &DCRRequest{
+		RedirectURIs:  []string{"http://localhost:7777/oauth/callback"},
+		GrantTypes:    []string{"authorization_code"},
+		ResponseTypes: []string{"code"},
+	})
+
+	finder := &mockPolicyFinder{
+		policy: &domain.AccessPolicyWithRelations{
+			Policy:         domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+			ClientWorkload: domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "redirect_uri", Value: "http://localhost:7777/oauth/callback"}}},
+			ServerWorkload: domain.ServerWorkload{AppProtocol: "MCP"},
+			TrustProviders: []domain.TrustProvider{
+				{Type: domain.TrustProviderTypeOIDCIDToken, Config: []byte(`{}`)},
+				{Type: domain.TrustProviderTypeSAMLv2Response, Config: []byte(`{}`)},
+			},
+		},
+	}
+
+	idpSvc := NewIdPService(&mockIdPResolver{})
+	authSvc := NewAuthorizeService(dcrSvc, codeStore, finder, nil, idpSvc)
+
+	_, err := authSvc.Authorize(context.Background(), tenantID, &AuthorizeRequest{
+		ClientID:            resp.ClientID,
+		RedirectURI:         "http://localhost:8080/oauth/callback",
+		ResponseType:        "code",
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		Resource:            "https://mcp.example.com",
+		ServerBaseURL:       "https://647251-mcp.dipolehq.com",
+	}, "1.2.3.4")
+
+	if !errors.Is(err, ErrMultipleSSOTrustProviders) {
+		t.Fatalf("expected ErrMultipleSSOTrustProviders, got %v", err)
+	}
+}
+
+func TestIdPService_SweepExpired_RemovesOnlyExpiredSessions(t *testing.T) {
+	idpSvc := NewIdPService(&mockIdPResolver{})
+
+	idpSvc.mu.Lock()
+	idpSvc.sessions["expired-state"] = &IdPSession{CreatedAt: time.Now().UTC().Add(-10 * time.Minute)}
+	idpSvc.sessions["live-state"] = &IdPSession{CreatedAt: time.Now().UTC()}
+	idpSvc.mu.Unlock()
+
+	idpSvc.SweepExpired(time.Now().UTC())
+
+	idpSvc.mu.RLock()
+	_, expiredStillPresent := idpSvc.sessions["expired-state"]
+	_, liveStillPresent := idpSvc.sessions["live-state"]
+	idpSvc.mu.RUnlock()
+
+	if expiredStillPresent {
+		t.Error("expected expired session to be swept")
+	}
+	if !liveStillPresent {
+		t.Error("expected live session to remain")
 	}
 }

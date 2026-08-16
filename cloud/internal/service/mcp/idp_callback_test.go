@@ -16,7 +16,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// stubTrustValidator stands in for real signature/issuer verification, which is covered by OIDCValidator tests.
 type stubTrustValidator struct {
 	attested bool
 	reason   string
@@ -29,7 +28,6 @@ func (v *stubTrustValidator) Validate(_ context.Context, _ *domain.TrustProvider
 	return &domain.TrustProviderResult{Attested: true}, nil
 }
 
-// fakeIDToken builds a JWT-shaped string; only the payload segment is real.
 func fakeIDToken(t *testing.T, claims map[string]any) string {
 	t.Helper()
 	payload, err := json.Marshal(claims)
@@ -42,13 +40,12 @@ func fakeIDToken(t *testing.T, claims map[string]any) string {
 	return header + "." + body + "." + sig
 }
 
-// newTestCallbackService pre-seeds a session and fakes the IdP token endpoint so tests can call HandleOIDCCallback directly.
 func newTestCallbackService(t *testing.T, idToken string, trust TrustValidator) (*IdPCallbackService, string, string) {
 	t.Helper()
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"id_token": idToken}) //nolint:errcheck
+		json.NewEncoder(w).Encode(map[string]string{"id_token": idToken})
 	}))
 	t.Cleanup(tokenServer.Close)
 
@@ -139,7 +136,6 @@ func TestHandleOIDCCallback_MismatchedNonce_Rejected(t *testing.T) {
 }
 
 func TestHandleOIDCCallback_MissingNonceClaim_Rejected(t *testing.T) {
-	// Token has no "nonce" claim at all.
 	idToken := fakeIDToken(t, map[string]any{
 		"iss":            "https://accounts.google.com",
 		"aud":            "our-google-client-id",
@@ -160,7 +156,6 @@ func TestHandleOIDCCallback_MissingNonceClaim_Rejected(t *testing.T) {
 }
 
 func TestHandleOIDCCallback_TrustValidationFailed_NonceNeverChecked(t *testing.T) {
-	// Trust validation must fail before the nonce check runs.
 	idToken := fakeIDToken(t, map[string]any{
 		"nonce": "test-nonce-abc123",
 	})

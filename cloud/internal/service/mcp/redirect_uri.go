@@ -1,10 +1,4 @@
-/*
-redirect_uri.go implements redirect URI matching per the MCP specification.
-
-MatchRedirectURI performs exact match for non-localhost URIs.
-For localhost/127.0.0.1, port numbers are IGNORED — this accommodates
-local dev tools (Claude Code, Gemini CLI) that use ephemeral ports.
-*/
+// redirect_uri.go implements MatchRedirectURI, which does exact matching except for localhost/127.0.0.1, where ports are ignored to accommodate local dev tools using ephemeral ports.
 package mcp
 
 import (

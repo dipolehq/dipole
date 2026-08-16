@@ -1,10 +1,4 @@
-/*
-auth_code.go manages OAuth authorization codes with PKCE binding.
-
-AuthCodeStore creates short-lived (5 min), single-use authorization codes
-tied to a code_challenge. Codes are stored in-memory for the MVP; the DB
-migration exists for future persistence.
-*/
+// auth_code.go implements AuthCodeStore, which manages OAuth authorization codes with PKCE binding.
 package mcp
 
 import (
@@ -67,6 +61,17 @@ func (s *AuthCodeStore) Create(clientID, tenantID uuid.UUID, redirectURI, codeCh
 	s.mu.Unlock()
 
 	return code
+}
+
+func (s *AuthCodeStore) SweepExpired(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for code, pending := range s.codes {
+		if pending.Used || now.After(pending.ExpiresAt) {
+			delete(s.codes, code)
+		}
+	}
 }
 
 func (s *AuthCodeStore) Consume(code string) (*PendingAuthCode, error) {

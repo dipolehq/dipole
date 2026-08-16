@@ -237,6 +237,26 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		runLogStreamScheduler(runCtx, logStreamSvc, logger)
 	}()
 
+	// MCP authorization codes, SSO sessions, and refresh tokens are held in
+	// memory and are only ever marked used/expired on the request path, never
+	// deleted. Without this, quiet tenants and abandoned flows accumulate
+	// entries forever.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp auth code", 5*time.Minute, mcpCodeStore.SweepExpired, logger)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp idp session", 5*time.Minute, mcpIdPService.SweepExpired, logger)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp refresh token", 5*time.Minute, mcpTokenService.SweepExpired, logger)
+	}()
+
 	var runErr error
 	select {
 	case <-runCtx.Done():
@@ -388,6 +408,27 @@ func runLogStreamScheduler(ctx context.Context, svc *reporting.LogStreamService,
 			return
 		case <-ticker.C:
 			svc.ExportCycle(ctx)
+		}
+	}
+}
+
+// runExpirySweeper periodically invokes sweep with the current time until ctx
+// is cancelled. Shared by the MCP in-memory stores (auth codes, IdP sessions,
+// refresh tokens), which all need the same ticker/shutdown plumbing around a
+// store-specific sweep call.
+func runExpirySweeper(ctx context.Context, name string, interval time.Duration, sweep func(time.Time), logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	logger.Info(name+" sweeper started", "interval", interval.String())
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info(name + " sweeper stopped")
+			return
+		case <-ticker.C:
+			sweep(time.Now().UTC())
 		}
 	}
 }
