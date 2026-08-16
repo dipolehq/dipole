@@ -177,6 +177,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwTokenStore := repos.MCPUserCredentials
 	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
 	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
+	gwRightAuth.SetLogger(logger)
 	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
 	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, eventBus, logger)
 

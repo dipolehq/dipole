@@ -59,11 +59,13 @@ func (p *SecurityPipeline) Emit(ctx context.Context, event SecurityEvent) error 
 	}
 
 	if err := p.repo.InsertSecurityEvent(ctx, &event); err != nil {
-		p.logger.Error("security event persistence failed",
-			"event_type", event.EventType,
-			"tenant_id", event.TenantID,
-			"error", err,
-		)
+		if p.logger != nil {
+			p.logger.Error("security event persistence failed",
+				"event_type", event.EventType,
+				"tenant_id", event.TenantID,
+				"error", err,
+			)
+		}
 		p.metrics.SecurityFailed.Add(1)
 		return err
 	}

@@ -17,6 +17,7 @@ package mcp_gateway
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,9 +34,14 @@ var (
 )
 
 type ServerCredential struct {
-	AccessToken    string
-	ServerWorkload ServerInfo
-	ResourceSetID  uuid.UUID
+	AccessToken          string
+	ServerWorkload       ServerInfo
+	ResourceSetID        uuid.UUID
+	PolicyID             uuid.UUID
+	PolicyName           string
+	CredentialType       string
+	CredentialName       string
+	CredentialProviderID uuid.UUID
 }
 
 // ServerInfo describes a downstream MCP server, carrying everything needed both
@@ -71,10 +77,12 @@ type RightSidePolicyFinder interface {
 
 type RightSidePolicy struct {
 	PolicyID                  uuid.UUID
+	PolicyName                string
 	ResourceSetID             uuid.UUID
 	ServerWorkload            ServerInfo
 	CredentialProviderID      uuid.UUID
 	CredentialType            string
+	CredentialName            string
 	CredentialConfigEncrypted []byte
 	SharedAccessToken         string
 }
@@ -97,6 +105,7 @@ type RightSideAuth struct {
 	tokenStore   UserTokenStore
 	refresher    TokenRefresher
 	decrypter    CredentialDecrypter
+	logger       *slog.Logger
 }
 
 func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, decrypter CredentialDecrypter) *RightSideAuth {
@@ -107,6 +116,8 @@ func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenSt
 		decrypter:    decrypter,
 	}
 }
+
+func (a *RightSideAuth) SetLogger(l *slog.Logger) { a.logger = l }
 
 func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope TenantScope, serverHost string, serverPort int) (*ServerCredential, error) {
 	if !scope.Valid() {
@@ -124,9 +135,14 @@ func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope 
 	}
 
 	return &ServerCredential{
-		AccessToken:    token,
-		ServerWorkload: policy.ServerWorkload,
-		ResourceSetID:  policy.ResourceSetID,
+		AccessToken:          token,
+		ServerWorkload:       policy.ServerWorkload,
+		ResourceSetID:        policy.ResourceSetID,
+		PolicyID:             policy.PolicyID,
+		PolicyName:           policy.PolicyName,
+		CredentialType:       policy.CredentialType,
+		CredentialName:       policy.CredentialName,
+		CredentialProviderID: policy.CredentialProviderID,
 	}, nil
 }
 
@@ -140,16 +156,38 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 		return nil, err
 	}
 
+	if len(policies) == 0 && a.logger != nil {
+		a.logger.Warn("no gateway policies found",
+			"tenant_id", scope.TenantID,
+			"gateway_url", scope.GatewayURL,
+			"user", userID,
+		)
+	}
+
 	var creds []ServerCredential
 	for _, policy := range policies {
 		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
+			if a.logger != nil {
+				a.logger.Warn("credential resolution failed for server",
+					"server", policy.ServerWorkload.Name,
+					"server_id", policy.ServerWorkload.ID,
+					"credential_type", policy.CredentialType,
+					"user", userID,
+					"error", err,
+				)
+			}
 			continue
 		}
 		creds = append(creds, ServerCredential{
-			AccessToken:    token,
-			ServerWorkload: policy.ServerWorkload,
-			ResourceSetID:  policy.ResourceSetID,
+			AccessToken:          token,
+			ServerWorkload:       policy.ServerWorkload,
+			ResourceSetID:        policy.ResourceSetID,
+			PolicyID:             policy.PolicyID,
+			PolicyName:           policy.PolicyName,
+			CredentialType:       policy.CredentialType,
+			CredentialName:       policy.CredentialName,
+			CredentialProviderID: policy.CredentialProviderID,
 		})
 	}
 	return creds, nil
@@ -174,9 +212,14 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 			return nil, err
 		}
 		return &ServerCredential{
-			AccessToken:    token,
-			ServerWorkload: policy.ServerWorkload,
-			ResourceSetID:  policy.ResourceSetID,
+			AccessToken:          token,
+			ServerWorkload:       policy.ServerWorkload,
+			ResourceSetID:        policy.ResourceSetID,
+			PolicyID:             policy.PolicyID,
+			PolicyName:           policy.PolicyName,
+			CredentialType:       policy.CredentialType,
+			CredentialName:       policy.CredentialName,
+			CredentialProviderID: policy.CredentialProviderID,
 		}, nil
 	}
 	return nil, ErrNoPolicyForServer

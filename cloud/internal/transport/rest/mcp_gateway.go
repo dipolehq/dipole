@@ -30,7 +30,6 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
-	"github.com/dipolehq/dipole/cloud/internal/scope"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 	"github.com/google/uuid"
 )
@@ -181,14 +180,15 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rCtx := &gw.RequestContext{
-		UserID:        authResult.UserID,
-		Claims:        authResult.Claims,
-		Scope:         scope,
-		RequestID:     rpcReq.ID,
-		AuthContextID: authContextID,
-		MCPSessionID:  r.Header.Get("Mcp-Session-Id"),
-		ClientIP:      clientIP,
-		Headers:       redactRequestHeaders(r),
+		UserID:             authResult.UserID,
+		Claims:             authResult.Claims,
+		Scope:              scope,
+		RequestID:          rpcReq.ID,
+		AuthContextID:      authContextID,
+		MCPSessionID:       r.Header.Get("Mcp-Session-Id"),
+		ClientIP:           clientIP,
+		ClientWorkloadName: authResult.ClientWorkloadName,
+		Headers:            redactRequestHeaders(r),
 	}
 
 	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)
@@ -300,73 +300,8 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, metadata)
 }
 
-func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.UUID, clientIP string, host string, userID string, clientWorkloadName string, allowed bool, denyReason string) uuid.UUID {
-	contextID := uuid.New()
-
-	if s.events == nil {
-		return contextID
-	}
-
-	severity := "Info"
-	if !allowed {
-		severity = "Error"
-	}
-
-	clientWL := "Unknown"
-	if clientWorkloadName != "" {
-		clientWL = clientWorkloadName
-	}
-
-	var trustResults []events.TrustResult
-	if userID != "" {
-		trustResults = []events.TrustResult{{
-			ProviderName: "User Identity (SSO)",
-			Attested:     allowed,
-		}}
-	}
-
-	defaultRS := scope.DefaultResourceSetID
-	base := events.SecurityEvent{
-		TenantID:       tenantID,
-		ContextID:      contextID,
-		SourceIP:       clientIP,
-		Source:         "mcp_gateway",
-		Severity:       "Info",
-		ResourceSetID:  &defaultRS,
-		Allowed:        allowed,
-		DenyReason:     denyReason,
-		UserID:         userID,
-		ClientWorkload: clientWL,
-		ServerWorkload: "MCP Identity Gateway",
-		ServerHost:     host,
-		ServerPort:     443,
-		TrustResults:   trustResults,
-	}
-
-	request := base
-	request.EventType = "access.request"
-	if !allowed {
-		request.Severity = "Error"
-	}
-	s.events.EmitSecurity(ctx, request)
-
-	auth := base
-	auth.EventType = "access.authorization"
-	auth.Severity = severity
-	s.events.EmitSecurity(ctx, auth)
-
-	discovery := base
-	discovery.EventType = "access.discovery"
-	if !allowed && clientWorkloadName == "" {
-		discovery.Severity = "Error"
-	}
-	if clientWorkloadName != "" {
-		discovery.CandidateClientWorkloads = []events.WorkloadRef{{Name: clientWorkloadName}}
-	}
-	discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: "MCP Identity Gateway"}}
-	s.events.EmitSecurity(ctx, discovery)
-
-	return contextID
+func (s *MCPGatewayServer) emitLeftSideAuth(_ context.Context, _ uuid.UUID, _ string, _ string, _ string, _ string, _ bool, _ string) uuid.UUID {
+	return uuid.New()
 }
 
 func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redirectURI string, resourceServer string, severity string, policyDetail string, clientWorkloadName string, userID string) {

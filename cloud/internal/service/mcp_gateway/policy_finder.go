@@ -74,6 +74,7 @@ func matchesGatewayClient(cw domain.ClientWorkload, gatewayURL string) bool {
 func mapToRightSidePolicy(p *domain.AccessPolicyWithRelations) RightSidePolicy {
 	rsp := RightSidePolicy{
 		PolicyID:      p.Policy.ID,
+		PolicyName:    p.Policy.Name,
 		ResourceSetID: scope.ResolveResourceSetID(p.Policy.ResourceSetID),
 		ServerWorkload: ServerInfo{
 			ID:   p.ServerWorkload.ID,
@@ -91,6 +92,7 @@ func mapToRightSidePolicy(p *domain.AccessPolicyWithRelations) RightSidePolicy {
 
 	if len(p.CredentialProviders) > 0 {
 		rsp.CredentialType = p.CredentialProviders[0].Type
+		rsp.CredentialName = p.CredentialProviders[0].Name
 		rsp.CredentialConfigEncrypted = p.CredentialProviders[0].ConfigEncrypted
 	}
 
