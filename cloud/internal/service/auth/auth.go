@@ -1,11 +1,4 @@
-/*
-Package auth implements admin and API authentication: API token hashing and
-validation, email+password login, SSO, MFA, password reset, sign-on policy
-enforcement, and tenant signup.
-
-auth.go implements API token authentication: hashing, generation, and
-resolving a Bearer token to its owning tenant.
-*/
+// auth.go implements API token authentication: hashing, generation, and resolving a Bearer token to its owning tenant.
 package auth
 
 import (
@@ -26,6 +19,8 @@ import (
 )
 
 const APITokenPrefix = "dipole_pat_"
+
+const minPasswordLength = 8
 
 type APITokenAuthenticator struct {
 	tenants   repository.TenantRepository
@@ -50,25 +45,42 @@ func (a *APITokenAuthenticator) ValidateToken(ctx context.Context, token string)
 		return uuid.Nil, "", nil, fmt.Errorf("empty token")
 	}
 
-	// Try JWT session token first (issued by login endpoint)
-	if a.issuer != nil && isJWT(token) {
-		tenantID, email, err := a.validateJWTSession(token)
-		if err == nil {
-			return tenantID, email, nil, nil
-		}
+	if tenantID, email, resourceSetID, matched, err := a.tryJWTSession(token); matched {
+		return tenantID, email, resourceSetID, err
 	}
 
 	hash := HashAPIToken(token)
 
-	// Try scoped api_tokens table first.
-	if a.apiTokens != nil {
-		apiToken, err := a.apiTokens.GetByHash(ctx, hash)
-		if err == nil && apiToken != nil {
-			return apiToken.TenantID, "apitoken@scoped", apiToken.ResourceSetID, nil
-		}
+	if tenantID, email, resourceSetID, matched, err := a.tryScopedAPIToken(ctx, hash); matched {
+		return tenantID, email, resourceSetID, err
 	}
 
-	// Fall back to legacy tenant-level token.
+	return a.tryLegacyTenantToken(ctx, hash)
+}
+
+func (a *APITokenAuthenticator) tryJWTSession(token string) (uuid.UUID, string, *uuid.UUID, bool, error) {
+	if a.issuer == nil || !isJWT(token) {
+		return uuid.Nil, "", nil, false, nil
+	}
+	tenantID, email, err := a.validateJWTSession(token)
+	if err != nil {
+		return uuid.Nil, "", nil, false, nil
+	}
+	return tenantID, email, nil, true, nil
+}
+
+func (a *APITokenAuthenticator) tryScopedAPIToken(ctx context.Context, hash string) (uuid.UUID, string, *uuid.UUID, bool, error) {
+	if a.apiTokens == nil {
+		return uuid.Nil, "", nil, false, nil
+	}
+	apiToken, err := a.apiTokens.GetByHash(ctx, hash)
+	if err != nil || apiToken == nil {
+		return uuid.Nil, "", nil, false, nil
+	}
+	return apiToken.TenantID, "apitoken@scoped", apiToken.ResourceSetID, true, nil
+}
+
+func (a *APITokenAuthenticator) tryLegacyTenantToken(ctx context.Context, hash string) (uuid.UUID, string, *uuid.UUID, error) {
 	tenant, err := a.tenants.GetByAPITokenHash(ctx, hash)
 	if err != nil {
 		return uuid.Nil, "", nil, err
@@ -84,18 +96,9 @@ func (a *APITokenAuthenticator) validateJWTSession(token string) (uuid.UUID, str
 		return uuid.Nil, "", err
 	}
 
-	// Decode claims
-	parts := strings.SplitN(token, ".", 3)
-	if len(parts) < 2 {
-		return uuid.Nil, "", fmt.Errorf("invalid JWT")
-	}
-	payload := parts[1]
-	if pad := len(payload) % 4; pad != 0 {
-		payload += strings.Repeat("=", 4-pad)
-	}
-	raw, err := base64.URLEncoding.DecodeString(payload)
+	raw, err := decodeJWTPayload(token)
 	if err != nil {
-		return uuid.Nil, "", fmt.Errorf("decode JWT payload: %w", err)
+		return uuid.Nil, "", fmt.Errorf("invalid JWT")
 	}
 
 	var claims struct {
@@ -123,9 +126,8 @@ func isJWT(token string) bool {
 	return strings.Count(token, ".") == 2
 }
 
-// ValidateAPIToken implements rest.TenantAuthenticator for the Dipole MCP Server.
-func (a *APITokenAuthenticator) ValidateAPIToken(token string) (uuid.UUID, error) {
-	tenantID, _, _, err := a.ValidateToken(context.Background(), token)
+func (a *APITokenAuthenticator) ValidateAPIToken(ctx context.Context, token string) (uuid.UUID, error) {
+	tenantID, _, _, err := a.ValidateToken(ctx, token)
 	return tenantID, err
 }
 

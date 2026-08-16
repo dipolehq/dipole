@@ -1,14 +1,8 @@
-/*
-Package rest — mcp_server.go implements the Dipole MCP Server endpoint.
-
-DipoleMCPServer exposes event logs (audit, authorization, workload) as read-only
-MCP tools for AI agents. Authenticated via API Token Bearer. Handles JSON-RPC
-methods: initialize, ping, tools/list, tools/call, resources/list, resources/read.
-Served at POST /mcp on the .mcp. subdomain alongside the MCP Auth Server.
-*/
+// mcp_server.go implements the Dipole MCP Server endpoint: API-token-authenticated JSON-RPC access to event logs.
 package rest
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -30,7 +24,7 @@ type MCPResourceHandler interface {
 }
 
 type TenantAuthenticator interface {
-	ValidateAPIToken(token string) (uuid.UUID, error)
+	ValidateAPIToken(ctx context.Context, token string) (uuid.UUID, error)
 }
 
 type DipoleMCPServer struct {
@@ -60,7 +54,7 @@ func (s *DipoleMCPServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID, err := s.auth.ValidateAPIToken(token)
+	tenantID, err := s.auth.ValidateAPIToken(r.Context(), token)
 	if err != nil {
 		writeMCPServerError(w, nil, -32000, "authentication failed: invalid token")
 		return
@@ -189,7 +183,6 @@ func writeMCPServerResponse(w http.ResponseWriter, id any, result any) {
 	})
 }
 
-// CompareTokenHash provides timing-safe comparison for API token validation.
 func CompareTokenHash(provided, stored string) bool {
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(stored)) == 1
 }

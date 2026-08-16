@@ -1,9 +1,4 @@
-/*
-signup.go implements self-serve tenant provisioning for new customers.
-
-Creates a tenant (with unique subdomain), admin user, default resource set,
-and issues a session JWT for immediate login after signup.
-*/
+// signup.go implements self-serve tenant provisioning: creates a tenant, admin user, and default resource set.
 package auth
 
 import (
@@ -20,10 +15,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
-// subdomainMin/subdomainMax bound the random numeric tenant subdomain
-// (e.g. "64275"). Kept in a fixed 6-digit range so URLs like
-// https://64275-mcp.dipolehq.com are predictable in length and never
-// reveal the customer's company name.
 const (
 	subdomainMin = 100000
 	subdomainMax = 999999
@@ -38,7 +29,6 @@ type SignupService struct {
 	issuer         *identity.IdentityIssuer
 }
 
-// TenantProfileWriter abstracts profile persistence for signup.
 type TenantProfileWriter interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
 }
@@ -90,8 +80,8 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	if req.LastName == "" {
 		return nil, fmt.Errorf("last name is required")
 	}
-	if len(req.Password) < 8 {
-		return nil, fmt.Errorf("password must be at least 8 characters")
+	if len(req.Password) < minPasswordLength {
+		return nil, fmt.Errorf("password must be at least %d characters", minPasswordLength)
 	}
 
 	subdomain, err := s.generateUniqueSubdomain(ctx)
@@ -139,7 +129,6 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		PasswordHash: passwordHash,
 	}
 
-	// Create the default SuperAdmin role for the founding admin.
 	superAdminRole := &domain.Role{
 		Name:        "SuperAdmin",
 		Description: "Full administrative access",
@@ -154,7 +143,6 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		return nil, fmt.Errorf("create admin user: %w", err)
 	}
 
-	// Pre-populate the tenant profile so the profile page shows data from day one.
 	_ = s.tenantProfiles.Upsert(ctx, tenant.ID, &domain.TenantProfile{
 		TenantID:  tenant.ID,
 		FirstName: req.FirstName,
@@ -193,11 +181,6 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 	}, nil
 }
 
-// generateUniqueSubdomain picks a random 6-digit numeric subdomain (e.g.
-// "64275") and retries on the rare collision. The subdomain is opaque by
-// design — it never encodes the customer's company name, so tenant URLs
-// (https://<subdomain>-mcp.dipolehq.com, etc.) don't leak who the customer
-// is or let anyone probe for a specific company's tenant.
 func (s *SignupService) generateUniqueSubdomain(ctx context.Context) (string, error) {
 	const maxAttempts = 10
 

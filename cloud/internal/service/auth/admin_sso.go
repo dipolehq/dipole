@@ -1,15 +1,8 @@
-/*
-admin_sso.go implements Identity Provider management and SSO login flows.
-
-AdminSSOService handles OIDC and SAML SSO for admin users. On first login via
-SSO, users are auto-created with a configured default role (if enabled).
-Super Admin can always bypass SSO via native login.
-*/
+// admin_sso.go implements OIDC SSO login for admin users, including IdP callback handling and auto-provisioning.
 package auth
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -39,12 +32,6 @@ type OIDCConfig struct {
 	Scopes       string `json:"scopes"`
 }
 
-type SAMLConfig struct {
-	MetadataURL string `json:"metadataUrl"`
-	EntityID    string `json:"entityId"`
-	ACSURL      string `json:"acsUrl"`
-}
-
 type SSOResult struct {
 	UserID  uuid.UUID
 	Email   string
@@ -52,7 +39,6 @@ type SSOResult struct {
 	Created bool
 }
 
-// OIDCClient abstracts external HTTP calls for OIDC flows (discovery + token exchange).
 type OIDCClient interface {
 	FetchDiscovery(ctx context.Context, discoveryURL string) (*OIDCDiscoveryDoc, error)
 	ExchangeCode(ctx context.Context, tokenEndpoint string, clientID, clientSecret, code, redirectURI string) (*OIDCTokenResponse, error)
@@ -155,12 +141,7 @@ func (s *AdminSSOService) HandleOIDCCallback(ctx context.Context, idp *IdentityP
 }
 
 func decodeIDToken(token string) (map[string]any, error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid JWT format")
-	}
-
-	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
+	decoded, err := decodeJWTPayload(token)
 	if err != nil {
 		return nil, err
 	}

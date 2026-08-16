@@ -1,6 +1,4 @@
-/*
-auth_handler.go serves the login endpoint for admin users.
-*/
+// auth_handler.go serves the login, signup, password reset, and MFA verification endpoints for admin users.
 package rest
 
 import (
@@ -57,7 +55,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if resp.Token != "" && h.audit != nil {
+	if resp.Outcome == auth.LoginOutcomeSuccess && h.audit != nil {
 		emitAudit(h.audit, r.Context(), TenantIDFromContext(r.Context()), req.Email, "Authentication", "Login", "user", uuid.Nil, req.Email, clientIP(r), userAgent(r))
 	}
 	writeJSON(w, http.StatusOK, resp)

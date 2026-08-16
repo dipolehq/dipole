@@ -1,3 +1,4 @@
+// signon_policy_test.go tests Sign-On Policy enforcement (SSO requirement and MFA grace period logic).
 package auth
 
 import (

@@ -1,8 +1,4 @@
-/*
-oidc_http_client.go provides the concrete HTTP implementation of the OIDCClient
-interface used by AdminSSOService. Handles OIDC discovery with 1-hour caching
-and authorization code exchange.
-*/
+// oidc_http_client.go implements the OIDCClient interface over HTTP: discovery (cached 1hr) and code exchange.
 package auth
 
 import (

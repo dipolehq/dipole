@@ -1,10 +1,4 @@
-/*
-signon_policy.go implements Sign-On Policy enforcement for admin authentication.
-
-Controls how admins authenticate: require_sso forces IdP login (except Super Admin),
-require_mfa enforces multi-factor with a grace period for first-time setup.
-Super Admin always has native login access regardless of policy settings.
-*/
+// signon_policy.go enforces Sign-On Policy rules for admin login: require_sso and require_mfa checks.
 package auth
 
 import (

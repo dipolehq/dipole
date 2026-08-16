@@ -1,14 +1,4 @@
-/*
-password_reset.go implements the "forgot password" flow:
-
-  - ForgotPassword: generates a cryptographically random token, hashes it
-    (SHA-256), stores the hash with a 1-hour expiry, and returns the raw
-    token. In production this token would be emailed; for now it's returned
-    in the API response for dev purposes.
-
-  - ResetPassword: validates the raw token (hash-matches a non-expired,
-    unused record), updates the user's password, and marks the token used.
-*/
+// password_reset.go implements the "forgot password" flow: token generation, emailing, and password reset.
 package auth
 
 import (
@@ -30,11 +20,6 @@ const (
 	resetTokenPrefix = "dipole_rst_"
 )
 
-// PasswordResetService is stateless with respect to tenant. ForgotPassword
-// resolves the tenant(s) for the given email via GetTenantsByEmail (same
-// cross-tenant lookup LoginService uses), and ResetPassword derives the
-// tenant directly from the stored token record — so a single instance
-// correctly serves every tenant, not just one baked in at startup.
 type PasswordResetService struct {
 	users        repository.UserRepository
 	resetRepo    repository.PasswordResetTokenRepository
@@ -62,7 +47,6 @@ type ForgotPasswordRequest struct {
 }
 
 type ForgotPasswordResponse struct {
-	// Token is returned in dev mode. In production, this would be sent via email.
 	Token   string `json:"token"`
 	Message string `json:"message"`
 }
@@ -74,13 +58,8 @@ func (s *PasswordResetService) ForgotPassword(ctx context.Context, req *ForgotPa
 		return nil, fmt.Errorf("email is required")
 	}
 
-	// An email may have an active account in more than one tenant (same
-	// pattern as LoginService.Login). Issue a separate reset token scoped
-	// to each tenant the user belongs to, so resetting the password in one
-	// tenant never leaks into or affects another.
 	tenantSummaries, err := s.users.GetTenantsByEmail(ctx, req.Email)
 	if err != nil || len(tenantSummaries) == 0 {
-		// Don't reveal whether the email exists — always return success message.
 		return &ForgotPasswordResponse{Message: genericForgotPasswordMessage}, nil
 	}
 
@@ -91,7 +70,6 @@ func (s *PasswordResetService) ForgotPassword(ctx context.Context, req *ForgotPa
 			continue
 		}
 
-		// Clean up old expired/used tokens for this user.
 		_ = s.resetRepo.DeleteExpiredForUser(ctx, ts.ID, user.ID)
 
 		rawToken, err := generateResetToken()
@@ -133,10 +111,6 @@ func (s *PasswordResetService) ForgotPassword(ctx context.Context, req *ForgotPa
 		return &ForgotPasswordResponse{Message: genericForgotPasswordMessage}, nil
 	}
 
-	// Dev mode (no email service configured): return the token directly.
-	// If the email matched multiple tenants, only the first tenant's token
-	// is returned here — this dev-only path is a single-token API response,
-	// which is a fine limitation since production always uses email delivery.
 	return &ForgotPasswordResponse{
 		Token:   firstToken,
 		Message: genericForgotPasswordMessage,
@@ -155,8 +129,8 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *ResetPass
 	if req.NewPassword == "" {
 		return fmt.Errorf("new password is required")
 	}
-	if len(req.NewPassword) < 6 {
-		return fmt.Errorf("password must be at least 6 characters")
+	if len(req.NewPassword) < minPasswordLength {
+		return fmt.Errorf("password must be at least %d characters", minPasswordLength)
 	}
 
 	tokenHash := hashResetToken(req.Token)
@@ -174,9 +148,6 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *ResetPass
 		return fmt.Errorf("reset token has expired")
 	}
 
-	// The token record itself carries the tenant it was issued for
-	// (set in ForgotPassword) — that's the authoritative tenant scope for
-	// this reset, not a value baked into the service at construction.
 	user, err := s.users.GetByID(ctx, record.TenantID, record.UserID)
 	if err != nil || user == nil {
 		return fmt.Errorf("user not found")
@@ -192,7 +163,6 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *ResetPass
 		return fmt.Errorf("update password: %w", err)
 	}
 
-	// Mark token as used.
 	if err := s.resetRepo.MarkUsed(ctx, record.ID); err != nil {
 		return fmt.Errorf("mark token used: %w", err)
 	}
