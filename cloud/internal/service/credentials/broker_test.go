@@ -1,3 +1,4 @@
+// broker_test.go tests the Credential Broker's dispatch, caching, and tenant-issuer isolation behavior.
 package credentials
 
 import (

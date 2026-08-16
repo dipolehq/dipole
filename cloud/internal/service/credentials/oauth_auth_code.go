@@ -1,9 +1,4 @@
-/*
-oauth_auth_code.go handles OAuth 2.0 Authorization Code credential retrieval.
-The admin pre-authorizes the flow (stores refresh_token in encrypted config).
-On each request, returns the cached access_token if valid, or exchanges the
-refresh_token for a new one. Returns error if refresh_token is expired.
-*/
+// oauth_auth_code.go handles OAuth 2.0 Authorization Code credential retrieval, refreshing a cached access token via the stored refresh token when needed.
 package credentials
 
 import (

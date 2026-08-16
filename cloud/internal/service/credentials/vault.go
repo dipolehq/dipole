@@ -1,8 +1,4 @@
-/*
-vault.go retrieves secrets from HashiCorp Vault. Supports two auth methods:
-"approle" (role_id + secret_id) and "token" (direct Vault token). After
-authentication, reads a secret from the configured path.
-*/
+// vault.go retrieves secrets from HashiCorp Vault, supporting AppRole and direct-token authentication.
 package credentials
 
 import (
@@ -151,7 +147,6 @@ func (h *VaultHandler) readSecret(ctx context.Context, vaultURL, secretPath, tok
 		return "", err
 	}
 
-	// Return the first value from the secret data, or the full JSON
 	for _, v := range result.Data.Data {
 		return fmt.Sprint(v), nil
 	}

@@ -1,3 +1,4 @@
+// x509_svid_test.go tests SPIFFE X.509-SVID certificate issuance: SPIFFE URI SAN, extended key usage, lifetime, and CA chain verification.
 package credentials
 
 import (
@@ -34,7 +35,6 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 		t.Errorf("type = %q, want x509", cred.Type)
 	}
 
-	// Parse the cert chain
 	block, _ := pem.Decode([]byte(cred.Value))
 	if block == nil {
 		t.Fatal("no PEM block in cert value")
@@ -45,7 +45,6 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Check URI SAN contains SPIFFE ID
 	if len(cert.URIs) == 0 {
 		t.Fatal("no URI SANs in certificate")
 	}
@@ -53,13 +52,11 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 		t.Errorf("URI SAN = %v, want spiffe://example.org/ns/production/sa/myapp", cert.URIs[0])
 	}
 
-	// Check lifetime
 	lifetime := cert.NotAfter.Sub(cert.NotBefore)
 	if lifetime < 14*time.Minute || lifetime > 16*time.Minute {
 		t.Errorf("lifetime = %v, want ~15min", lifetime)
 	}
 
-	// Check EKU default (client auth)
 	hasClientAuth := false
 	for _, eku := range cert.ExtKeyUsage {
 		if eku == x509.ExtKeyUsageClientAuth {
@@ -70,7 +67,6 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 		t.Error("missing ExtKeyUsageClientAuth")
 	}
 
-	// Verify cert is signed by CA
 	roots := x509.NewCertPool()
 	roots.AddCert(caCert)
 	_, err = cert.Verify(x509.VerifyOptions{
@@ -81,7 +77,6 @@ func TestX509SVID_CorrectSPIFFEID(t *testing.T) {
 		t.Errorf("cert not signed by CA: %v", err)
 	}
 
-	// Check private key is returned
 	if cred.Password == "" {
 		t.Error("private key should be set")
 	}

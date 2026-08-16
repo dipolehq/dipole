@@ -1,3 +1,4 @@
+// aws_sts_test.go tests AWS STS XML response parsing and invalid-config error handling.
 package credentials
 
 import (

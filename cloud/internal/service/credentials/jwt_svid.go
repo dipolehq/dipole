@@ -1,8 +1,4 @@
-/*
-jwt_svid.go issues SPIFFE JWT-SVID identity documents. The token subject is
-a SPIFFE ID (spiffe://<trust_domain>/<workload_path>) and the audience is the
-intended recipient's SPIFFE ID.
-*/
+// jwt_svid.go issues SPIFFE JWT-SVID identity documents, subject set to a SPIFFE ID and audience to the intended recipient's SPIFFE ID.
 package credentials
 
 import (
@@ -29,7 +25,6 @@ type jwtSVIDConfig struct {
 	LifetimeSeconds int      `json:"lifetime_seconds"`
 }
 
-// issuerURL is the requesting tenant's identity host, used as the SVID's `iss`.
 func (h *JWTSVIDHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg jwtSVIDConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

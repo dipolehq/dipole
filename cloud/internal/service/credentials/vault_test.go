@@ -1,3 +1,4 @@
+// vault_test.go tests the Vault handler's AppRole and token authentication, secret reads, and error paths.
 package credentials
 
 import (

@@ -1,9 +1,4 @@
-/*
-x509_svid.go issues SPIFFE X.509-SVID certificates for mTLS authentication.
-Generates an ECDSA P-256 key pair in memory, creates a certificate with the
-SPIFFE ID as a URI SAN, and signs it with a standalone CA. Returns the full
-certificate chain and private key to the caller.
-*/
+// x509_svid.go issues SPIFFE X.509-SVID certificates for mTLS authentication, signed by a standalone CA.
 package credentials
 
 import (

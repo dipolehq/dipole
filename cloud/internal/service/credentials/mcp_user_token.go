@@ -1,9 +1,4 @@
-/*
-mcp_user_token.go handles MCP User-Based Access Token credential retrieval.
-Per-user OAuth tokens for MCP Identity Gateway — each user gets their own
-credential. Only usable via MCP Identity Gateway (Job 11), not the normal
-Agent Proxy path which cannot trigger browser-based OAuth consent flows.
-*/
+// mcp_user_token.go handles MCP User-Based Access Token credential retrieval, which is only usable via the MCP Identity Gateway, not this broker.
 package credentials
 
 import (
@@ -36,8 +31,5 @@ func (h *MCPUserTokenHandler) Retrieve(_ context.Context, configJSON []byte, _ *
 		return nil, fmt.Errorf("parse mcp user token config: %w", err)
 	}
 
-	// MCP User-Based tokens require the MCP Identity Gateway flow (Job 11).
-	// The Agent Proxy cannot trigger browser-based OAuth consent.
-	// The MCP Gateway handles per-user token acquisition and storage.
 	return nil, fmt.Errorf("MCP User-Based tokens require MCP Identity Gateway")
 }

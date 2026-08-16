@@ -1,8 +1,4 @@
-/*
-oauth_client_creds.go retrieves OAuth 2.0 access tokens using the Client
-Credentials grant. Supports two credential styles: POST body (default) and
-Authorization Header (HTTP Basic). Caches tokens at 80% of expires_in.
-*/
+// oauth_client_creds.go retrieves OAuth 2.0 access tokens using the Client Credentials grant, supporting POST-body and Authorization-header credential styles.
 package credentials
 
 import (
@@ -34,7 +30,7 @@ type oauthClientCredsConfig struct {
 	ClientID        string `json:"client_id"`
 	ClientSecret    string `json:"client_secret"`
 	Scopes          string `json:"scopes"`
-	CredentialStyle string `json:"credential_style"` // "post_body" (default) or "authorization_header"
+	CredentialStyle string `json:"credential_style"`
 }
 
 func (h *OAuthClientCredsHandler) Retrieve(ctx context.Context, configJSON []byte, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {

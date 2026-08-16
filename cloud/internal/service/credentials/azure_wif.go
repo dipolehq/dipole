@@ -1,8 +1,4 @@
-/*
-azure_wif.go exchanges our OIDC token for an Azure access token via Azure
-Entra Workload Identity Federation. Issues an OIDC token with aud=client_id,
-then exchanges it at Azure's token endpoint using the jwt-bearer assertion type.
-*/
+// azure_wif.go exchanges our OIDC token for an Azure access token via Azure Entra Workload Identity Federation.
 package credentials
 
 import (
@@ -37,9 +33,6 @@ type azureWIFConfig struct {
 	Scope    string `json:"scope"`
 }
 
-// issuerURL is the requesting tenant's identity host. Azure Entra fetches OIDC
-// discovery from the token's `iss` and rejects a mismatch with the federated
-// credential the customer configured.
 func (h *AzureWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg azureWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
