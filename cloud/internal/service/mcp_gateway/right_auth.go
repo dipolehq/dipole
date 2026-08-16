@@ -33,9 +33,14 @@ var (
 )
 
 type ServerCredential struct {
-	AccessToken    string
-	ServerWorkload ServerInfo
-	ResourceSetID  uuid.UUID
+	AccessToken          string
+	ServerWorkload       ServerInfo
+	ResourceSetID        uuid.UUID
+	PolicyID             uuid.UUID
+	PolicyName           string
+	CredentialType       string
+	CredentialName       string
+	CredentialProviderID uuid.UUID
 }
 
 // ServerInfo describes a downstream MCP server, carrying everything needed both
@@ -71,10 +76,12 @@ type RightSidePolicyFinder interface {
 
 type RightSidePolicy struct {
 	PolicyID                  uuid.UUID
+	PolicyName                string
 	ResourceSetID             uuid.UUID
 	ServerWorkload            ServerInfo
 	CredentialProviderID      uuid.UUID
 	CredentialType            string
+	CredentialName            string
 	CredentialConfigEncrypted []byte
 	SharedAccessToken         string
 }
@@ -124,9 +131,14 @@ func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope 
 	}
 
 	return &ServerCredential{
-		AccessToken:    token,
-		ServerWorkload: policy.ServerWorkload,
-		ResourceSetID:  policy.ResourceSetID,
+		AccessToken:          token,
+		ServerWorkload:       policy.ServerWorkload,
+		ResourceSetID:        policy.ResourceSetID,
+		PolicyID:             policy.PolicyID,
+		PolicyName:           policy.PolicyName,
+		CredentialType:       policy.CredentialType,
+		CredentialName:       policy.CredentialName,
+		CredentialProviderID: policy.CredentialProviderID,
 	}, nil
 }
 
@@ -147,9 +159,14 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 			continue
 		}
 		creds = append(creds, ServerCredential{
-			AccessToken:    token,
-			ServerWorkload: policy.ServerWorkload,
-			ResourceSetID:  policy.ResourceSetID,
+			AccessToken:          token,
+			ServerWorkload:       policy.ServerWorkload,
+			ResourceSetID:        policy.ResourceSetID,
+			PolicyID:             policy.PolicyID,
+			PolicyName:           policy.PolicyName,
+			CredentialType:       policy.CredentialType,
+			CredentialName:       policy.CredentialName,
+			CredentialProviderID: policy.CredentialProviderID,
 		})
 	}
 	return creds, nil
@@ -174,9 +191,14 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 			return nil, err
 		}
 		return &ServerCredential{
-			AccessToken:    token,
-			ServerWorkload: policy.ServerWorkload,
-			ResourceSetID:  policy.ResourceSetID,
+			AccessToken:          token,
+			ServerWorkload:       policy.ServerWorkload,
+			ResourceSetID:        policy.ResourceSetID,
+			PolicyID:             policy.PolicyID,
+			PolicyName:           policy.PolicyName,
+			CredentialType:       policy.CredentialType,
+			CredentialName:       policy.CredentialName,
+			CredentialProviderID: policy.CredentialProviderID,
 		}, nil
 	}
 	return nil, ErrNoPolicyForServer

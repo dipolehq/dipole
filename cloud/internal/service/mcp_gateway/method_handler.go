@@ -79,14 +79,15 @@ type MCPServerClient interface {
 }
 
 type RequestContext struct {
-	UserID        string
-	Claims        map[string]any
-	Scope         TenantScope
-	RequestID     any
-	AuthContextID uuid.UUID
-	MCPSessionID  string
-	ClientIP      string
-	Headers       []map[string]string
+	UserID             string
+	Claims             map[string]any
+	Scope              TenantScope
+	RequestID          any
+	AuthContextID      uuid.UUID
+	MCPSessionID       string
+	ClientIP           string
+	ClientWorkloadName string
+	Headers            []map[string]string
 }
 
 type MethodHandler struct {
@@ -154,6 +155,14 @@ func (h *MethodHandler) handleToolsList(ctx context.Context, rCtx *RequestContex
 
 		tools, _, err := client.ListTools(ctx, cred.AccessToken)
 		if err != nil {
+			if h.logger != nil {
+				h.logger.Error("downstream ListTools failed",
+					"server", cred.ServerWorkload.Name,
+					"server_id", cred.ServerWorkload.ID,
+					"user", rCtx.UserID,
+					"error", err,
+				)
+			}
 			continue
 		}
 
@@ -182,7 +191,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
-		h.emitRightSideAuth(ctx, rCtx, serverName, nil, scope.DefaultResourceSetID, toolName, false, err.Error())
+		h.emitRightSideAuth(ctx, rCtx, nil, toolName, false, err.Error())
 		return nil, err
 	}
 
@@ -190,12 +199,12 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	result, respHeaders, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
 	if err != nil {
-		rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, cred.ResourceSetID, toolName, false, err.Error())
+		rightContextID := h.emitRightSideAuth(ctx, rCtx, cred, toolName, false, err.Error())
 		h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, cred.ResourceSetID, "tools/call", toolName, 500, rightContextID, nil)
 		return nil, err
 	}
 
-	rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, cred.ResourceSetID, toolName, true, "")
+	rightContextID := h.emitRightSideAuth(ctx, rCtx, cred, toolName, true, "")
 	h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, cred.ResourceSetID, "tools/call", toolName, 200, rightContextID, respHeaders)
 
 	return result, nil
@@ -213,6 +222,14 @@ func (h *MethodHandler) handleResourcesList(ctx context.Context, rCtx *RequestCo
 
 		resources, _, err := client.ListResources(ctx, cred.AccessToken)
 		if err != nil {
+			if h.logger != nil {
+				h.logger.Error("downstream ListResources failed",
+					"server", cred.ServerWorkload.Name,
+					"server_id", cred.ServerWorkload.ID,
+					"user", rCtx.UserID,
+					"error", err,
+				)
+			}
 			continue
 		}
 
@@ -261,7 +278,7 @@ func parsePrefixedToolName(prefixed string) (serverName, toolName string, err er
 	return serverName, toolName, nil
 }
 
-func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, serverID *uuid.UUID, resourceSetID uuid.UUID, toolName string, allowed bool, denyReason string) uuid.UUID {
+func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, cred *ServerCredential, toolName string, allowed bool, denyReason string) uuid.UUID {
 	contextID := uuid.New()
 
 	if h.events == nil {
@@ -273,26 +290,59 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 		severity = "Error"
 	}
 
-	policyName := "Gateway → " + serverName
+	serverName := ""
+	var serverID *uuid.UUID
+	var policyID *uuid.UUID
+	policyName := ""
+	credType := ""
+	credName := ""
+	var credProviderID *uuid.UUID
+	serverHost := ""
+	serverPort := 443
+	rs := scope.DefaultResourceSetID
 
-	rs := resourceSetID
+	if cred != nil {
+		serverName = cred.ServerWorkload.Name
+		id := cred.ServerWorkload.ID
+		serverID = &id
+		pid := cred.PolicyID
+		policyID = &pid
+		policyName = cred.PolicyName
+		credType = cred.CredentialType
+		credName = cred.CredentialName
+		cpid := cred.CredentialProviderID
+		credProviderID = &cpid
+		serverHost = cred.ServerWorkload.Host
+		serverPort = cred.ServerWorkload.Port
+		rs = cred.ResourceSetID
+	}
+
+	clientWL := rCtx.ClientWorkloadName
+	if clientWL == "" {
+		clientWL = "Unknown"
+	}
+
 	base := events.SecurityEvent{
-		TenantID:         rCtx.Scope.TenantID,
-		ContextID:        contextID,
-		SourceIP:         rCtx.UserID,
-		Source:           "mcp_gateway",
-		Severity:         "Info",
-		ResourceSetID:    &rs,
-		Allowed:          allowed,
-		DenyReason:       denyReason,
-		UserID:           rCtx.UserID,
-		ClientWorkload:   "MCP Identity Gateway",
-		ServerWorkload:   serverName,
-		ServerWorkloadID: serverID,
-		ServerHost:       serverName,
-		ServerPort:       443,
-		PolicyName:       policyName,
-		ToolName:         toolName,
+		TenantID:             rCtx.Scope.TenantID,
+		ContextID:            contextID,
+		SourceIP:             rCtx.ClientIP,
+		Source:               "mcp_gateway",
+		Severity:             "Info",
+		ResourceSetID:        &rs,
+		Allowed:              allowed,
+		DenyReason:           denyReason,
+		UserID:               rCtx.UserID,
+		ClientWorkload:       clientWL,
+		ServerWorkload:       serverName,
+		ServerWorkloadID:     serverID,
+		ServerHost:           serverHost,
+		ServerPort:           serverPort,
+		PolicyID:             policyID,
+		PolicyName:           policyName,
+		CredentialType:       credType,
+		CredentialName:       credName,
+		CredentialProviderID: credProviderID,
+		ToolName:             toolName,
 	}
 
 	go func() {
@@ -312,9 +362,9 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 		h.events.EmitSecurity(asyncCtx, auth)
 
 		if allowed {
-			cred := base
-			cred.EventType = "access.credential"
-			h.events.EmitSecurity(asyncCtx, cred)
+			credEvent := base
+			credEvent.EventType = "access.credential"
+			h.events.EmitSecurity(asyncCtx, credEvent)
 		}
 
 		discovery := base
@@ -322,9 +372,11 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 		if !allowed {
 			discovery.Severity = "Error"
 		}
-		discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: serverName}}
-		if serverID != nil {
-			discovery.CandidateServerWorkloads[0].ID = *serverID
+		if serverName != "" {
+			discovery.CandidateServerWorkloads = []events.WorkloadRef{{Name: serverName}}
+			if serverID != nil {
+				discovery.CandidateServerWorkloads[0].ID = *serverID
+			}
 		}
 		if err := h.events.EmitSecurity(asyncCtx, discovery); err != nil {
 			if h.logger != nil {
