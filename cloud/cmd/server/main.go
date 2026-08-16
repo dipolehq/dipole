@@ -118,7 +118,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	broker := credentials.NewCredentialBroker(encKey, issuer, repos.Tenants, platformHosts)
 	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
-	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
+	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath, logger)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
 	clientWorkloadSvc := resources.NewClientWorkloadService(repos.ClientWorkloads)

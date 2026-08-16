@@ -1,11 +1,4 @@
-/*
-time_condition.go evaluates time-based access restrictions.
-
-Checks if the current time (in the configured timezone) falls within the
-allowed time window for today's day of week. Each day can have its own
-start/end time or be absent (meaning that day is not allowed). Supports
-midnight crossing (e.g., 22:00-06:00). Returns false if outside.
-*/
+// time_condition.go evaluates time-based access restrictions against the current time in a configured timezone.
 package conditions
 
 import (
@@ -17,12 +10,9 @@ import (
 type TimeConditionChecker struct{}
 
 type TimeConditionConfig struct {
-	// Per-day windows: key is day abbreviation (Mon, Tue, etc.)
-	// Each entry has start_time and end_time in HH:MM format
 	Windows  []DayWindow `json:"windows"`
 	Timezone string      `json:"timezone"`
 
-	// Legacy single-window format (days + start_time + end_time)
 	Days      []string `json:"days"`
 	StartTime string   `json:"start_time"`
 	EndTime   string   `json:"end_time"`
@@ -44,7 +34,6 @@ func (c *TimeConditionChecker) Check(cfg *TimeConditionConfig) (bool, string, er
 	dayAbbr := now.Weekday().String()[:3]
 	nowMin := now.Hour()*60 + now.Minute()
 
-	// Per-day windows (preferred format)
 	if len(cfg.Windows) > 0 {
 		for _, w := range cfg.Windows {
 			if strings.EqualFold(w.Day, dayAbbr) {
@@ -54,7 +43,6 @@ func (c *TimeConditionChecker) Check(cfg *TimeConditionConfig) (bool, string, er
 		return false, fmt.Sprintf("Time condition failed: %s is not in allowed days", dayAbbr), nil
 	}
 
-	// Legacy single-window format
 	if !dayInList(dayAbbr, cfg.Days) {
 		return false, fmt.Sprintf("Time condition failed: %s is not in allowed days %v", dayAbbr, cfg.Days), nil
 	}

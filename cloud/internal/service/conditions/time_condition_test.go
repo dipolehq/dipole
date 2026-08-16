@@ -1,3 +1,4 @@
+// time_condition_test.go tests time-window evaluation: day matching, midnight crossing, timezone errors, and per-day windows.
 package conditions
 
 import (
@@ -6,7 +7,6 @@ import (
 
 func TestTimeCondition_WithinWindow_Passes(t *testing.T) {
 	checker := &TimeConditionChecker{}
-	// Use a very wide window that covers all hours to guarantee pass
 	cfg := &TimeConditionConfig{
 		Days:      []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"},
 		StartTime: "00:00",
@@ -25,7 +25,6 @@ func TestTimeCondition_WithinWindow_Passes(t *testing.T) {
 
 func TestTimeCondition_NoMatchingDay_Fails(t *testing.T) {
 	checker := &TimeConditionChecker{}
-	// Use an empty day list — no day will ever match
 	cfg := &TimeConditionConfig{
 		Days:      []string{},
 		StartTime: "00:00",
@@ -44,8 +43,6 @@ func TestTimeCondition_NoMatchingDay_Fails(t *testing.T) {
 
 func TestTimeCondition_MidnightCrossing(t *testing.T) {
 	checker := &TimeConditionChecker{}
-	// 22:00-06:00 window — always covers either late night or early morning
-	// This test verifies the logic doesn't crash; actual pass/fail depends on current time
 	cfg := &TimeConditionConfig{
 		Days:      []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"},
 		StartTime: "22:00",
@@ -57,7 +54,6 @@ func TestTimeCondition_MidnightCrossing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No assertion on pass/fail — depends on actual current time
 }
 
 func TestTimeCondition_InvalidTimezone_Error(t *testing.T) {

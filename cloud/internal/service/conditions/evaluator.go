@@ -1,36 +1,28 @@
-/*
-Package conditions provides Access Condition evaluation for the policy engine.
-
-ConditionEvaluator checks contextual conditions (time, GeoIP) attached to a
-policy. ALL conditions must pass (AND logic). If any fails, access is denied.
-*/
+// evaluator.go implements Access Condition evaluation (time, GeoIP) for the policy engine; all conditions must pass (AND logic).
 package conditions
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-type ConditionEvaluator interface {
-	EvaluateAll(ctx context.Context, conditions []domain.AccessCondition, evidence *domain.ClientEvidence) (bool, string, error)
-}
-
-type RealConditionEvaluator struct {
+type Evaluator struct {
 	timeChecker  *TimeConditionChecker
 	geoIPChecker *GeoIPConditionChecker
 }
 
-func NewConditionEvaluator(geoIPDBPath string) *RealConditionEvaluator {
-	return &RealConditionEvaluator{
+func NewConditionEvaluator(geoIPDBPath string, logger *slog.Logger) *Evaluator {
+	return &Evaluator{
 		timeChecker:  &TimeConditionChecker{},
-		geoIPChecker: NewGeoIPConditionChecker(geoIPDBPath),
+		geoIPChecker: NewGeoIPConditionChecker(geoIPDBPath, logger),
 	}
 }
 
-func (e *RealConditionEvaluator) EvaluateAll(_ context.Context, conditions []domain.AccessCondition, evidence *domain.ClientEvidence) (bool, string, error) {
+func (e *Evaluator) EvaluateAll(_ context.Context, conditions []domain.AccessCondition, evidence *domain.ClientEvidence) (bool, string, error) {
 	for _, cond := range conditions {
 		passed, reason, err := e.evaluateOne(cond, evidence)
 		if err != nil {
@@ -43,7 +35,7 @@ func (e *RealConditionEvaluator) EvaluateAll(_ context.Context, conditions []dom
 	return true, "", nil
 }
 
-func (e *RealConditionEvaluator) evaluateOne(cond domain.AccessCondition, evidence *domain.ClientEvidence) (bool, string, error) {
+func (e *Evaluator) evaluateOne(cond domain.AccessCondition, evidence *domain.ClientEvidence) (bool, string, error) {
 	switch cond.Type {
 	case "time_condition":
 		var cfg TimeConditionConfig
