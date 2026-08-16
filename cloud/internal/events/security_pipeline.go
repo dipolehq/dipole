@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -39,6 +40,22 @@ func (p *SecurityPipeline) Emit(ctx context.Context, event SecurityEvent) error 
 	}
 	if event.ContextID == uuid.Nil {
 		event.ContextID = uuid.New()
+	}
+	if event.ResourceSetID == nil {
+		// Every producer is expected to set ResourceSetID explicitly (see
+		// evaluation.go, method_handler.go, mcp_gateway.go). This default is a
+		// last-resort safety net, not the intended path — a producer reaching
+		// here means it forgot to attribute the event to a resource set, so
+		// it is logged loudly rather than silently defaulted.
+		if p.logger != nil {
+			p.logger.Warn("security event missing ResourceSetID, defaulting to DefaultResourceSetID",
+				"event_type", event.EventType,
+				"tenant_id", event.TenantID,
+				"source", event.Source,
+			)
+		}
+		defaultRS := scope.DefaultResourceSetID
+		event.ResourceSetID = &defaultRS
 	}
 
 	if err := p.repo.InsertSecurityEvent(ctx, &event); err != nil {

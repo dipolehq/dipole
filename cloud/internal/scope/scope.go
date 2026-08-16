@@ -46,3 +46,13 @@ func FromContext(ctx context.Context) *RequestScope {
 	}
 	return nil
 }
+
+// ResolveResourceSetID returns the effective resource set for a value that may
+// be nil (unassigned). Every resource-scoped row must carry a non-nil resource
+// set id — this is the single place that nil collapses to DefaultResourceSetID.
+func ResolveResourceSetID(provided *uuid.UUID) uuid.UUID {
+	if provided != nil {
+		return *provided
+	}
+	return DefaultResourceSetID
+}

@@ -609,14 +609,28 @@ type recordingRepo struct {
 	securityEvents []*events.SecurityEvent
 }
 
+// notNullConstraintErr simulates Postgres SQLSTATE 23502 (not-null violation),
+// the exact failure mode the real access_authorization_events and
+// workload_events tables produce for a nil ResourceSetID after migration 039
+// added NOT NULL to that column.
+var errResourceSetNotNull = fmt.Errorf(`insert security event: ERROR: null value in column "resource_set_id" violates not-null constraint (SQLSTATE 23502)`)
+
 func (r *recordingRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
+	if event.ResourceSetID == nil {
+		return errResourceSetNotNull
+	}
 	r.mu.Lock()
 	r.securityEvents = append(r.securityEvents, event)
 	r.mu.Unlock()
 	return nil
 }
 
-func (r *recordingRepo) InsertWorkloadEventBatch(_ context.Context, _ []events.WorkloadEvent) error {
+func (r *recordingRepo) InsertWorkloadEventBatch(_ context.Context, batch []events.WorkloadEvent) error {
+	for i := range batch {
+		if batch[i].ResourceSetID == nil {
+			return errResourceSetNotNull
+		}
+	}
 	return nil
 }
 
@@ -682,5 +696,62 @@ func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T)
 	}
 	if ev.ServerWorkload != "Test Server" {
 		t.Errorf("expected server workload 'Test Server', got %q", ev.ServerWorkload)
+	}
+}
+
+// TestEmitEvents_AlwaysSetResourceSetID is a regression test for a production
+// incident: migration 039 added a NOT NULL constraint (with a DEFAULT) to
+// resource_set_id on access_authorization_events and workload_events, but no
+// event emission call site populated the field. Postgres defaults only apply
+// when a column is omitted from the INSERT, not when NULL is passed explicitly,
+// so every security and workload event insert failed silently in production
+// while all local tests (which used a repo stub ignoring the column) passed.
+// This test uses a repo stub that reproduces the real constraint so a future
+// regression fails the build instead of only failing in staging.
+func TestEmitEvents_AlwaysSetResourceSetID(t *testing.T) {
+	serverID := uuid.New()
+	tenantID := uuid.New()
+	resourceSetID := uuid.New()
+
+	client := &mockMCPClient{callResult: map[string]any{"ok": true}}
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{
+				ServerWorkload: ServerInfo{ID: serverID, Name: "Test Server"},
+				CredentialType: "api_key",
+				ResourceSetID:  resourceSetID,
+			},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	clients := mapClientFactory{"Test Server": client}
+
+	repo := &recordingRepo{}
+	bus := events.NewEventBus(repo, nil)
+	handler := NewMethodHandler(rightAuth, clients, bus, nil)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Test Server"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__do_thing"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "user@test.com", Scope: testScope(tenantID)}, "tools/call", params)
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+
+	if len(repo.securityEvents) == 0 {
+		t.Fatal("expected security events to be recorded; a NOT NULL constraint failure would silently drop all of them")
+	}
+	for _, ev := range repo.securityEvents {
+		if ev.ResourceSetID == nil {
+			t.Errorf("security event %q has nil ResourceSetID; would violate NOT NULL constraint in production", ev.EventType)
+			continue
+		}
+		if *ev.ResourceSetID != resourceSetID {
+			t.Errorf("security event %q has ResourceSetID %s, expected the matched policy's resource set %s", ev.EventType, ev.ResourceSetID, resourceSetID)
+		}
 	}
 }

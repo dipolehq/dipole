@@ -12,6 +12,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type DBRightSidePolicyFinder struct {
@@ -72,7 +73,8 @@ func matchesGatewayClient(cw domain.ClientWorkload, gatewayURL string) bool {
 
 func mapToRightSidePolicy(p *domain.AccessPolicyWithRelations) RightSidePolicy {
 	rsp := RightSidePolicy{
-		PolicyID: p.Policy.ID,
+		PolicyID:      p.Policy.ID,
+		ResourceSetID: scope.ResolveResourceSetID(p.Policy.ResourceSetID),
 		ServerWorkload: ServerInfo{
 			ID:   p.ServerWorkload.ID,
 			Name: p.ServerWorkload.Name,

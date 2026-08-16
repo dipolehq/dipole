@@ -20,6 +20,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type TrustValidator interface {
@@ -69,6 +70,7 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 	ec.sourceIP = evidence.SourceIP
 	ec.targetHost = target.Host
 	ec.targetPort = target.Port
+	ec.resourceSetID = scope.ResolveResourceSetID(target.ResourceSetID)
 
 	defer func() {
 		s.emitEvents(ctx, &ec)
@@ -175,6 +177,7 @@ type eventContext struct {
 	sourceIP                 string
 	targetHost               string
 	targetPort               int
+	resourceSetID            uuid.UUID
 	result                   *domain.EvaluationResult
 	clientWorkload           *domain.ClientWorkload
 	serverWorkload           *domain.ServerWorkload
@@ -259,12 +262,14 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 		candidateSW = append(candidateSW, events.WorkloadRef{ID: sw.ID, Name: sw.Name})
 	}
 
+	resourceSetID := ec.resourceSetID
 	base := events.SecurityEvent{
 		TenantID:                 ec.tenantID,
 		ContextID:                contextID,
 		SourceIP:                 ec.sourceIP,
 		Source:                   "edge_proxy",
 		Severity:                 "Info",
+		ResourceSetID:            &resourceSetID,
 		Allowed:                  ec.result.Allowed,
 		DenyReason:               ec.result.DenyReason,
 		ClientWorkload:           clientWL,

@@ -61,12 +61,26 @@ type recordingEventRepo struct {
 	securityEvents []*events.SecurityEvent
 }
 
+// errResourceSetNotNull simulates Postgres SQLSTATE 23502 (not-null violation)
+// on access_authorization_events.resource_set_id, reproducing the production
+// incident where migration 039 added NOT NULL to that column but no event
+// emission call site populated ResourceSetID, so every insert failed silently.
+var errResourceSetNotNull = fmt.Errorf(`insert security event: ERROR: null value in column "resource_set_id" violates not-null constraint (SQLSTATE 23502)`)
+
 func (r *recordingEventRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
+	if event.ResourceSetID == nil {
+		return errResourceSetNotNull
+	}
 	r.securityEvents = append(r.securityEvents, event)
 	return nil
 }
 
-func (r *recordingEventRepo) InsertWorkloadEventBatch(_ context.Context, _ []events.WorkloadEvent) error {
+func (r *recordingEventRepo) InsertWorkloadEventBatch(_ context.Context, batch []events.WorkloadEvent) error {
+	for i := range batch {
+		if batch[i].ResourceSetID == nil {
+			return errResourceSetNotNull
+		}
+	}
 	return nil
 }
 
@@ -441,6 +455,54 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 	}
 	if !hasAuth {
 		t.Error("expected an access.authorization event with Allowed=false")
+	}
+}
+
+// TestEvaluate_ResourceSetID_ThreadedFromTarget is a regression test for a
+// production incident: migration 039 added NOT NULL to resource_set_id on
+// access_authorization_events, but emitEvents never populated the field, so
+// every security event insert failed silently (SQLSTATE 23502) while this
+// package's tests — which used a repo stub ignoring the column — kept passing.
+// This asserts both that ResourceSetID is always set, and that it carries the
+// actual resource set of the matched policy's target rather than a blind default.
+func TestEvaluate_ResourceSetID_ThreadedFromTarget(t *testing.T) {
+	repo := &recordingEventRepo{}
+	bus := events.NewEventBus(repo, nil)
+	resourceSetID := uuid.New()
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+
+	svc := NewPolicyEvaluationService(
+		&mockRepo{policies: policies},
+		&mockTrust{attested: true},
+		&mockConditions{passed: true},
+		&mockBroker{cred: &domain.Credential{Value: "token"}},
+		bus,
+		slog.Default(),
+	)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "prod"}}
+	_, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443, ResourceSetID: &resourceSetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(repo.securityEvents) == 0 {
+		t.Fatal("expected security events to be recorded; a NOT NULL constraint failure would silently drop all of them")
+	}
+	for _, sev := range repo.securityEvents {
+		if sev.ResourceSetID == nil {
+			t.Errorf("event %q has nil ResourceSetID; would violate NOT NULL constraint in production", sev.EventType)
+			continue
+		}
+		if *sev.ResourceSetID != resourceSetID {
+			t.Errorf("event %q ResourceSetID = %s, want %s (from target.ResourceSetID)", sev.EventType, sev.ResourceSetID, resourceSetID)
+		}
 	}
 }
 

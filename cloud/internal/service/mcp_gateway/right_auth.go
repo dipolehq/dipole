@@ -35,6 +35,7 @@ var (
 type ServerCredential struct {
 	AccessToken    string
 	ServerWorkload ServerInfo
+	ResourceSetID  uuid.UUID
 }
 
 // ServerInfo describes a downstream MCP server, carrying everything needed both
@@ -70,6 +71,7 @@ type RightSidePolicyFinder interface {
 
 type RightSidePolicy struct {
 	PolicyID                  uuid.UUID
+	ResourceSetID             uuid.UUID
 	ServerWorkload            ServerInfo
 	CredentialProviderID      uuid.UUID
 	CredentialType            string
@@ -124,6 +126,7 @@ func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope 
 	return &ServerCredential{
 		AccessToken:    token,
 		ServerWorkload: policy.ServerWorkload,
+		ResourceSetID:  policy.ResourceSetID,
 	}, nil
 }
 
@@ -146,6 +149,7 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 		creds = append(creds, ServerCredential{
 			AccessToken:    token,
 			ServerWorkload: policy.ServerWorkload,
+			ResourceSetID:  policy.ResourceSetID,
 		})
 	}
 	return creds, nil
@@ -172,6 +176,7 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 		return &ServerCredential{
 			AccessToken:    token,
 			ServerWorkload: policy.ServerWorkload,
+			ResourceSetID:  policy.ResourceSetID,
 		}, nil
 	}
 	return nil, ErrNoPolicyForServer
