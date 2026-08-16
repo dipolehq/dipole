@@ -30,6 +30,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 	"github.com/google/uuid"
 )
@@ -324,12 +325,14 @@ func (s *MCPGatewayServer) emitLeftSideAuth(ctx context.Context, tenantID uuid.U
 		}}
 	}
 
+	defaultRS := scope.DefaultResourceSetID
 	base := events.SecurityEvent{
 		TenantID:       tenantID,
 		ContextID:      contextID,
 		SourceIP:       clientIP,
 		Source:         "mcp_gateway",
 		Severity:       "Info",
+		ResourceSetID:  &defaultRS,
 		Allowed:        allowed,
 		DenyReason:     denyReason,
 		UserID:         userID,

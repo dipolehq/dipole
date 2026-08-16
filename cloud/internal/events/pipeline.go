@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -71,6 +72,10 @@ func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, inco
 		}
 		if incoming[i].ConnectionID == uuid.Nil {
 			incoming[i].ConnectionID = uuid.New()
+		}
+		if incoming[i].ResourceSetID == nil {
+			defaultRS := scope.DefaultResourceSetID
+			incoming[i].ResourceSetID = &defaultRS
 		}
 		incoming[i].Payload = redactPayload(incoming[i].Payload)
 	}

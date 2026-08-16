@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -46,6 +47,18 @@ func (p *WorkloadPipeline) Emit(event WorkloadEvent) {
 	}
 	if event.ConnectionID == uuid.Nil {
 		event.ConnectionID = uuid.New()
+	}
+	if event.ResourceSetID == nil {
+		// Safety net, not the intended path — see security_pipeline.go for why
+		// this is logged rather than silently defaulted.
+		if p.logger != nil {
+			p.logger.Warn("workload event missing ResourceSetID, defaulting to DefaultResourceSetID",
+				"event_type", event.EventType,
+				"tenant_id", event.TenantID,
+			)
+		}
+		defaultRS := scope.DefaultResourceSetID
+		event.ResourceSetID = &defaultRS
 	}
 
 	select {

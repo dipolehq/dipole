@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -181,7 +182,7 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	cred, err := h.rightAuth.GetCredentialByServerName(ctx, rCtx.UserID, rCtx.Scope, serverName)
 	if err != nil {
-		h.emitRightSideAuth(ctx, rCtx, serverName, nil, toolName, false, err.Error())
+		h.emitRightSideAuth(ctx, rCtx, serverName, nil, scope.DefaultResourceSetID, toolName, false, err.Error())
 		return nil, err
 	}
 
@@ -189,13 +190,13 @@ func (h *MethodHandler) handleToolsCall(ctx context.Context, rCtx *RequestContex
 
 	result, respHeaders, err := client.CallTool(ctx, cred.AccessToken, toolName, req.Arguments)
 	if err != nil {
-		rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, toolName, false, err.Error())
-		h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, "tools/call", toolName, 500, rightContextID, nil)
+		rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, cred.ResourceSetID, toolName, false, err.Error())
+		h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, cred.ResourceSetID, "tools/call", toolName, 500, rightContextID, nil)
 		return nil, err
 	}
 
-	rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, toolName, true, "")
-	h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, "tools/call", toolName, 200, rightContextID, respHeaders)
+	rightContextID := h.emitRightSideAuth(ctx, rCtx, cred.ServerWorkload.Name, &cred.ServerWorkload.ID, cred.ResourceSetID, toolName, true, "")
+	h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, cred.ResourceSetID, "tools/call", toolName, 200, rightContextID, respHeaders)
 
 	return result, nil
 }
@@ -239,7 +240,7 @@ func (h *MethodHandler) handleResourcesRead(ctx context.Context, rCtx *RequestCo
 
 		content, respHeaders, err := client.ReadResource(ctx, cred.AccessToken, req.URI)
 		if err == nil && content != nil {
-			h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, "resources/read", "", 200, uuid.Nil, respHeaders)
+			h.emitWorkload(rCtx, cred.ServerWorkload.Name, cred.ServerWorkload.ID, cred.ResourceSetID, "resources/read", "", 200, uuid.Nil, respHeaders)
 			return content, nil
 		}
 	}
@@ -260,7 +261,7 @@ func parsePrefixedToolName(prefixed string) (serverName, toolName string, err er
 	return serverName, toolName, nil
 }
 
-func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, serverID *uuid.UUID, toolName string, allowed bool, denyReason string) uuid.UUID {
+func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestContext, serverName string, serverID *uuid.UUID, resourceSetID uuid.UUID, toolName string, allowed bool, denyReason string) uuid.UUID {
 	contextID := uuid.New()
 
 	if h.events == nil {
@@ -274,12 +275,14 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 
 	policyName := "Gateway → " + serverName
 
+	rs := resourceSetID
 	base := events.SecurityEvent{
 		TenantID:         rCtx.Scope.TenantID,
 		ContextID:        contextID,
 		SourceIP:         rCtx.UserID,
 		Source:           "mcp_gateway",
 		Severity:         "Info",
+		ResourceSetID:    &rs,
 		Allowed:          allowed,
 		DenyReason:       denyReason,
 		UserID:           rCtx.UserID,
@@ -333,7 +336,7 @@ func (h *MethodHandler) emitRightSideAuth(ctx context.Context, rCtx *RequestCont
 	return contextID
 }
 
-func (h *MethodHandler) emitWorkload(rCtx *RequestContext, serverName string, serverID uuid.UUID, mcpMethod string, toolName string, httpStatus int, rightAuthContextID uuid.UUID, responseHeaders http.Header) {
+func (h *MethodHandler) emitWorkload(rCtx *RequestContext, serverName string, serverID uuid.UUID, resourceSetID uuid.UUID, mcpMethod string, toolName string, httpStatus int, rightAuthContextID uuid.UUID, responseHeaders http.Header) {
 	if h.events == nil {
 		return
 	}
@@ -355,12 +358,15 @@ func (h *MethodHandler) emitWorkload(rCtx *RequestContext, serverName string, se
 		authChain = append(authChain, rightAuthContextID.String())
 	}
 
+	rs := resourceSetID
+
 	requestPayload := buildMCPPayload(mcpMethod, serverName, toolName, rCtx.UserID, rCtx.RequestID, rCtx.MCPSessionID, rCtx.ClientIP, rCtx.Headers, authChain, 0)
 	h.events.EmitWorkload(events.WorkloadEvent{
 		TenantID:         rCtx.Scope.TenantID,
 		ConnectionID:     connID,
 		EventType:        "mcp.request",
 		Severity:         severity,
+		ResourceSetID:    &rs,
 		ClientWorkload:   "MCP Client",
 		ServerWorkload:   serverName,
 		ServerWorkloadID: &serverID,
@@ -378,6 +384,7 @@ func (h *MethodHandler) emitWorkload(rCtx *RequestContext, serverName string, se
 		ConnectionID:     connID,
 		EventType:        "mcp.response",
 		Severity:         severity,
+		ResourceSetID:    &rs,
 		ClientWorkload:   "MCP Client",
 		ServerWorkload:   serverName,
 		ServerWorkloadID: &serverID,
