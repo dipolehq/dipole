@@ -17,6 +17,7 @@ package mcp_gateway
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,6 +105,7 @@ type RightSideAuth struct {
 	tokenStore   UserTokenStore
 	refresher    TokenRefresher
 	decrypter    CredentialDecrypter
+	logger       *slog.Logger
 }
 
 func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, decrypter CredentialDecrypter) *RightSideAuth {
@@ -114,6 +116,8 @@ func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenSt
 		decrypter:    decrypter,
 	}
 }
+
+func (a *RightSideAuth) SetLogger(l *slog.Logger) { a.logger = l }
 
 func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope TenantScope, serverHost string, serverPort int) (*ServerCredential, error) {
 	if !scope.Valid() {
@@ -152,10 +156,27 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 		return nil, err
 	}
 
+	if len(policies) == 0 && a.logger != nil {
+		a.logger.Warn("no gateway policies found",
+			"tenant_id", scope.TenantID,
+			"gateway_url", scope.GatewayURL,
+			"user", userID,
+		)
+	}
+
 	var creds []ServerCredential
 	for _, policy := range policies {
 		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
 		if err != nil {
+			if a.logger != nil {
+				a.logger.Warn("credential resolution failed for server",
+					"server", policy.ServerWorkload.Name,
+					"server_id", policy.ServerWorkload.ID,
+					"credential_type", policy.CredentialType,
+					"user", userID,
+					"error", err,
+				)
+			}
 			continue
 		}
 		creds = append(creds, ServerCredential{
