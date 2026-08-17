@@ -52,6 +52,21 @@ func (r *TenantCARepo) GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, ce
 	return certPEM, keyEncrypted, nil
 }
 
+func (r *TenantCARepo) GetCA(ctx context.Context, tenantID uuid.UUID) (string, []byte, error) {
+	var storedCert *string
+	var storedKey []byte
+	err := r.pool.QueryRow(ctx,
+		`SELECT ca_cert_pem, ca_key_encrypted FROM tenants WHERE id = $1`,
+		tenantID).Scan(&storedCert, &storedKey)
+	if err != nil {
+		return "", nil, fmt.Errorf("read tenant CA: %w", err)
+	}
+	if storedCert == nil {
+		return "", nil, nil
+	}
+	return *storedCert, storedKey, nil
+}
+
 func (r *TenantCARepo) HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error) {
 	var cert *string
 	err := r.pool.QueryRow(ctx,

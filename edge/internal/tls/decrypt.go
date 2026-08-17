@@ -9,6 +9,7 @@ never returns with one connection open and the other closed.
 package tls
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -24,8 +25,8 @@ func NewMITMEngine(cache *CertCache) *MITMEngine {
 	return &MITMEngine{certCache: cache}
 }
 
-func (m *MITMEngine) Decrypt(clientConn net.Conn, targetHost string, targetPort int) (net.Conn, net.Conn, error) {
-	cert, err := m.certCache.GetOrGenerate(targetHost)
+func (m *MITMEngine) Decrypt(ctx context.Context, clientConn net.Conn, targetHost string, targetPort int) (net.Conn, net.Conn, error) {
+	cert, err := m.certCache.GetOrGenerate(ctx, targetHost)
 	if err != nil {
 		clientConn.Close()
 		return nil, nil, fmt.Errorf("get cert for %s: %w", targetHost, err)

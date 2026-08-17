@@ -44,7 +44,8 @@ func TestReportHealth_UpdatesProxyStatus(t *testing.T) {
 	tenantID := uuid.New()
 	proxyID := uuid.New()
 
-	resp, err := server.ReportHealth(context.Background(), &pb.HealthReport{
+	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
+	resp, err := server.ReportHealth(ctx, &pb.HealthReport{
 		ComponentId: proxyID.String(),
 		TenantId:    tenantID.String(),
 		Status:      "Healthy",
@@ -67,14 +68,17 @@ func TestReportHealth_UpdatesProxyStatus(t *testing.T) {
 	}
 }
 
-func TestReportHealth_InvalidProxyID_NotAcknowledged(t *testing.T) {
+func TestReportHealth_NoVerifiedIdentity_NotAcknowledged(t *testing.T) {
 	server := &PolicyEvaluationServer{
 		healthUpdater: &mockHealthUpdater{},
 		logger:        newTestLogger(),
 	}
 
+	// No verified identity injected into context — as if the session auth
+	// interceptor somehow did not run. Must fail closed, never fall back
+	// to trusting the request body's component_id/tenant_id.
 	resp, err := server.ReportHealth(context.Background(), &pb.HealthReport{
-		ComponentId: "not-a-uuid",
+		ComponentId: uuid.New().String(),
 		TenantId:    uuid.New().String(),
 		Status:      "Healthy",
 	})
@@ -82,26 +86,34 @@ func TestReportHealth_InvalidProxyID_NotAcknowledged(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if resp.Acknowledged {
-		t.Error("expected Acknowledged=false for invalid proxy ID")
+		t.Error("expected Acknowledged=false with no verified identity in context")
 	}
 }
 
-func TestReportHealth_InvalidTenantID_NotAcknowledged(t *testing.T) {
+func TestReportHealth_ComponentIDMismatch_NotAcknowledged(t *testing.T) {
+	healthUpdater := &mockHealthUpdater{}
 	server := &PolicyEvaluationServer{
-		healthUpdater: &mockHealthUpdater{},
+		healthUpdater: healthUpdater,
 		logger:        newTestLogger(),
 	}
 
-	resp, err := server.ReportHealth(context.Background(), &pb.HealthReport{
-		ComponentId: uuid.New().String(),
-		TenantId:    "not-a-uuid",
+	tenantID := uuid.New()
+	proxyID := uuid.New()
+	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
+
+	resp, err := server.ReportHealth(ctx, &pb.HealthReport{
+		ComponentId: uuid.New().String(), // claims a different proxy than the verified session
+		TenantId:    tenantID.String(),
 		Status:      "Healthy",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if resp.Acknowledged {
-		t.Error("expected Acknowledged=false for invalid tenant ID")
+		t.Error("expected Acknowledged=false when component_id does not match verified session identity")
+	}
+	if healthUpdater.calledProxyID != uuid.Nil {
+		t.Error("UpdateHealth must not be called when identity does not match")
 	}
 }
 
@@ -112,9 +124,13 @@ func TestReportHealth_UpdateFails_NotAcknowledged(t *testing.T) {
 		logger:        newTestLogger(),
 	}
 
-	resp, err := server.ReportHealth(context.Background(), &pb.HealthReport{
-		ComponentId: uuid.New().String(),
-		TenantId:    uuid.New().String(),
+	tenantID := uuid.New()
+	proxyID := uuid.New()
+	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
+
+	resp, err := server.ReportHealth(ctx, &pb.HealthReport{
+		ComponentId: proxyID.String(),
+		TenantId:    tenantID.String(),
 		Status:      "Healthy",
 	})
 	if err != nil {

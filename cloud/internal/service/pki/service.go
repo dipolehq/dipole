@@ -105,6 +105,23 @@ func (s *TenantCAService) GetTenantCACert(ctx context.Context, tenantID uuid.UUI
 	return certPEM, nil
 }
 
+func (s *TenantCAService) getTenantCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyPEM string, err error) {
+	storedCert, storedKeyEnc, err := s.repo.GetCA(ctx, tenantID)
+	if err != nil {
+		return "", "", fmt.Errorf("read CA: %w", err)
+	}
+	if storedCert == "" {
+		return "", "", fmt.Errorf("tenant CA not found")
+	}
+
+	storedKeyPEM, err := crypto.Decrypt(storedKeyEnc, s.encryptionKey)
+	if err != nil {
+		return "", "", fmt.Errorf("decrypt CA key: %w", err)
+	}
+
+	return storedCert, string(storedKeyPEM), nil
+}
+
 func (s *TenantCAService) IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool {
 	has, _ := s.repo.HasCA(ctx, tenantID)
 	return has

@@ -19,6 +19,13 @@ type mockTenantCARepo struct {
 	keyEncrypted []byte
 }
 
+func (m *mockTenantCARepo) GetCA(_ context.Context, _ uuid.UUID) (string, []byte, error) {
+	if !m.stored {
+		return "", nil, nil
+	}
+	return m.certPEM, m.keyEncrypted, nil
+}
+
 func (m *mockTenantCARepo) GetOrCreateCA(_ context.Context, _ uuid.UUID, certPEM string, keyEncrypted []byte) (string, []byte, error) {
 	if m.stored {
 		return m.certPEM, m.keyEncrypted, nil

@@ -150,10 +150,21 @@ type AgentProxyRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentProxy, int, error)
 	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
 	ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error)
+	// SetSessionTokenHash stores the SHA-256 hash of the bearer session
+	// token issued to this proxy at registration, overwriting any
+	// previous hash (re-registering invalidates the old token).
+	SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string) error
+	// GetBySessionTokenHash resolves a proxy by its session token hash,
+	// with no tenant scoping — the token itself is the proof of tenant
+	// membership and is looked up globally, exactly like API token and
+	// registration token lookups elsewhere in this package. Returns nil
+	// (no error) if no proxy holds this hash.
+	GetBySessionTokenHash(ctx context.Context, tokenHash string) (*domain.AgentProxy, error)
 }
 
 type TenantCARepository interface {
 	GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (storedCertPEM string, storedKeyEncrypted []byte, err error)
+	GetCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyEncrypted []byte, err error)
 	HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error)
 	GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error)
 	SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error

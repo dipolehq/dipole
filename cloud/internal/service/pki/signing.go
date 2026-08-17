@@ -60,14 +60,9 @@ func (s *TenantCAService) SignCSR(ctx context.Context, req SignCSRRequest) (*Sig
 		return nil, err
 	}
 
-	hasCA, err := s.repo.HasCA(ctx, req.TenantID)
-	if err != nil || !hasCA {
-		return nil, fmt.Errorf("tenant CA not available: TLS Decrypt must be enabled first")
-	}
-
-	certPEM, keyPEM, err := s.GetOrCreateTenantCA(ctx, req.TenantID)
+	certPEM, keyPEM, err := s.getTenantCA(ctx, req.TenantID)
 	if err != nil {
-		return nil, fmt.Errorf("load tenant CA: %w", err)
+		return nil, fmt.Errorf("tenant CA not available: TLS Decrypt must be enabled first: %w", err)
 	}
 
 	caCertBlock, _ := pem.Decode([]byte(certPEM))

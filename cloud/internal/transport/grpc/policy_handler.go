@@ -32,8 +32,10 @@ type PolicyEvaluator interface {
 }
 
 // ProxyRegistrar abstracts the registration service for proxy registration.
+// It returns the newly registered proxy plus a bearer session token the
+// proxy must present (via gRPC metadata) on every later call.
 type ProxyRegistrar interface {
-	RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error)
+	RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, error)
 }
 
 // ProxyHealthUpdater abstracts the repository for updating proxy health.
@@ -57,12 +59,6 @@ type HostnameAuthorizer interface {
 	IsHostnameAuthorizedForTLS(ctx context.Context, tenantID uuid.UUID, hostname string) (bool, error)
 }
 
-// ProxyAuthenticator verifies that a proxy belongs to a tenant.
-// Used to prevent cross-tenant certificate signing.
-type ProxyAuthenticator interface {
-	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentProxy, error)
-}
-
 type PolicyEvaluationServer struct {
 	pb.UnimplementedPolicyEvaluationServiceServer
 	evaluator     PolicyEvaluator
@@ -71,7 +67,6 @@ type PolicyEvaluationServer struct {
 	caProvider    TenantCAProvider
 	leafSigner    LeafCertSigner
 	hostnameAuthz HostnameAuthorizer
-	proxyAuth     ProxyAuthenticator
 	events        *events.EventBus
 	logger        *slog.Logger
 }
@@ -97,15 +92,18 @@ func (s *PolicyEvaluationServer) SetHostnameAuthorizer(authz HostnameAuthorizer)
 	s.hostnameAuthz = authz
 }
 
-// SetProxyAuthenticator configures the proxy identity verifier.
-func (s *PolicyEvaluationServer) SetProxyAuthenticator(auth ProxyAuthenticator) {
-	s.proxyAuth = auth
-}
-
 func (s *PolicyEvaluationServer) Evaluate(ctx context.Context, req *pb.PolicyEvaluationRequest) (*pb.PolicyEvaluationResponse, error) {
-	tenantID, err := uuid.Parse(req.TenantId)
-	if err != nil {
-		return &pb.PolicyEvaluationResponse{Allowed: false, DenyReason: "InvalidTenant"}, nil
+	verified, ok := VerifiedProxyFromContext(ctx)
+	if !ok {
+		s.logger.Error("evaluate: no verified proxy identity in context (session auth interceptor did not run)")
+		return &pb.PolicyEvaluationResponse{Allowed: false, DenyReason: "Unauthenticated"}, nil
+	}
+	tenantID := verified.TenantID
+
+	if req.TenantId != "" && req.TenantId != tenantID.String() {
+		s.logger.Warn("evaluate: request tenant_id does not match session identity, rejecting as a possible spoofing attempt",
+			"session_tenant_id", tenantID, "claimed_tenant_id", req.TenantId, "proxy_id", verified.ProxyID)
+		return &pb.PolicyEvaluationResponse{Allowed: false, DenyReason: "IdentityMismatch"}, nil
 	}
 
 	evidence := mapEvidence(req.Client)
@@ -133,42 +131,51 @@ func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterR
 		return &pb.RegisterResponse{Success: false, ErrorMessage: "invalid tenant_id"}, nil
 	}
 
-	proxy, err := s.registrar.RegisterProxy(ctx, tenantID, req.RegistrationToken)
+	proxy, sessionToken, err := s.registrar.RegisterProxy(ctx, tenantID, req.RegistrationToken)
 	if err != nil {
 		var regErr *domain.RegistrationError
 		if errors.As(err, &regErr) {
+			// RegistrationError messages are deliberately safe, specific
+			// validation feedback for a legitimate proxy (e.g. "invalid or
+			// already consumed registration token") — they never wrap
+			// internal error detail, so returning them verbatim is fine.
 			s.logger.Warn("register: registration failed", "tenant_id", tenantID, "error", err)
-		} else {
-			s.logger.Error("register: registration failed", "tenant_id", tenantID, "error", err)
+			return &pb.RegisterResponse{Success: false, ErrorMessage: regErr.Error()}, nil
 		}
-		return &pb.RegisterResponse{Success: false, ErrorMessage: err.Error()}, nil
+		// Any other error (persistence, session token generation/storage,
+		// controller lookup, etc.) may wrap raw repository/database error
+		// text. Register runs with no caller authentication at all — it is
+		// the RPC that establishes it — so this detail must never cross
+		// the wire, only be logged server-side.
+		s.logger.Error("register: registration failed", "tenant_id", tenantID, "error", err)
+		return &pb.RegisterResponse{Success: false, ErrorMessage: "registration failed"}, nil
 	}
 
 	s.logger.Info("proxy registered", "tenant_id", tenantID, "proxy_id", proxy.ID)
 
-	resp := &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String()}
+	resp := &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String(), SessionToken: sessionToken}
 
-	certPEM, keyPEM, err := s.caProvider.GetOrCreateTenantCA(ctx, tenantID)
+	certPEM, _, err := s.caProvider.GetOrCreateTenantCA(ctx, tenantID)
 	if err != nil {
 		s.logger.Error("register: tenant CA generation failed", "tenant_id", tenantID, "error", err)
 		return resp, nil
 	}
 
 	resp.CaCertPem = certPEM
-	resp.CaKeyPem = keyPEM
 	return resp, nil
 }
 
 func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.HealthReport) (*pb.HealthAck, error) {
-	proxyID, err := uuid.Parse(req.ComponentId)
-	if err != nil {
-		s.logger.Warn("health: invalid component_id", "component_id", req.ComponentId, "error", err)
+	verified, ok := VerifiedProxyFromContext(ctx)
+	if !ok {
+		s.logger.Error("health: no verified proxy identity in context (session auth interceptor did not run)")
 		return &pb.HealthAck{Acknowledged: false}, nil
 	}
+	tenantID, proxyID := verified.TenantID, verified.ProxyID
 
-	tenantID, err := uuid.Parse(req.TenantId)
-	if err != nil {
-		s.logger.Warn("health: invalid tenant_id", "tenant_id", req.TenantId, "error", err)
+	if req.ComponentId != "" && req.ComponentId != proxyID.String() {
+		s.logger.Warn("health: request component_id does not match session identity, rejecting as a possible spoofing attempt",
+			"session_proxy_id", proxyID, "claimed_component_id", req.ComponentId)
 		return &pb.HealthAck{Acknowledged: false}, nil
 	}
 
@@ -182,6 +189,13 @@ func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.Healt
 }
 
 func (s *PolicyEvaluationServer) IngestEvents(stream grpc.ClientStreamingServer[pb.WorkloadEventBatch, pb.EventAck]) error {
+	verified, ok := VerifiedProxyFromContext(stream.Context())
+	if !ok {
+		s.logger.Error("ingest: no verified proxy identity in context (session auth interceptor did not run)")
+		return stream.SendAndClose(&pb.EventAck{Accepted: 0})
+	}
+	tenantID := verified.TenantID
+
 	var accepted int32
 	for {
 		batch, err := stream.Recv()
@@ -189,9 +203,9 @@ func (s *PolicyEvaluationServer) IngestEvents(stream grpc.ClientStreamingServer[
 			break
 		}
 
-		tenantID, err := uuid.Parse(batch.TenantId)
-		if err != nil {
-			s.logger.Warn("ingest: invalid tenant_id", "tenant_id", batch.TenantId)
+		if batch.TenantId != "" && batch.TenantId != tenantID.String() {
+			s.logger.Warn("ingest: batch tenant_id does not match session identity, rejecting this batch as a possible spoofing attempt",
+				"session_tenant_id", tenantID, "claimed_tenant_id", batch.TenantId, "proxy_id", verified.ProxyID)
 			continue
 		}
 
@@ -379,15 +393,32 @@ func mapResponse(r *domain.EvaluationResult) *pb.PolicyEvaluationResponse {
 
 // SignLeafCertificate handles the proxy's request to sign a CSR for TLS interception.
 // Security flow:
-//  1. Authenticate the proxy (tenant_id from the authenticated context)
+//  1. Authenticate the proxy — the session auth interceptor has already
+//     verified the caller's identity from its bearer session token before
+//     this handler runs; tenant_id/proxy_id come from that verified
+//     identity, not from the request body.
 //  2. Authorize the hostname (check active policy with TLS server workload)
 //  3. Validate and sign the CSR
 func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *pb.SignLeafRequest) (*pb.SignLeafResponse, error) {
-	// 1. Parse and validate tenant identity
-	tenantID, err := uuid.Parse(req.TenantId)
-	if err != nil {
-		s.logger.Warn("sign-leaf: invalid tenant_id", "tenant_id", req.TenantId)
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: "invalid tenant_id"}, nil
+	// 1. Require a verified caller identity. This is the sole source of
+	// truth for tenant_id/proxy_id — the corresponding request fields are
+	// unauthenticated client input and are never used for authorization.
+	verified, ok := VerifiedProxyFromContext(ctx)
+	if !ok {
+		s.logger.Error("sign-leaf: no verified proxy identity in context (session auth interceptor did not run)")
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "authentication required"}, nil
+	}
+	tenantID, proxyID := verified.TenantID, verified.ProxyID
+
+	if req.ProxyId != "" && req.ProxyId != proxyID.String() {
+		s.logger.Warn("sign-leaf: request proxy_id does not match session identity, rejecting as a possible spoofing attempt",
+			"session_proxy_id", proxyID, "claimed_proxy_id", req.ProxyId)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "identity mismatch"}, nil
+	}
+	if req.TenantId != "" && req.TenantId != tenantID.String() {
+		s.logger.Warn("sign-leaf: request tenant_id does not match session identity, rejecting as a possible spoofing attempt",
+			"session_tenant_id", tenantID, "claimed_tenant_id", req.TenantId, "proxy_id", proxyID)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "identity mismatch"}, nil
 	}
 
 	if req.Hostname == "" {
@@ -398,35 +429,13 @@ func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *p
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "CSR is required"}, nil
 	}
 
-	if req.ProxyId == "" {
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy_id is required"}, nil
-	}
-
 	// 2. Check if signing infrastructure is configured
-	if s.leafSigner == nil || s.hostnameAuthz == nil || s.proxyAuth == nil {
+	if s.leafSigner == nil || s.hostnameAuthz == nil {
 		s.logger.Error("sign-leaf: required dependencies not configured")
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "TLS Decrypt not configured"}, nil
 	}
 
-	// 3. Authenticate the proxy — verify it belongs to the claimed tenant.
-	// This prevents cross-tenant certificate issuance: a proxy from Tenant A
-	// cannot request certs signed by Tenant B's CA.
-	proxyID, err := uuid.Parse(req.ProxyId)
-	if err != nil {
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: "invalid proxy_id"}, nil
-	}
-
-	proxy, err := s.proxyAuth.GetByID(ctx, tenantID, proxyID)
-	if err != nil {
-		s.logger.Error("sign-leaf: proxy lookup failed", "tenant_id", tenantID, "proxy_id", proxyID, "error", err)
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy authentication failed"}, nil
-	}
-	if proxy == nil {
-		s.logger.Warn("sign-leaf: proxy not found for tenant", "tenant_id", tenantID, "proxy_id", proxyID)
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: "proxy not registered for this tenant"}, nil
-	}
-
-	// 4. Verify TLS Decrypt is enabled (CA must already exist).
+	// 3. Verify TLS Decrypt is enabled (CA must already exist).
 	// We do NOT lazily generate the CA here — a signing request must not
 	// trigger CA creation. The admin must explicitly enable TLS Decrypt first.
 	if !s.leafSigner.IsTlsDecryptEnabled(ctx, tenantID) {
@@ -434,18 +443,18 @@ func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *p
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "TLS Decrypt is not enabled for this tenant"}, nil
 	}
 
-	// 5. Authorize hostname — only sign for hostnames in active policies with TLS
+	// 4. Authorize hostname — only sign for hostnames in active policies with TLS
 	authorized, err := s.hostnameAuthz.IsHostnameAuthorizedForTLS(ctx, tenantID, req.Hostname)
 	if err != nil {
 		s.logger.Error("sign-leaf: authorization check failed", "tenant_id", tenantID, "hostname", req.Hostname, "error", err)
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "authorization check failed"}, nil
 	}
 	if !authorized {
-		s.logger.Warn("sign-leaf: hostname not authorized", "tenant_id", tenantID, "hostname", req.Hostname, "proxy_id", req.ProxyId)
+		s.logger.Warn("sign-leaf: hostname not authorized", "tenant_id", tenantID, "hostname", req.Hostname, "proxy_id", proxyID)
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "hostname not authorized for TLS interception"}, nil
 	}
 
-	// 6. Sign the CSR
+	// 5. Sign the CSR
 	resp, err := s.leafSigner.SignCSR(ctx, pki.SignCSRRequest{
 		TenantID: tenantID,
 		CSRDER:   req.CsrDer,
@@ -453,13 +462,16 @@ func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *p
 	})
 	if err != nil {
 		s.logger.Error("sign-leaf: signing failed", "tenant_id", tenantID, "hostname", req.Hostname, "error", err)
-		return &pb.SignLeafResponse{Success: false, ErrorMessage: err.Error()}, nil
+		// The underlying error (CSR parsing, CA decrypt, x509 signing
+		// failures, etc.) is logged above but never returned to the
+		// caller.
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "certificate signing failed"}, nil
 	}
 
 	s.logger.Info("sign-leaf: certificate issued",
 		"tenant_id", tenantID,
 		"hostname", req.Hostname,
-		"proxy_id", req.ProxyId,
+		"proxy_id", proxyID,
 		"not_after", resp.NotAfter.Format(time.RFC3339),
 	)
 

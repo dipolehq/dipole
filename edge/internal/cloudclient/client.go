@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/dipolehq/dipole/edge/internal/metrics"
@@ -44,6 +45,12 @@ type CloudClient struct {
 	resourceSetID string
 	logger        *slog.Logger
 	connected     atomic.Bool
+	// sessionToken is the bearer token issued by Register and required by
+	// every other RPC on this connection (see sessionAuthUnaryInterceptor).
+	// Stored in an atomic.Value since Register runs once at startup but
+	// ReportHealth/Evaluate/SignLeaf may be read concurrently from other
+	// goroutines afterward.
+	sessionToken atomic.Value
 }
 
 func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInsecure bool, logger *slog.Logger) (*CloudClient, error) {
@@ -58,9 +65,17 @@ func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInse
 		return nil, fmt.Errorf("build transport credentials: %w", err)
 	}
 
+	c := &CloudClient{
+		tenantID: tenantID,
+		logger:   logger,
+	}
+	c.sessionToken.Store("")
+
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(kaParams),
+		grpc.WithChainUnaryInterceptor(c.sessionAuthUnaryInterceptor),
+		grpc.WithChainStreamInterceptor(c.sessionAuthStreamInterceptor),
 	}
 
 	if dialer := buildProxyDialer(); dialer != nil {
@@ -72,15 +87,34 @@ func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInse
 		return nil, fmt.Errorf("dial cloud %s: %w", endpoint, err)
 	}
 
-	c := &CloudClient{
-		conn:     conn,
-		client:   pb.NewPolicyEvaluationServiceClient(conn),
-		tenantID: tenantID,
-		logger:   logger,
-	}
+	c.conn = conn
+	c.client = pb.NewPolicyEvaluationServiceClient(conn)
 	c.connected.Store(true)
 	metrics.GRPCConnectionStatus.Set(1)
 	return c, nil
+}
+
+// sessionAuthUnaryInterceptor attaches the bearer session token (if one has
+// been issued) to every outgoing unary call as gRPC metadata. Register is
+// unaffected in practice since it runs before any token exists — the
+// metadata is simply empty, which the server-side interceptor also exempts
+// Register from requiring.
+func (c *CloudClient) sessionAuthUnaryInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return invoker(c.attachSessionToken(ctx), method, req, reply, cc, opts...)
+}
+
+// sessionAuthStreamInterceptor is the streaming counterpart, needed for
+// IngestEvents.
+func (c *CloudClient) sessionAuthStreamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	return streamer(c.attachSessionToken(ctx), desc, cc, method, opts...)
+}
+
+func (c *CloudClient) attachSessionToken(ctx context.Context) context.Context {
+	token, _ := c.sessionToken.Load().(string)
+	if token == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 }
 
 func buildTransportCredentials(trustPath string, grpcInsecure bool) (credentials.TransportCredentials, error) {
@@ -210,7 +244,6 @@ func (c *CloudClient) ProxyID() string {
 type RegisterResult struct {
 	ProxyID   string
 	CACertPEM string
-	CAKeyPEM  string
 }
 
 func (c *CloudClient) Register(ctx context.Context, token, version string) (*RegisterResult, error) {
@@ -234,11 +267,15 @@ func (c *CloudClient) Register(ctx context.Context, token, version string) (*Reg
 		return nil, fmt.Errorf("registration denied: %s", resp.ErrorMessage)
 	}
 
+	if resp.SessionToken == "" {
+		return nil, fmt.Errorf("registration succeeded but cloud did not issue a session token")
+	}
+
 	c.proxyID = resp.ProxyId
+	c.sessionToken.Store(resp.SessionToken)
 	return &RegisterResult{
 		ProxyID:   resp.ProxyId,
 		CACertPEM: resp.CaCertPem,
-		CAKeyPEM:  resp.CaKeyPem,
 	}, nil
 }
 
@@ -314,6 +351,35 @@ func (c *CloudClient) Evaluate(ctx context.Context, evidence *pb.ClientEvidence,
 	c.connected.Store(true)
 	metrics.GRPCConnectionStatus.Set(1)
 	return mapResult(resp), nil
+}
+
+// SignLeaf implements dipoletls.LeafSigner: it sends a proxy-generated CSR
+// to Cloud's SignLeafCertificate RPC and returns the signed leaf
+// certificate. The tenant's Root CA private key stays in Cloud — only the
+// signed certificate crosses the wire.
+func (c *CloudClient) SignLeaf(ctx context.Context, csrDER []byte, hostname string) ([]byte, time.Time, error) {
+	req := &pb.SignLeafRequest{
+		CsrDer:   csrDER,
+		Hostname: hostname,
+		ProxyId:  c.proxyID,
+		TenantId: c.tenantID,
+	}
+
+	resp, err := c.client.SignLeafCertificate(ctx, req)
+	if err != nil {
+		st, _ := status.FromError(err)
+		if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
+			c.connected.Store(false)
+			metrics.GRPCConnectionStatus.Set(0)
+		}
+		return nil, time.Time{}, fmt.Errorf("sign leaf certificate rpc: %w", err)
+	}
+
+	if !resp.Success {
+		return nil, time.Time{}, fmt.Errorf("leaf certificate signing denied: %s", resp.ErrorMessage)
+	}
+
+	return resp.CertDer, time.Unix(resp.NotAfter, 0), nil
 }
 
 func (c *CloudClient) IsConnected() bool {

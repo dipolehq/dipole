@@ -20,7 +20,6 @@ type RegistrationResult struct {
 	ProxyID   string
 	Success   bool
 	CACertPEM string
-	CAKeyPEM  string
 }
 
 func FetchTokenFromController(ctx context.Context, controllerURL string, logger *slog.Logger) (string, error) {
@@ -116,7 +115,6 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 		ProxyID:   result.ProxyID,
 		Success:   true,
 		CACertPEM: result.CACertPEM,
-		CAKeyPEM:  result.CAKeyPEM,
 	}
 }
 

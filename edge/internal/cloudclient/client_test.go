@@ -4,6 +4,7 @@ Package cloudclient tests the TLS transport credential building for the Cloud gR
 package cloudclient
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -15,6 +16,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/metadata"
 )
 
 func TestBuildTransportCredentials_Insecure(t *testing.T) {
@@ -103,4 +106,43 @@ func generateTestCAPEM(t *testing.T) []byte {
 	}
 
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+}
+
+func TestCloudClient_AttachSessionToken_NoTokenYet_LeavesContextUnchanged(t *testing.T) {
+	c := &CloudClient{}
+	c.sessionToken.Store("")
+
+	ctx := c.attachSessionToken(context.Background())
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if ok && len(md.Get("authorization")) > 0 {
+		t.Errorf("expected no authorization metadata before a session token is issued, got %v", md.Get("authorization"))
+	}
+}
+
+func TestCloudClient_AttachSessionToken_AttachesBearerToken(t *testing.T) {
+	c := &CloudClient{}
+	c.sessionToken.Store("my-session-token")
+
+	ctx := c.attachSessionToken(context.Background())
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		t.Fatal("expected outgoing metadata to be set")
+	}
+	values := md.Get("authorization")
+	if len(values) != 1 || values[0] != "Bearer my-session-token" {
+		t.Errorf("authorization metadata = %v, want [\"Bearer my-session-token\"]", values)
+	}
+}
+
+func TestCloudClient_AttachSessionToken_ReflectsMostRecentlyStoredToken(t *testing.T) {
+	c := &CloudClient{}
+	c.sessionToken.Store("first-token")
+	c.sessionToken.Store("second-token")
+
+	ctx := c.attachSessionToken(context.Background())
+	md, _ := metadata.FromOutgoingContext(ctx)
+	values := md.Get("authorization")
+	if len(values) != 1 || values[0] != "Bearer second-token" {
+		t.Errorf("authorization metadata = %v, want [\"Bearer second-token\"] (most recent token)", values)
+	}
 }

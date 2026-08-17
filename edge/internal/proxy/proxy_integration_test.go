@@ -2,10 +2,16 @@ package proxy_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +29,73 @@ import (
 	"github.com/google/uuid"
 )
 
+// fakeCloudSigner implements dipoletls.LeafSigner for integration tests by
+// self-signing CSRs with a locally generated CA, standing in for Cloud's
+// real SignLeafCertificate RPC without any network dependency.
+type fakeCloudSigner struct {
+	caCert *x509.Certificate
+	caKey  *ecdsa.PrivateKey
+}
+
+func newFakeCloudSigner(t *testing.T) (*fakeCloudSigner, []byte) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate CA key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test Root CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		MaxPathLen:            1,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create CA cert: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse CA cert: %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	return &fakeCloudSigner{caCert: cert, caKey: key}, certPEM
+}
+
+func (f *fakeCloudSigner) SignLeaf(ctx context.Context, csrDER []byte, hostname string) ([]byte, time.Time, error) {
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return nil, time.Time{}, err
+	}
+
+	notAfter := time.Now().Add(24 * time.Hour)
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               csr.Subject,
+		DNSNames:              csr.DNSNames,
+		NotBefore:             time.Now(),
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, f.caCert, csr.PublicKey, f.caKey)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return certDER, notAfter, nil
+}
+
 func TestIntegration_HTTPSProxy(t *testing.T) {
 	// Start a local HTTPS server as the target
 	targetServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,12 +104,13 @@ func TestIntegration_HTTPSProxy(t *testing.T) {
 	}))
 	defer targetServer.Close()
 
-	// Create proxy CA and MITM engine
-	ca, err := dipoletls.NewCertificateAuthority()
+	// Create trust anchor + fake Cloud signer and MITM engine
+	signer, caCertPEM := newFakeCloudSigner(t)
+	anchor, err := dipoletls.NewTrustAnchor(caCertPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cache := dipoletls.NewCertCache(ca)
+	cache := dipoletls.NewCertCache(anchor, signer)
 	engine := dipoletls.NewMITMEngine(cache)
 
 	// Find free port for proxy
@@ -56,7 +130,7 @@ func TestIntegration_HTTPSProxy(t *testing.T) {
 
 	// Connection handler: MITM decrypt → HTTP forward
 	handler := func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
-		clientPlain, serverConn, err := engine.Decrypt(clientConn, targetHost, targetPort)
+		clientPlain, serverConn, err := engine.Decrypt(context.Background(), clientConn, targetHost, targetPort)
 		if err != nil {
 			clientConn.Close()
 			return
@@ -75,7 +149,7 @@ func TestIntegration_HTTPSProxy(t *testing.T) {
 
 	// Build HTTP client that trusts our CA and the target server's CA
 	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(ca.CACertPEM())
+	pool.AppendCertsFromPEM(anchor.CACertPEM())
 	// Also trust the test server's cert
 	pool.AddCert(targetServer.Certificate())
 

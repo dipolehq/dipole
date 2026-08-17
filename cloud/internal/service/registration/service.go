@@ -133,27 +133,33 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 	return token, nil
 }
 
-func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error) {
+// RegisterProxy validates and consumes a registration token, persists a new
+// AgentProxy, and issues that proxy a bearer session token. The session
+// token (not the one-time registration token) is what authenticates every
+// subsequent gRPC call the proxy makes — see grpc.SessionAuthInterceptor.
+// Only its SHA-256 hash is stored; the raw token is returned exactly once
+// and never persisted or logged in full.
+func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, error) {
 	if registrationToken == "" {
-		return nil, domain.NewRegistrationError("empty registration token")
+		return nil, "", domain.NewRegistrationError("empty registration token")
 	}
 
 	parts := strings.SplitN(registrationToken, ":", 3)
 	if len(parts) != 3 {
-		return nil, domain.NewRegistrationError("invalid registration token format")
+		return nil, "", domain.NewRegistrationError("invalid registration token format")
 	}
 
 	tokenTenantID, err := uuid.Parse(parts[0])
 	if err != nil {
-		return nil, domain.NewRegistrationError("invalid tenant_id in token")
+		return nil, "", domain.NewRegistrationError("invalid tenant_id in token")
 	}
 	if tokenTenantID != tenantID {
-		return nil, domain.NewRegistrationError("token tenant mismatch")
+		return nil, "", domain.NewRegistrationError("token tenant mismatch")
 	}
 
 	controllerID, err := uuid.Parse(parts[1])
 	if err != nil {
-		return nil, domain.NewRegistrationError("invalid controller_id in token")
+		return nil, "", domain.NewRegistrationError("invalid controller_id in token")
 	}
 
 	// Verify token is valid, not consumed, not expired — and consume it atomically
@@ -162,19 +168,19 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 
 	consumed, err := s.tokenRepo.Consume(ctx, tenantID, tokenHash)
 	if err != nil || consumed == nil {
-		return nil, domain.NewRegistrationError("invalid or already consumed registration token")
+		return nil, "", domain.NewRegistrationError("invalid or already consumed registration token")
 	}
 
 	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return nil, fmt.Errorf("lookup controller: %w", err)
+		return nil, "", fmt.Errorf("lookup controller: %w", err)
 	}
 	if controller == nil {
-		return nil, domain.NewRegistrationError("controller not found")
+		return nil, "", domain.NewRegistrationError("controller not found")
 	}
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return nil, domain.NewRegistrationError("controller not in valid state for proxy registration")
+		return nil, "", domain.NewRegistrationError("controller not in valid state for proxy registration")
 	}
 
 	now := time.Now()
@@ -187,10 +193,32 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 	}
 
 	if err := s.proxyRepo.Create(ctx, tenantID, proxy); err != nil {
-		return nil, fmt.Errorf("persist proxy: %w", err)
+		return nil, "", fmt.Errorf("persist proxy: %w", err)
 	}
 
-	return proxy, nil
+	sessionToken, err := generateSessionToken()
+	if err != nil {
+		return nil, "", fmt.Errorf("generate session token: %w", err)
+	}
+	sessionTokenHash := hashSessionToken(sessionToken)
+	if err := s.proxyRepo.SetSessionTokenHash(ctx, tenantID, proxy.ID, sessionTokenHash); err != nil {
+		return nil, "", fmt.Errorf("store session token: %w", err)
+	}
+
+	return proxy, sessionToken, nil
+}
+
+func generateSessionToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+func hashSessionToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *RegistrationService) UpdateHealth(ctx context.Context, tenantID, controllerID uuid.UUID) error {

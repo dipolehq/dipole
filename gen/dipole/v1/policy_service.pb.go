@@ -1122,12 +1122,19 @@ func (x *RegisterRequest) GetProxyVersion() string {
 }
 
 type RegisterResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProxyId       string                 `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
-	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	CaCertPem     string                 `protobuf:"bytes,4,opt,name=ca_cert_pem,json=caCertPem,proto3" json:"ca_cert_pem,omitempty"`
-	CaKeyPem      string                 `protobuf:"bytes,5,opt,name=ca_key_pem,json=caKeyPem,proto3" json:"ca_key_pem,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	ProxyId      string                 `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
+	Success      bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	CaCertPem    string                 `protobuf:"bytes,4,opt,name=ca_cert_pem,json=caCertPem,proto3" json:"ca_cert_pem,omitempty"`
+	// Bearer session token, issued once here and never sent again. The proxy
+	// must attach it as gRPC metadata ("authorization: bearer <token>") on
+	// every subsequent call on this service. Cloud verifies it server-side
+	// and derives the caller's tenant_id/proxy_id from it — request-body
+	// tenant_id/proxy_id fields on other RPCs are no longer trusted on their
+	// own. Re-registering issues a new token and invalidates the previous
+	// one.
+	SessionToken  string `protobuf:"bytes,6,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1190,9 +1197,9 @@ func (x *RegisterResponse) GetCaCertPem() string {
 	return ""
 }
 
-func (x *RegisterResponse) GetCaKeyPem() string {
+func (x *RegisterResponse) GetSessionToken() string {
 	if x != nil {
-		return x.CaKeyPem
+		return x.SessionToken
 	}
 	return ""
 }
@@ -1793,14 +1800,14 @@ const file_dipole_v1_policy_service_proto_rawDesc = "" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12-\n" +
 	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\x12#\n" +
-	"\rproxy_version\x18\x03 \x01(\tR\fproxyVersion\"\xaa\x01\n" +
+	"\rproxy_version\x18\x03 \x01(\tR\fproxyVersion\"\xc3\x01\n" +
 	"\x10RegisterResponse\x12\x19\n" +
 	"\bproxy_id\x18\x01 \x01(\tR\aproxyId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x1e\n" +
-	"\vca_cert_pem\x18\x04 \x01(\tR\tcaCertPem\x12\x1c\n" +
-	"\n" +
-	"ca_key_pem\x18\x05 \x01(\tR\bcaKeyPem\"\xcd\x01\n" +
+	"\vca_cert_pem\x18\x04 \x01(\tR\tcaCertPem\x12#\n" +
+	"\rsession_token\x18\x06 \x01(\tR\fsessionTokenJ\x04\b\x05\x10\x06R\n" +
+	"ca_key_pem\"\xcd\x01\n" +
 	"\fHealthReport\x12!\n" +
 	"\fcomponent_id\x18\x01 \x01(\tR\vcomponentId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x16\n" +

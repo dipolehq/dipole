@@ -94,6 +94,34 @@ func (r *AgentProxyRepo) UpdateHealth(ctx context.Context, tenantID uuid.UUID, p
 	return nil
 }
 
+func (r *AgentProxyRepo) SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE agent_proxies SET session_token_hash = $3 WHERE tenant_id = $1 AND id = $2`,
+		tenantID, proxyID, tokenHash)
+	if err != nil {
+		return fmt.Errorf("set agent proxy session token hash: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("set agent proxy session token hash: proxy not found")
+	}
+	return nil
+}
+
+func (r *AgentProxyRepo) GetBySessionTokenHash(ctx context.Context, tokenHash string) (*domain.AgentProxy, error) {
+	proxy := &domain.AgentProxy{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at
+		 FROM agent_proxies WHERE session_token_hash = $1`, tokenHash).
+		Scan(&proxy.ID, &proxy.TenantID, &proxy.AgentControllerID, &proxy.Status, &proxy.LastHealthAt, &proxy.ResourceSetID, &proxy.RegisteredAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get agent proxy by session token hash: %w", err)
+	}
+	return proxy, nil
+}
+
 func (r *AgentProxyRepo) ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at

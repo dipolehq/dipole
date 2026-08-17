@@ -24,7 +24,7 @@ import (
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
-func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServiceServer, tlsCert, tlsKey string, logger *slog.Logger) error {
+func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServiceServer, tlsCert, tlsKey string, sessionAuth SessionProxyAuthenticator, logger *slog.Logger) error {
 	kaParams := keepalive.ServerParameters{
 		MaxConnectionIdle: 5 * time.Minute,
 		MaxConnectionAge:  30 * time.Minute,
@@ -39,6 +39,14 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 			loggingInterceptor(logger),
 			recoveryInterceptor(logger),
 			timeoutInterceptor(30*time.Second),
+			// Session auth runs after logging/recovery/timeout are in
+			// place, but before any handler logic — every RPC except
+			// Register requires a verified proxy identity before its
+			// request is ever inspected.
+			SessionAuthInterceptor(sessionAuth),
+		),
+		grpc.ChainStreamInterceptor(
+			SessionAuthStreamInterceptor(sessionAuth),
 		),
 	)
 
