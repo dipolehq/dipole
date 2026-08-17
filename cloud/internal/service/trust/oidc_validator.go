@@ -89,7 +89,7 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 func (v *OIDCValidator) verifyWithDiscovery(ctx context.Context, token, oidcEndpoint string, jwksCache *JWKSCache) (map[string]interface{}, error) {

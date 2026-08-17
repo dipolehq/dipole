@@ -42,7 +42,7 @@ func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvi
 	}
 
 	if len(provider.MatchRules) == 0 {
-		return &domain.TrustProviderResult{Attested: true}, nil
+		return &domain.TrustProviderResult{Attested: true, Claims: computeFields}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), computeFields)
@@ -56,7 +56,7 @@ func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvi
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: computeFields}, nil
 }
 
 // verifyAndExtractAzureAttestation parses the PKCS#7 signed attestation,

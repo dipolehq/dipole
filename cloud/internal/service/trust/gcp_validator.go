@@ -61,7 +61,7 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 func verifyOIDCToken(ctx context.Context, token, oidcEndpoint string, jwksCache *JWKSCache) (map[string]interface{}, error) {

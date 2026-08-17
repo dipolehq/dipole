@@ -179,4 +179,10 @@ func TestCertificateValidator_NoMatchRules_ChainOnly(t *testing.T) {
 	if !result.Attested {
 		t.Fatalf("expected attested with no match rules, got reason: %s", result.Reason)
 	}
+	if result.Claims == nil {
+		t.Fatal("expected Claims to be populated even when no match rules are configured")
+	}
+	if result.Claims["subject.cn"] != "anything" {
+		t.Errorf("Claims[subject.cn] = %v, want anything", result.Claims["subject.cn"])
+	}
 }

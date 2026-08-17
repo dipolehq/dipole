@@ -55,10 +55,6 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	if len(provider.MatchRules) == 0 {
-		return &domain.TrustProviderResult{Attested: true}, nil
-	}
-
 	subjectFields := map[string]interface{}{
 		"subject.cn":           cert.Subject.CommonName,
 		"subject.organization": firstOrEmpty(cert.Subject.Organization),
@@ -66,6 +62,10 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		"subject.country":      firstOrEmpty(cert.Subject.Country),
 		"subject.locality":     firstOrEmpty(cert.Subject.Locality),
 		"subject.province":     firstOrEmpty(cert.Subject.Province),
+	}
+
+	if len(provider.MatchRules) == 0 {
+		return &domain.TrustProviderResult{Attested: true, Claims: subjectFields}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), subjectFields)
@@ -79,7 +79,7 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: subjectFields}, nil
 }
 
 func parseCertificatePEM(pemStr string) (*x509.Certificate, error) {

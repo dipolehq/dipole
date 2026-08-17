@@ -67,7 +67,7 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 type stsIdentity struct {

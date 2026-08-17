@@ -82,7 +82,7 @@ func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 func (v *SAMLValidator) getIdPCertificate(ctx context.Context, cfg samlConfig) (*x509.Certificate, error) {

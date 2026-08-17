@@ -82,5 +82,5 @@ func (v *GitHubValidator) Validate(ctx context.Context, provider *domain.TrustPr
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }

@@ -40,4 +40,5 @@ type TrustProviderResult struct {
 	Attribute     string
 	ExpectedValue string
 	ActualValue   string
+	Claims        map[string]interface{}
 }

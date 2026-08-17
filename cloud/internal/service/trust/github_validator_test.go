@@ -55,6 +55,15 @@ func TestGitHubValidator_ValidToken_Attested(t *testing.T) {
 	if !result.Attested {
 		t.Errorf("expected attested=true, got reason=%s", result.Reason)
 	}
+	if result.Claims == nil {
+		t.Fatal("expected Claims to be populated on successful attestation")
+	}
+	if result.Claims["repository"] != "myorg/myrepo" {
+		t.Errorf("Claims[repository] = %v, want myorg/myrepo", result.Claims["repository"])
+	}
+	if result.Claims["sub"] != "repo:myorg/myrepo:ref:refs/heads/main" {
+		t.Errorf("Claims[sub] = %v, want repo:myorg/myrepo:ref:refs/heads/main", result.Claims["sub"])
+	}
 }
 
 func TestGitHubValidator_AudienceMismatch(t *testing.T) {
@@ -89,6 +98,9 @@ func TestGitHubValidator_AudienceMismatch(t *testing.T) {
 	}
 	if result.Reason != "InvalidAudience" {
 		t.Errorf("reason = %q, want InvalidAudience", result.Reason)
+	}
+	if result.Claims != nil {
+		t.Error("expected Claims to be nil when attestation fails")
 	}
 }
 

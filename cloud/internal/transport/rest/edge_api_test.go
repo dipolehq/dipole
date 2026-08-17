@@ -35,7 +35,7 @@ type mockEdgePolicy struct {
 	err    error
 }
 
-func (m *mockEdgePolicy) Evaluate(_ uuid.UUID, _ *domain.ClientEvidence, _ *domain.ServerTarget) (*domain.EvaluationResult, error) {
+func (m *mockEdgePolicy) Evaluate(_ context.Context, _ uuid.UUID, _ *domain.ClientEvidence, _ *domain.ServerTarget) (*domain.EvaluationResult, error) {
 	return m.result, m.err
 }
 

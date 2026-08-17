@@ -1,12 +1,4 @@
-/*
-edge_adapter.go adapts PolicyEvaluationService to the EdgePolicyEvaluator
-interface used by the Edge API handler.
-
-The Edge API transport defines EdgePolicyEvaluator without a context parameter.
-This adapter bridges that gap by providing context.Background() — acceptable
-because the Edge API HTTP handler's request context does not propagate into
-this interface (by design of the transport layer).
-*/
+// edge_adapter.go adapts PolicyEvaluationService to the EdgePolicyEvaluator interface used by the Edge API handler.
 package policy
 
 import (
@@ -25,6 +17,6 @@ func NewEdgePolicyAdapter(service *PolicyEvaluationService) *EdgePolicyAdapter {
 	return &EdgePolicyAdapter{service: service}
 }
 
-func (a *EdgePolicyAdapter) Evaluate(tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error) {
-	return a.service.Evaluate(context.Background(), tenantID, evidence, target)
+func (a *EdgePolicyAdapter) Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error) {
+	return a.service.Evaluate(ctx, tenantID, evidence, target)
 }

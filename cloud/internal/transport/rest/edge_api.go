@@ -22,7 +22,7 @@ import (
 )
 
 type EdgePolicyEvaluator interface {
-	Evaluate(tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
+	Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
 }
 
 type EdgeTrustValidator interface {
@@ -154,7 +154,7 @@ func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Reques
 	evidence := buildEdgeEvidence(req.Client, parsed.IdentityType)
 	target := &domain.ServerTarget{Host: req.Server.Host, Port: req.Server.Port}
 
-	result, err := h.policyEval.Evaluate(tenant.ID, evidence, target)
+	result, err := h.policyEval.Evaluate(r.Context(), tenant.ID, evidence, target)
 	if err != nil || result == nil || !result.Allowed {
 		writeJSON(w, http.StatusOK, map[string]any{"credentialType": "Unknown", "data": map[string]any{}})
 		return

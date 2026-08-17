@@ -74,7 +74,7 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: docFields}, nil
 }
 
 func parseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {

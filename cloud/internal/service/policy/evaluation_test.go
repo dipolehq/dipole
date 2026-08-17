@@ -1,3 +1,4 @@
+// evaluation_test.go tests PolicyEvaluationService.Evaluate: identifier matching, trust/condition/credential flow, deny reasons, and security event emission.
 package policy
 
 import (
@@ -36,10 +37,13 @@ func (m *mockRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]do
 	return m.policies, m.err
 }
 
-type mockTrust struct{ attested bool }
+type mockTrust struct {
+	attested bool
+	claims   map[string]interface{}
+}
 
 func (m *mockTrust) Validate(_ context.Context, p *domain.TrustProvider, _ *domain.ClientEvidence) (*domain.TrustProviderResult, error) {
-	return &domain.TrustProviderResult{ProviderID: p.ID, Attested: m.attested}, nil
+	return &domain.TrustProviderResult{ProviderID: p.ID, Attested: m.attested, Claims: m.claims}, nil
 }
 
 type mockConditions struct{ passed bool }
@@ -49,11 +53,13 @@ func (m *mockConditions) EvaluateAll(_ context.Context, _ []domain.AccessConditi
 }
 
 type mockBroker struct {
-	cred *domain.Credential
-	err  error
+	cred           *domain.Credential
+	err            error
+	receivedClaims map[string]interface{}
 }
 
-func (m *mockBroker) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
+func (m *mockBroker) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.CredentialProvider, _ *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
+	m.receivedClaims = trustClaims
 	return m.cred, m.err
 }
 
@@ -61,10 +67,6 @@ type recordingEventRepo struct {
 	securityEvents []*events.SecurityEvent
 }
 
-// errResourceSetNotNull simulates Postgres SQLSTATE 23502 (not-null violation)
-// on access_authorization_events.resource_set_id, reproducing the production
-// incident where migration 039 added NOT NULL to that column but no event
-// emission call site populated ResourceSetID, so every insert failed silently.
 var errResourceSetNotNull = fmt.Errorf(`insert security event: ERROR: null value in column "resource_set_id" violates not-null constraint (SQLSTATE 23502)`)
 
 func (r *recordingEventRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
@@ -182,7 +184,6 @@ func TestEvaluate_ANDLogic_BothMustMatch(t *testing.T) {
 	}}
 	svc := newTestService(policies, nil, nil, nil)
 
-	// Namespace matches but pod doesn't
 	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "production", PodName: "other-xyz"}}
 	result, _ := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
 
@@ -205,7 +206,6 @@ func TestEvaluate_SameType_ORLogic_OneValueMatches(t *testing.T) {
 	cred := &domain.Credential{Type: "bearer", Value: "key"}
 	svc := newTestService(policies, nil, cred, nil)
 
-	// Same type, OR semantics: matching either value is sufficient.
 	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "staging"}}
 	result, _ := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
 
@@ -226,7 +226,6 @@ func TestEvaluate_MixedTypes_ORWithinType_ANDAcrossTypes(t *testing.T) {
 	}}
 	svc := newTestService(policies, nil, nil, nil)
 
-	// Namespace OR matches, but the service-account type has no match → deny.
 	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "staging", ServiceAccountName: "other-sa"}}
 	result, _ := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
 
@@ -462,13 +461,6 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 	}
 }
 
-// TestEvaluate_ResourceSetID_ThreadedFromTarget is a regression test for a
-// production incident: migration 039 added NOT NULL to resource_set_id on
-// access_authorization_events, but emitEvents never populated the field, so
-// every security event insert failed silently (SQLSTATE 23502) while this
-// package's tests — which used a repo stub ignoring the column — kept passing.
-// This asserts both that ResourceSetID is always set, and that it carries the
-// actual resource set of the matched policy's target rather than a blind default.
 func TestEvaluate_ResourceSetID_ThreadedFromTarget(t *testing.T) {
 	repo := &recordingEventRepo{}
 	bus := events.NewEventBus(repo, nil)
@@ -507,6 +499,109 @@ func TestEvaluate_ResourceSetID_ThreadedFromTarget(t *testing.T) {
 		if *sev.ResourceSetID != resourceSetID {
 			t.Errorf("event %q ResourceSetID = %s, want %s (from target.ResourceSetID)", sev.EventType, sev.ResourceSetID, resourceSetID)
 		}
+	}
+}
+
+func TestEvaluate_TrustClaims_PassedToCredentialBroker(t *testing.T) {
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
+		CredentialProviders: []domain.CredentialProvider{{Type: "jwt"}},
+	}}
+	claims := map[string]interface{}{"sub": "system:serviceaccount:prod:my-sa", "aud": "https://acme-id.dipolehq.com"}
+	broker := &mockBroker{cred: &domain.Credential{Value: "minted-token"}}
+
+	svc := NewPolicyEvaluationService(
+		&mockRepo{policies: policies},
+		&mockTrust{attested: true, claims: claims},
+		&mockConditions{passed: true},
+		broker,
+		nil,
+		slog.Default(),
+	)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "prod"}}
+	result, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Allowed {
+		t.Fatalf("expected allow, got deny reason: %s", result.DenyReason)
+	}
+	if broker.receivedClaims == nil {
+		t.Fatal("expected trust claims to be passed to the credential broker")
+	}
+	if broker.receivedClaims["sub"] != "system:serviceaccount:prod:my-sa" {
+		t.Errorf("receivedClaims[sub] = %v, want system:serviceaccount:prod:my-sa", broker.receivedClaims["sub"])
+	}
+}
+
+func TestEvaluate_NoTrustClaims_PassesNilToBroker(t *testing.T) {
+	policies := []domain.AccessPolicyWithRelations{{
+		Policy:              domain.AccessPolicy{ID: uuid.New(), IsActive: true},
+		ClientWorkload:      domain.ClientWorkload{Identifiers: []domain.Identifier{{Type: "k8s_namespace", Value: "prod"}}},
+		ServerWorkload:      domain.ServerWorkload{AuthMethod: "http_bearer"},
+		TrustProviders:      []domain.TrustProvider{{ID: uuid.New(), Type: "k8s_service_account"}},
+		CredentialProviders: []domain.CredentialProvider{{Type: "api_key"}},
+	}}
+	broker := &mockBroker{cred: &domain.Credential{Value: "token"}}
+
+	svc := NewPolicyEvaluationService(
+		&mockRepo{policies: policies},
+		&mockTrust{attested: true},
+		&mockConditions{passed: true},
+		broker,
+		nil,
+		slog.Default(),
+	)
+
+	ev := &domain.ClientEvidence{K8s: &domain.K8sEvidence{Namespace: "prod"}}
+	result, err := svc.Evaluate(context.Background(), uuid.New(), ev, &domain.ServerTarget{Host: "x", Port: 443})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Allowed {
+		t.Fatalf("expected allow, got deny reason: %s", result.DenyReason)
+	}
+	if broker.receivedClaims != nil {
+		t.Errorf("expected nil trust claims when the trust provider returned none, got %v", broker.receivedClaims)
+	}
+}
+
+func TestMergeTrustClaims_MultipleProviders_LastWriteWinsOnCollision(t *testing.T) {
+	results := []domain.TrustProviderResult{
+		{Attested: true, Claims: map[string]interface{}{"sub": "first", "shared": "from-first"}},
+		{Attested: true, Claims: map[string]interface{}{"aud": "second", "shared": "from-second"}},
+	}
+
+	merged := mergeTrustClaims(results)
+
+	if merged["sub"] != "first" {
+		t.Errorf("merged[sub] = %v, want first", merged["sub"])
+	}
+	if merged["aud"] != "second" {
+		t.Errorf("merged[aud] = %v, want second", merged["aud"])
+	}
+	if merged["shared"] != "from-second" {
+		t.Errorf("merged[shared] = %v, want from-second (last provider in order wins)", merged["shared"])
+	}
+}
+
+func TestMergeTrustClaims_NoAttestedClaims_ReturnsNil(t *testing.T) {
+	results := []domain.TrustProviderResult{
+		{Attested: true, Claims: nil},
+	}
+
+	if merged := mergeTrustClaims(results); merged != nil {
+		t.Errorf("expected nil, got %v", merged)
+	}
+
+	if merged := mergeTrustClaims(nil); merged != nil {
+		t.Errorf("expected nil for empty results, got %v", merged)
 	}
 }
 

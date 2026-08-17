@@ -63,6 +63,15 @@ func TestAWSRoleValidator_ValidSTS_Attested(t *testing.T) {
 	if !result.Attested {
 		t.Fatalf("expected attested, got reason: %s", result.Reason)
 	}
+	if result.Claims == nil {
+		t.Fatal("expected Claims to be populated on successful attestation")
+	}
+	if result.Claims["accountId"] != "123456789012" {
+		t.Errorf("Claims[accountId] = %v, want 123456789012", result.Claims["accountId"])
+	}
+	if result.Claims["arn"] != "arn:aws:sts::123456789012:assumed-role/my-role/i-0abc" {
+		t.Errorf("Claims[arn] = %v, want the assumed-role ARN", result.Claims["arn"])
+	}
 }
 
 func TestAWSRoleValidator_STS403_InvalidSignature(t *testing.T) {

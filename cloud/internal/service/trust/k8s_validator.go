@@ -85,5 +85,5 @@ func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }

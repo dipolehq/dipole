@@ -127,5 +127,5 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
