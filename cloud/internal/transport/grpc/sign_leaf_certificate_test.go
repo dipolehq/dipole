@@ -31,10 +31,11 @@ import (
 // mockLeafSigner lets tests control SignCSR's outcome and whether TLS
 // Decrypt is considered enabled, without needing a real tenant CA/repo.
 type mockLeafSigner struct {
-	tlsDecryptEnabled bool
-	signErr           error
-	signResp          *pki.SignCSRResponse
-	lastReq           pki.SignCSRRequest
+	tlsDecryptEnabled  bool
+	tlsDecryptCheckErr error
+	signErr            error
+	signResp           *pki.SignCSRResponse
+	lastReq            pki.SignCSRRequest
 }
 
 func (m *mockLeafSigner) SignCSR(_ context.Context, req pki.SignCSRRequest) (*pki.SignCSRResponse, error) {
@@ -48,8 +49,11 @@ func (m *mockLeafSigner) SignCSR(_ context.Context, req pki.SignCSRRequest) (*pk
 	return &pki.SignCSRResponse{CertDER: []byte("fake-cert-der"), NotAfter: time.Now().Add(24 * time.Hour)}, nil
 }
 
-func (m *mockLeafSigner) IsTlsDecryptEnabled(_ context.Context, _ uuid.UUID) bool {
-	return m.tlsDecryptEnabled
+func (m *mockLeafSigner) IsTlsDecryptEnabled(_ context.Context, _ uuid.UUID) (bool, error) {
+	if m.tlsDecryptCheckErr != nil {
+		return false, m.tlsDecryptCheckErr
+	}
+	return m.tlsDecryptEnabled, nil
 }
 
 // mockHostnameAuthorizer lets tests control which hostnames are authorized.
@@ -235,6 +239,35 @@ func TestSignLeafCertificate_TLSDecryptNotEnabled_Denied(t *testing.T) {
 	})
 	if resp.Success {
 		t.Fatal("expected denial when TLS Decrypt / tenant CA is not enabled")
+	}
+}
+
+// TestSignLeafCertificate_TLSDecryptCheckError_Denied confirms a transient
+// error checking TLS Decrypt status (e.g. a DB error) is denied rather than
+// treated the same as "not enabled" — IsTlsDecryptEnabled now returns an
+// error the handler must check explicitly instead of swallowing it.
+func TestSignLeafCertificate_TLSDecryptCheckError_Denied(t *testing.T) {
+	f := newTestServerFixture()
+	f.signer.tlsDecryptCheckErr = fmt.Errorf("db connection lost")
+	tenantID := uuid.New()
+	proxyID := uuid.New()
+	f.hostAuth.authorized["api.stripe.com"] = true
+
+	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
+	resp, err := f.server.SignLeafCertificate(ctx, &pb.SignLeafRequest{
+		CsrDer:   generateTestCSR(t, "api.stripe.com"),
+		Hostname: "api.stripe.com",
+		ProxyId:  proxyID.String(),
+		TenantId: tenantID.String(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected transport error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected denial when the TLS Decrypt status check fails")
+	}
+	if f.signer.lastReq.Hostname != "" {
+		t.Error("SignCSR must not be called when the TLS Decrypt status check fails")
 	}
 }
 

@@ -1,11 +1,4 @@
-/*
-Package pki implements per-tenant Certificate Authority generation and retrieval.
-
-TenantCAService generates an ECDSA P-256 Root CA on first call for a given
-tenant and returns the same CA on subsequent calls. The private key is encrypted
-with AES-256-GCM before storage. Race conditions are handled at the repository
-level (SELECT ... FOR UPDATE).
-*/
+// Package pki generates, stores, and retrieves each tenant's Root CA, and issues short-lived leaf certificates for TLS Decrypt.
 package pki
 
 import (
@@ -35,7 +28,15 @@ func NewTenantCAService(repo repository.TenantCARepository, encryptionKey []byte
 	return &TenantCAService{repo: repo, encryptionKey: encryptionKey}
 }
 
+func generateSerial() (*big.Int, error) {
+	return rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+}
+
 func (s *TenantCAService) GetOrCreateTenantCA(ctx context.Context, tenantID uuid.UUID) (string, string, error) {
+	if certPEM, keyPEM, err := s.getTenantCA(ctx, tenantID); err == nil {
+		return certPEM, keyPEM, nil
+	}
+
 	certPEM, keyPEM, err := s.generateCA(tenantID)
 	if err != nil {
 		return "", "", fmt.Errorf("generate CA: %w", err)
@@ -65,7 +66,7 @@ func (s *TenantCAService) generateCA(tenantID uuid.UUID) (string, string, error)
 		return "", "", fmt.Errorf("generate key: %w", err)
 	}
 
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	serial, err := generateSerial()
 	if err != nil {
 		return "", "", fmt.Errorf("generate serial: %w", err)
 	}
@@ -122,9 +123,8 @@ func (s *TenantCAService) getTenantCA(ctx context.Context, tenantID uuid.UUID) (
 	return storedCert, string(storedKeyPEM), nil
 }
 
-func (s *TenantCAService) IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool {
-	has, _ := s.repo.HasCA(ctx, tenantID)
-	return has
+func (s *TenantCAService) IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) (bool, error) {
+	return s.repo.HasCA(ctx, tenantID)
 }
 
 func (s *TenantCAService) GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error) {

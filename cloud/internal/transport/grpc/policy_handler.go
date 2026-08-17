@@ -51,7 +51,7 @@ type TenantCAProvider interface {
 // LeafCertSigner abstracts the PKI service for signing leaf certificate CSRs.
 type LeafCertSigner interface {
 	SignCSR(ctx context.Context, req pki.SignCSRRequest) (*pki.SignCSRResponse, error)
-	IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool
+	IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) (bool, error)
 }
 
 // HostnameAuthorizer checks whether a hostname is authorized for TLS interception.
@@ -438,7 +438,12 @@ func (s *PolicyEvaluationServer) SignLeafCertificate(ctx context.Context, req *p
 	// 3. Verify TLS Decrypt is enabled (CA must already exist).
 	// We do NOT lazily generate the CA here — a signing request must not
 	// trigger CA creation. The admin must explicitly enable TLS Decrypt first.
-	if !s.leafSigner.IsTlsDecryptEnabled(ctx, tenantID) {
+	enabled, err := s.leafSigner.IsTlsDecryptEnabled(ctx, tenantID)
+	if err != nil {
+		s.logger.Error("sign-leaf: failed to check TLS Decrypt status", "tenant_id", tenantID, "error", err)
+		return &pb.SignLeafResponse{Success: false, ErrorMessage: "failed to verify TLS Decrypt status"}, nil
+	}
+	if !enabled {
 		s.logger.Warn("sign-leaf: TLS Decrypt not enabled for tenant", "tenant_id", tenantID)
 		return &pb.SignLeafResponse{Success: false, ErrorMessage: "TLS Decrypt is not enabled for this tenant"}, nil
 	}

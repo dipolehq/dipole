@@ -1,19 +1,4 @@
-/*
-Package pki — signing.go implements CSR validation and leaf certificate signing.
-
-The proxy generates an ephemeral ECDSA key pair + CSR locally and sends the
-CSR to Cloud. Cloud validates the CSR, then signs it with the tenant's Root CA.
-The CA private key is decrypted in memory only during signing.
-
-Security model:
-  - The caller (gRPC handler) authenticates the proxy and authorizes the hostname.
-  - SignCSR requires the tenant CA to already exist (no lazy generation).
-  - CSR must contain the requested hostname as a DNS SAN (wildcards rejected).
-  - The issued leaf cert only includes the single authorized hostname regardless of CSR SANs.
-  - CA extensions in the CSR are rejected.
-  - Leaf certs use KeyUsage=DigitalSignature, ExtKeyUsage=ServerAuth, IsCA=false.
-  - NotBefore is backdated 5 minutes for clock skew tolerance.
-*/
+// signing.go validates a proxy-submitted CSR and signs it into a short-lived leaf certificate with the tenant's Root CA.
 package pki
 
 import (
@@ -24,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -93,8 +77,6 @@ func (s *TenantCAService) SignCSR(ctx context.Context, req SignCSRRequest) (*Sig
 		return nil, fmt.Errorf("issue leaf certificate: %w", err)
 	}
 
-	caKey = nil
-
 	return &SignCSRResponse{
 		CertDER:  leafCertDER,
 		NotAfter: notAfter,
@@ -143,7 +125,7 @@ func issueLeafCertificate(
 	hostname string,
 	lifetimeSeconds int,
 ) ([]byte, time.Time, error) {
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	serial, err := generateSerial()
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("generate serial: %w", err)
 	}

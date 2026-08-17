@@ -1,3 +1,4 @@
+// service_test.go tests tenant Root CA generation, storage, and retrieval.
 package pki
 
 import (
@@ -93,6 +94,41 @@ func TestGetOrCreateTenantCA_GeneratesValidCA(t *testing.T) {
 	if key.Curve.Params().BitSize != 256 {
 		t.Fatalf("unexpected curve: got %d bits, want 256", key.Curve.Params().BitSize)
 	}
+}
+
+func TestGetOrCreateTenantCA_SecondCallDoesNotWriteThroughRepo(t *testing.T) {
+	encKey := make([]byte, 32)
+	if _, err := rand.Read(encKey); err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	repo := &countingTenantCARepo{mockTenantCARepo: mockTenantCARepo{}}
+	svc := NewTenantCAService(repo, encKey)
+
+	tenantID := uuid.New()
+	if _, _, err := svc.GetOrCreateTenantCA(context.Background(), tenantID); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if repo.getOrCreateCalls != 1 {
+		t.Fatalf("GetOrCreateCA called %d times after first call, want 1", repo.getOrCreateCalls)
+	}
+
+	if _, _, err := svc.GetOrCreateTenantCA(context.Background(), tenantID); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if repo.getOrCreateCalls != 1 {
+		t.Errorf("GetOrCreateCA called %d times after second call, want still 1 (should use the cheap read path)", repo.getOrCreateCalls)
+	}
+}
+
+type countingTenantCARepo struct {
+	mockTenantCARepo
+	getOrCreateCalls int
+}
+
+func (r *countingTenantCARepo) GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (string, []byte, error) {
+	r.getOrCreateCalls++
+	return r.mockTenantCARepo.GetOrCreateCA(ctx, tenantID, certPEM, keyEncrypted)
 }
 
 func TestGetOrCreateTenantCA_ReturnsExistingCA(t *testing.T) {
