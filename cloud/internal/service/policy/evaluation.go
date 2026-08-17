@@ -263,57 +263,80 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 	}
 
 	resourceSetID := ec.resourceSetID
-	base := events.SecurityEvent{
-		TenantID:                 ec.tenantID,
-		ContextID:                contextID,
-		SourceIP:                 ec.sourceIP,
-		Source:                   "edge_proxy",
-		Severity:                 "Info",
-		ResourceSetID:            &resourceSetID,
-		Allowed:                  ec.result.Allowed,
-		DenyReason:               ec.result.DenyReason,
-		ClientWorkload:           clientWL,
-		ClientWorkloadID:         clientWLID,
-		ServerWorkload:           serverWL,
-		ServerWorkloadID:         serverWLID,
-		ServerHost:               ec.targetHost,
-		ServerPort:               ec.targetPort,
-		PolicyID:                 policyID,
-		PolicyName:               policyName,
-		TrustResults:             trustResults,
-		CredentialType:           credType,
-		CredentialName:           credName,
-		CredentialProviderID:     credProviderID,
-		CredentialMaxAge:         credMaxAge,
-		CandidateClientWorkloads: candidateCW,
-		CandidateServerWorkloads: candidateSW,
+	// envelope carries only the fields shared by every access.* event type;
+	// each event below attaches the Detail specific to what it reports.
+	envelope := events.SecurityEvent{
+		TenantID:      ec.tenantID,
+		ContextID:     contextID,
+		SourceIP:      ec.sourceIP,
+		Source:        "edge_proxy",
+		Severity:      "Info",
+		ResourceSetID: &resourceSetID,
 	}
 
-	request := base
+	request := envelope
 	request.EventType = "access.request"
 	if !ec.result.Allowed {
 		request.Severity = "Error"
 	}
+	request.Detail = events.RequestDetail{
+		ServerHost: ec.targetHost,
+		ServerPort: ec.targetPort,
+	}
 	s.events.EmitSecurity(ctx, request)
 
-	auth := base
+	auth := envelope
 	auth.EventType = "access.authorization"
 	auth.Severity = severity
+	auth.Detail = events.AuthorizationDetail{
+		Allowed:              ec.result.Allowed,
+		DenyReason:           ec.result.DenyReason,
+		ClientWorkload:       clientWL,
+		ClientWorkloadID:     clientWLID,
+		ServerWorkload:       serverWL,
+		ServerWorkloadID:     serverWLID,
+		PolicyID:             policyID,
+		PolicyName:           policyName,
+		TrustResults:         trustResults,
+		CredentialType:       credType,
+		CredentialName:       credName,
+		CredentialProviderID: credProviderID,
+		CredentialMaxAge:     credMaxAge,
+	}
 	s.events.EmitSecurity(ctx, auth)
 
 	if ec.credentialProvider != nil {
-		cred := base
+		cred := envelope
 		cred.EventType = "access.credential"
 		if !ec.result.Allowed {
 			cred.Severity = "Error"
 		}
+		cred.Detail = events.CredentialDetail{
+			Allowed:              ec.result.Allowed,
+			DenyReason:           ec.result.DenyReason,
+			ClientWorkload:       clientWL,
+			ClientWorkloadID:     clientWLID,
+			ServerWorkload:       serverWL,
+			ServerWorkloadID:     serverWLID,
+			PolicyID:             policyID,
+			PolicyName:           policyName,
+			TrustResults:         trustResults,
+			CredentialType:       credType,
+			CredentialName:       credName,
+			CredentialProviderID: credProviderID,
+			CredentialMaxAge:     credMaxAge,
+		}
 		s.events.EmitSecurity(ctx, cred)
 	}
 
-	discovery := base
+	discovery := envelope
 	discovery.EventType = "access.discovery"
 	if !ec.result.Allowed && ec.clientWorkload == nil {
 		discovery.Severity = "Error"
+	}
+	discovery.Detail = events.DiscoveryDetail{
+		CandidateClientWorkloads: candidateCW,
+		CandidateServerWorkloads: candidateSW,
 	}
 	if err := s.events.EmitSecurity(ctx, discovery); err != nil {
 		s.logger.Error("failed to emit auth events", "tenant_id", ec.tenantID, "error", err)

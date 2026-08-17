@@ -7,8 +7,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
-// Canonical Gateway URL for one tenant, plus a second tenant's, so tests can
-// assert that a token minted for one is refused at the other.
 const (
 	testGatewayURL      = "https://test-mcpgateway.dipolehq.com"
 	otherTenantGWURL    = "https://other-mcpgateway.dipolehq.com"
@@ -117,9 +115,6 @@ func TestLeftAuth_WrongAudience_Returns401(t *testing.T) {
 	}
 }
 
-// The signing key is shared across tenants, so the audience claim is the only
-// thing distinguishing one tenant's Gateway token from another's. A token minted
-// for tenant A must be refused when presented at tenant B's Gateway host.
 func TestLeftAuth_TokenForAnotherTenantsGateway_Rejected(t *testing.T) {
 	auth, issuer := setupAuth(t)
 	token := issueTestToken(t, issuer, otherTenantGWURL, 1*time.Hour, map[string]any{"email": "alice@corp.com"})
@@ -148,9 +143,6 @@ func TestLeftAuth_EmptyToken_Returns401(t *testing.T) {
 	}
 }
 
-// An absent expected audience must fail rather than accept any audience —
-// otherwise a caller that forgot to resolve the tenant would accept every
-// tenant's tokens.
 func TestLeftAuth_NoExpectedAudience_Rejected(t *testing.T) {
 	auth, issuer := setupAuth(t)
 	token := issueTestToken(t, issuer, testGatewayURL, 1*time.Hour, nil)
@@ -161,9 +153,6 @@ func TestLeftAuth_NoExpectedAudience_Rejected(t *testing.T) {
 	}
 }
 
-// Trailing slashes are normalised on both sides: the customer types the audience
-// into their Credential Provider config by hand, so either form must work
-// regardless of which side carries the slash.
 func TestLeftAuth_TrailingSlashNormalised_BothDirections(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -192,8 +181,6 @@ func TestLeftAuth_TrailingSlashNormalised_BothDirections(t *testing.T) {
 	}
 }
 
-// `aud` may be an array (RFC 7519 §4.1.3); the request's Gateway URL must be
-// found among the entries, and absent from an array of other tenants' URLs.
 func TestLeftAuth_AudienceArray(t *testing.T) {
 	auth, issuer := setupAuth(t)
 

@@ -449,7 +449,11 @@ func TestEvaluate_EmitterCalledOnDeny(t *testing.T) {
 	}
 	hasAuth := false
 	for _, ev := range repo.securityEvents {
-		if ev.EventType == "access.authorization" && !ev.Allowed {
+		if ev.EventType != "access.authorization" {
+			continue
+		}
+		auth, ok := ev.Detail.(events.AuthorizationDetail)
+		if ok && !auth.Allowed {
 			hasAuth = true
 		}
 	}

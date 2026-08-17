@@ -1,8 +1,3 @@
-/*
-policy_finder_test.go tests the DBRightSidePolicyFinder that queries real
-Access Policies from the database to find MCP policies where the Gateway
-is the client.
-*/
 package mcp_gateway
 
 import (
@@ -100,13 +95,11 @@ func TestDBPolicyFinder_FindGatewayPolicies_MatchesAudience(t *testing.T) {
 }
 
 func TestDBPolicyFinder_FindGatewayPolicies_TrailingSlashNormalized(t *testing.T) {
-	// Policy audience has no trailing slash
 	policy := buildMCPPolicy("https://gw.example.com", "jira", "jira.example.com", 443)
 
 	repo := &mockAccessPolicyRepo{byProtocol: []domain.AccessPolicyWithRelations{policy}}
 	finder := NewDBRightSidePolicyFinder(repo)
 
-	// Query WITH trailing slash — should still match
 	results, err := finder.FindGatewayPolicies(context.Background(), uuid.New(), "https://gw.example.com/")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -116,11 +109,6 @@ func TestDBPolicyFinder_FindGatewayPolicies_TrailingSlashNormalized(t *testing.T
 	}
 }
 
-// The direction that actually occurs in production since the Gateway began
-// resolving its URL per request: the query is the canonical no-slash form from
-// TenantScope.GatewayURL, while the stored Client Workload identifier carries a
-// trailing slash — which is what Aembit's setup guide tells customers to enter
-// for the OIDC ID Token Audience identifier.
 func TestDBPolicyFinder_FindGatewayPolicies_StoredIdentifierHasTrailingSlash(t *testing.T) {
 	policy := buildMCPPolicy("https://gw.example.com/", "jira", "jira.example.com", 443)
 
@@ -199,7 +187,6 @@ func TestDBPolicyFinder_FindPolicyForServer_NoMatch_ReturnsNil(t *testing.T) {
 }
 
 func TestDBPolicyFinder_FindPolicyForServer_SkipsNonMCPProtocol(t *testing.T) {
-	// Build a policy with HTTP protocol instead of MCP
 	policy := buildMCPPolicy("https://gw.example.com/", "http-svc", "http.example.com", 443)
 	policy.ServerWorkload.AppProtocol = domain.AppProtocolHTTP
 

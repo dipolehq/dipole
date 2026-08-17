@@ -1,11 +1,3 @@
-/*
-mcp_http_client_test.go covers readJSONRPCResponse's ID-correlation
-correctness against adversarial SSE event orderings (including proving it
-returns as soon as the matching event is seen, not after stream EOF), and
-HTTPMCPClient's full request lifecycle (session init, concurrency,
-stale-session retry, 202/404 handling, context-deadline enforcement) against
-a real httptest server speaking the MCP Streamable HTTP transport.
-*/
 package mcp_gateway
 
 import (
@@ -77,9 +69,6 @@ func TestReadJSONRPCResponse_SSE_NotificationBeforeResponse(t *testing.T) {
 }
 
 func TestReadJSONRPCResponse_SSE_ResponseBeforeTrailingNotification(t *testing.T) {
-	// A naive "return the last event" implementation would return the
-	// trailing notification here instead of the response that already
-	// arrived.
 	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"tools\":[{\"name\":\"foo\"}]}}\n\n" +
 		"event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n"
 	got, err := readJSONRPC(t, "text/event-stream", body, 7)
@@ -113,9 +102,6 @@ func TestReadJSONRPCResponse_SSE_MultipleResponses_PicksMatchingID(t *testing.T)
 }
 
 func TestReadJSONRPCResponse_SSE_StringID_DoesNotMatchNumeric(t *testing.T) {
-	// This client always sends numeric ids, so an id encoded as a JSON
-	// string is never a match for it — verifies id comparison is exact
-	// (raw JSON bytes), not a loose numeric-vs-string coercion.
 	body := "data: {\"jsonrpc\":\"2.0\",\"id\":\"7\",\"result\":{}}\n\n"
 	_, err := readJSONRPC(t, "text/event-stream", body, 7)
 	if err == nil {
@@ -187,20 +173,12 @@ func TestReadJSONRPCResponse_SSE_CommentsAndRetryIgnored(t *testing.T) {
 	}
 }
 
-// TestReadJSONRPCResponse_SSE_ReturnsAsSoonAsMatchFound proves the
-// incremental-read fix: the reader is a pipe that never closes, so an
-// io.ReadAll-based implementation would hang forever. readJSONRPCResponse
-// must return as soon as it scans the matching event, without waiting for
-// the stream to end.
 func TestReadJSONRPCResponse_SSE_ReturnsAsSoonAsMatchFound(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 
 	go func() {
 		fmt.Fprint(pw, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"ok\":true}}\n\n")
-		// Deliberately never close pw and never write more: a
-		// stream-holding-open server. If readJSONRPCResponse waited for
-		// EOF, this test would hang until its own timeout.
 	}()
 
 	done := make(chan struct{})
@@ -225,11 +203,6 @@ func TestReadJSONRPCResponse_SSE_ReturnsAsSoonAsMatchFound(t *testing.T) {
 	}
 }
 
-// sseServer speaks the MCP Streamable HTTP transport: assigns a session ID on
-// initialize, requires it on subsequent calls, and lets the test control what
-// each method returns via handlers. invalidateOnce forces the next
-// non-initialize call to receive a 404, for exercising the stale-session
-// retry path.
 type sseServer struct {
 	mu             sync.Mutex
 	sessionID      string

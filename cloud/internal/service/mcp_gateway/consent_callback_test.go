@@ -192,10 +192,6 @@ func TestParseConsentState_InvalidServerUUID(t *testing.T) {
 	}
 }
 
-// state travels through the user's browser and is therefore attacker-visible. A
-// state naming a different tenant than the hostname the callback arrived on must
-// be refused, or a token could be stored against a tenant that never initiated
-// the consent flow.
 func TestConsentCallback_StateTenantMismatch_Rejected(t *testing.T) {
 	store := &mockConsentTokenStore{}
 	resolver := &mockConsentConfigResolver{

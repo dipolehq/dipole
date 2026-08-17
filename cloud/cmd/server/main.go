@@ -179,13 +179,18 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 	gwTokenStore := repos.MCPUserCredentials
 	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
-	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
-	gwRightAuth.SetLogger(logger)
-	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
-	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, eventBus, logger)
+	gwSharedOAuth := mcpgw.NewAESSharedOAuthTokenResolver(encKey)
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
+	gwUserConsent := mcpgw.NewUserConsentService(gwTokenStore, consentConfigResolver)
+	gwTokenRefresher := mcpgw.NewOAuthTokenRefresher(consentConfigResolver)
+
+	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, gwTokenRefresher, gwDecrypter, gwSharedOAuth)
+	gwRightAuth.SetLogger(logger)
+	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
+
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwUserConsent, eventBus, logger)
 
 	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, eventBus, tenantHostResolver)
 
@@ -255,6 +260,15 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	go func() {
 		defer wg.Done()
 		runExpirySweeper(runCtx, "mcp refresh token", 5*time.Minute, mcpTokenService.SweepExpired, logger)
+	}()
+
+	// Cached downstream MCP HTTP clients (and the sessions they hold) are
+	// evicted after mcpClientIdleTimeout of disuse, so tenants/servers that
+	// have gone quiet don't hold an open session forever.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp gateway client cache", 5*time.Minute, gwClientFactory.SweepIdleClients, logger)
 	}()
 
 	var runErr error

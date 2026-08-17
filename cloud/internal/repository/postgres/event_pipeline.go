@@ -283,32 +283,44 @@ func (r *EventPipelineRepo) QueryAuditEvents(ctx context.Context, tenantID uuid.
 	return results, total, nil
 }
 
+// buildSecurityPayload dispatches on event.EventType exactly as before typed
+// Detail payloads existed. Detail is asserted to the type each builder
+// expects; a producer that sets EventType without the matching Detail type
+// (which no current producer does — both always set EventType and Detail
+// together for one of the four access.* events) falls back to that
+// builder's zero-value Detail, the same "field never populated" outcome the
+// old flat-struct design had for any field a producer forgot to set.
 func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	switch event.EventType {
 	case "access.request":
-		return buildRequestPayload(event)
+		detail, _ := event.Detail.(events.RequestDetail)
+		return buildRequestPayload(event.SourceIP, detail)
 	case "access.authorization":
-		return buildAuthorizationPayload(event)
+		detail, _ := event.Detail.(events.AuthorizationDetail)
+		return buildAuthorizationPayload(detail)
 	case "access.credential":
-		return buildCredentialPayload(event)
+		detail, _ := event.Detail.(events.CredentialDetail)
+		return buildCredentialPayload(detail)
 	case "access.discovery":
-		return buildDiscoveryPayload(event)
+		detail, _ := event.Detail.(events.DiscoveryDetail)
+		return buildDiscoveryPayload(detail)
 	default:
-		return buildAuthorizationPayload(event)
+		detail, _ := event.Detail.(events.AuthorizationDetail)
+		return buildAuthorizationPayload(detail)
 	}
 }
 
-func buildRequestPayload(event *events.SecurityEvent) json.RawMessage {
+func buildRequestPayload(sourceIP string, detail events.RequestDetail) json.RawMessage {
 	payload := map[string]any{
 		"clientRequest": map[string]any{
 			"version": "1.0.0",
 			"network": map[string]any{
-				"sourceIP":          event.SourceIP,
+				"sourceIP":          sourceIP,
 				"sourcePort":        0,
 				"transportProtocol": "TCP",
 				"proxyPort":         8080,
-				"targetHost":        event.ServerHost,
-				"targetPort":        event.ServerPort,
+				"targetHost":        detail.ServerHost,
+				"targetPort":        detail.ServerPort,
 			},
 		},
 	}
@@ -316,42 +328,42 @@ func buildRequestPayload(event *events.SecurityEvent) json.RawMessage {
 	return data
 }
 
-func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
+func buildAuthorizationPayload(detail events.AuthorizationDetail) json.RawMessage {
 	outcome := map[string]any{"result": "Error"}
-	if event.Allowed {
+	if detail.Allowed {
 		outcome["result"] = "Authorized"
-	} else if event.DenyReason != "" {
+	} else if detail.DenyReason != "" {
 		outcome["result"] = "Unauthorized"
-		outcome["reason"] = event.DenyReason
+		outcome["reason"] = detail.DenyReason
 	}
 
 	cwBlock := map[string]any{"result": "NotFound"}
-	if event.ClientWorkload != "" {
-		cwBlock = map[string]any{"name": event.ClientWorkload, "result": "Identified"}
-		if event.ClientWorkloadID != nil {
-			cwBlock["id"] = event.ClientWorkloadID.String()
+	if detail.ClientWorkload != "" {
+		cwBlock = map[string]any{"name": detail.ClientWorkload, "result": "Identified"}
+		if detail.ClientWorkloadID != nil {
+			cwBlock["id"] = detail.ClientWorkloadID.String()
 		}
 	}
 
 	swBlock := map[string]any{"result": "NotFound"}
-	if event.ServerWorkload != "" {
-		swBlock = map[string]any{"name": event.ServerWorkload, "result": "Identified"}
-		if event.ServerWorkloadID != nil {
-			swBlock["id"] = event.ServerWorkloadID.String()
+	if detail.ServerWorkload != "" {
+		swBlock = map[string]any{"name": detail.ServerWorkload, "result": "Identified"}
+		if detail.ServerWorkloadID != nil {
+			swBlock["id"] = detail.ServerWorkloadID.String()
 		}
 	}
 
 	apBlock := map[string]any{"result": "NotFound"}
-	if event.PolicyName != "" {
-		apBlock = map[string]any{"name": event.PolicyName, "result": "Identified"}
-		if event.PolicyID != nil {
-			apBlock["id"] = event.PolicyID.String()
+	if detail.PolicyName != "" {
+		apBlock = map[string]any{"name": detail.PolicyName, "result": "Identified"}
+		if detail.PolicyID != nil {
+			apBlock["id"] = detail.PolicyID.String()
 		}
 	}
 
 	tpBlocks := []map[string]any{}
-	if len(event.TrustResults) > 0 {
-		for _, tr := range event.TrustResults {
+	if len(detail.TrustResults) > 0 {
+		for _, tr := range detail.TrustResults {
 			tp := map[string]any{
 				"name": tr.ProviderName,
 			}
@@ -371,9 +383,9 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 			}
 			tpBlocks = append(tpBlocks, tp)
 		}
-	} else if event.TrustProvider != "" {
-		tp := map[string]any{"name": event.TrustProvider}
-		if event.TrustAttested {
+	} else if detail.TrustProvider != "" {
+		tp := map[string]any{"name": detail.TrustProvider}
+		if detail.TrustAttested {
 			tp["result"] = "Attested"
 		} else {
 			tp["result"] = "Unauthorized"
@@ -382,16 +394,16 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	cpBlock := map[string]any{}
-	if event.CredentialName != "" {
-		cpBlock["name"] = event.CredentialName
-		cpBlock["type"] = event.CredentialType
-		if event.CredentialProviderID != nil {
-			cpBlock["id"] = event.CredentialProviderID.String()
+	if detail.CredentialName != "" {
+		cpBlock["name"] = detail.CredentialName
+		cpBlock["type"] = detail.CredentialType
+		if detail.CredentialProviderID != nil {
+			cpBlock["id"] = detail.CredentialProviderID.String()
 		}
-		if event.Allowed {
+		if detail.Allowed {
 			cpBlock["result"] = "Retrieved"
-			if event.CredentialMaxAge > 0 {
-				cpBlock["maxAge"] = event.CredentialMaxAge
+			if detail.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = detail.CredentialMaxAge
 			}
 		} else {
 			cpBlock["result"] = "Identified"
@@ -408,50 +420,50 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 		"credentialProvider": cpBlock,
 	}
 
-	if event.ToolName != "" {
-		payload["toolName"] = event.ToolName
+	if detail.ToolName != "" {
+		payload["toolName"] = detail.ToolName
 	}
-	if event.UserID != "" {
-		payload["userId"] = event.UserID
+	if detail.UserID != "" {
+		payload["userId"] = detail.UserID
 	}
 
 	data, _ := json.Marshal(payload)
 	return data
 }
 
-func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
+func buildCredentialPayload(detail events.CredentialDetail) json.RawMessage {
 	outcome := map[string]any{"result": "Unauthorized"}
-	if event.Allowed {
+	if detail.Allowed {
 		outcome["result"] = "Authorized"
 	}
 
 	cwBlock := map[string]any{"result": "NotFound"}
-	if event.ClientWorkload != "" {
-		cwBlock = map[string]any{"name": event.ClientWorkload, "result": "Identified"}
-		if event.ClientWorkloadID != nil {
-			cwBlock["id"] = event.ClientWorkloadID.String()
+	if detail.ClientWorkload != "" {
+		cwBlock = map[string]any{"name": detail.ClientWorkload, "result": "Identified"}
+		if detail.ClientWorkloadID != nil {
+			cwBlock["id"] = detail.ClientWorkloadID.String()
 		}
 	}
 
 	swBlock := map[string]any{"result": "NotFound"}
-	if event.ServerWorkload != "" {
-		swBlock = map[string]any{"name": event.ServerWorkload, "result": "Identified"}
-		if event.ServerWorkloadID != nil {
-			swBlock["id"] = event.ServerWorkloadID.String()
+	if detail.ServerWorkload != "" {
+		swBlock = map[string]any{"name": detail.ServerWorkload, "result": "Identified"}
+		if detail.ServerWorkloadID != nil {
+			swBlock["id"] = detail.ServerWorkloadID.String()
 		}
 	}
 
 	apBlock := map[string]any{"result": "NotFound"}
-	if event.PolicyName != "" {
-		apBlock = map[string]any{"name": event.PolicyName, "result": "Identified"}
-		if event.PolicyID != nil {
-			apBlock["id"] = event.PolicyID.String()
+	if detail.PolicyName != "" {
+		apBlock = map[string]any{"name": detail.PolicyName, "result": "Identified"}
+		if detail.PolicyID != nil {
+			apBlock["id"] = detail.PolicyID.String()
 		}
 	}
 
 	tpBlocks := []map[string]any{}
-	if len(event.TrustResults) > 0 {
-		for _, tr := range event.TrustResults {
+	if len(detail.TrustResults) > 0 {
+		for _, tr := range detail.TrustResults {
 			tp := map[string]any{"name": tr.ProviderName}
 			if tr.ProviderID != (uuid.UUID{}) {
 				tp["id"] = tr.ProviderID.String()
@@ -467,21 +479,21 @@ func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	cpBlock := map[string]any{}
-	if event.CredentialName != "" {
-		cpBlock["type"] = event.CredentialType
-		cpBlock["name"] = event.CredentialName
-		if event.CredentialProviderID != nil {
-			cpBlock["id"] = event.CredentialProviderID.String()
+	if detail.CredentialName != "" {
+		cpBlock["type"] = detail.CredentialType
+		cpBlock["name"] = detail.CredentialName
+		if detail.CredentialProviderID != nil {
+			cpBlock["id"] = detail.CredentialProviderID.String()
 		}
-		if event.Allowed {
+		if detail.Allowed {
 			cpBlock["result"] = "Retrieved"
-			if event.CredentialMaxAge > 0 {
-				cpBlock["maxAge"] = event.CredentialMaxAge
+			if detail.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = detail.CredentialMaxAge
 			}
 		} else {
 			cpBlock["result"] = "Failed"
-			if event.DenyReason != "" {
-				cpBlock["reason"] = event.DenyReason
+			if detail.DenyReason != "" {
+				cpBlock["reason"] = detail.DenyReason
 			}
 		}
 	}
@@ -499,9 +511,9 @@ func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
 	return data
 }
 
-func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
+func buildDiscoveryPayload(detail events.DiscoveryDetail) json.RawMessage {
 	clientWorkloads := []map[string]any{}
-	for _, cw := range event.CandidateClientWorkloads {
+	for _, cw := range detail.CandidateClientWorkloads {
 		clientWorkloads = append(clientWorkloads, map[string]any{
 			"id":   cw.ID.String(),
 			"name": cw.Name,
@@ -509,7 +521,7 @@ func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	serverWorkloads := []map[string]any{}
-	for _, sw := range event.CandidateServerWorkloads {
+	for _, sw := range detail.CandidateServerWorkloads {
 		serverWorkloads = append(serverWorkloads, map[string]any{
 			"id":   sw.ID.String(),
 			"name": sw.Name,

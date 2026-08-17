@@ -1,7 +1,3 @@
-/*
-consent_config_resolver_test.go tests the CPConsentConfigResolver that resolves
-OAuth configuration from credential provider configs for the consent flow.
-*/
 package mcp_gateway
 
 import (
@@ -18,8 +14,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// testEncrypt replicates AES-256-GCM encryption (same as postgres.Encrypt)
-// to avoid an import cycle with the postgres package.
 func testEncrypt(plaintext, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -62,7 +56,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_Success(t *testing.T) {
 	serverWorkloadID := uuid.New()
 	cpID := uuid.New()
 
-	// Create the OAuth config JSON and encrypt it
 	encKey := make([]byte, 32)
 	for i := range encKey {
 		encKey[i] = byte(i)
@@ -81,7 +74,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_Success(t *testing.T) {
 		t.Fatalf("encrypt test config: %v", err)
 	}
 
-	// Mock policy repo returns a policy matching our server workload
 	policyRepo := &mockAccessPolicyRepo{
 		byProtocol: []domain.AccessPolicyWithRelations{
 			{
@@ -108,7 +100,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_Success(t *testing.T) {
 		},
 	}
 
-	// Mock CP repo returns the credential provider with encrypted config
 	cpRepo := &mockCPRepo{
 		cp: &domain.CredentialProvider{
 			ID:              cpID,
@@ -149,7 +140,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_NoMatchingPolicy(t *testing.T)
 	serverWorkloadID := uuid.New()
 	otherServerID := uuid.New()
 
-	// Policy exists but for a DIFFERENT server workload
 	policyRepo := &mockAccessPolicyRepo{
 		byProtocol: []domain.AccessPolicyWithRelations{
 			{
@@ -206,7 +196,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_CallbackURLWithoutTrailingSlas
 	}
 	cpRepo := &mockCPRepo{cp: &domain.CredentialProvider{ID: cpID, ConfigEncrypted: encrypted}}
 
-	// Gateway URL WITHOUT trailing slash
 	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, encKey)
 
 	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com")
@@ -214,7 +203,6 @@ func TestCPConsentConfigResolver_GetConsentConfig_CallbackURLWithoutTrailingSlas
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should still produce a valid callback URL with /
 	if cfg.GatewayCallbackURL != "https://gw.example.com/mcp/consent/callback" {
 		t.Errorf("expected 'https://gw.example.com/mcp/consent/callback', got '%s'", cfg.GatewayCallbackURL)
 	}
@@ -242,10 +230,8 @@ func TestCPConsentConfigResolver_GetConsentConfig_UnencryptedConfig(t *testing.T
 			},
 		},
 	}
-	// CP has unencrypted config (encKey is nil/empty)
 	cpRepo := &mockCPRepo{cp: &domain.CredentialProvider{ID: cpID, ConfigEncrypted: plaintext}}
 
-	// Pass nil encKey — should use config as-is without decryption
 	resolver := NewCPConsentConfigResolver(policyRepo, cpRepo, nil)
 
 	cfg, err := resolver.GetConsentConfig(context.Background(), tenantID, serverWorkloadID, "https://gw.example.com/")

@@ -1,8 +1,4 @@
-/*
-mcp_http_client.go — MCP Streamable HTTP client for downstream MCP servers.
-Handles JSON-RPC over HTTP with SSE streaming, session management, Bearer auth,
-and one transient-failure retry on initialize (covers serverless cold-starts).
-*/
+// mcp_http_client.go implements HTTPMCPClient and HTTPMCPClientFactory, an MCP Streamable HTTP client with session caching, SSE support, and stale-session retry.
 package mcp_gateway
 
 import (
@@ -18,29 +14,85 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const mcpUpstreamTimeout = 30 * time.Second
 const maxSSELineSize = 8 << 20 // 8 MiB
+const mcpClientIdleTimeout = 30 * time.Minute
 
 type MCPClientFactory interface {
-	ClientFor(server ServerInfo) MCPServerClient
+	ClientFor(tenantID uuid.UUID, server ServerInfo) MCPServerClient
+}
+
+type cachedClient struct {
+	client     *HTTPMCPClient
+	baseURL    string
+	lastUsedAt atomic.Int64
 }
 
 type HTTPMCPClientFactory struct {
 	httpClient *http.Client
+
+	cacheMu sync.RWMutex
+	cache   map[clientCacheKey]*cachedClient
+}
+
+type clientCacheKey struct {
+	tenantID uuid.UUID
+	serverID uuid.UUID
 }
 
 func NewHTTPMCPClientFactory() *HTTPMCPClientFactory {
 	return &HTTPMCPClientFactory{
 		httpClient: &http.Client{},
+		cache:      make(map[clientCacheKey]*cachedClient),
 	}
 }
 
-func (f *HTTPMCPClientFactory) ClientFor(server ServerInfo) MCPServerClient {
-	return &HTTPMCPClient{
-		baseURL:    mcpBaseURL(server),
+func (f *HTTPMCPClientFactory) ClientFor(tenantID uuid.UUID, server ServerInfo) MCPServerClient {
+	key := clientCacheKey{tenantID: tenantID, serverID: server.ID}
+	baseURL := mcpBaseURL(server)
+	now := time.Now().UnixNano()
+
+	f.cacheMu.RLock()
+	entry, ok := f.cache[key]
+	f.cacheMu.RUnlock()
+
+	if ok && entry.baseURL == baseURL {
+		entry.lastUsedAt.Store(now)
+		return entry.client
+	}
+
+	f.cacheMu.Lock()
+	defer f.cacheMu.Unlock()
+
+	if entry, ok := f.cache[key]; ok && entry.baseURL == baseURL {
+		entry.lastUsedAt.Store(now)
+		return entry.client
+	}
+
+	client := &HTTPMCPClient{
+		baseURL:    baseURL,
 		httpClient: f.httpClient,
+	}
+	entry = &cachedClient{client: client, baseURL: baseURL}
+	entry.lastUsedAt.Store(now)
+	f.cache[key] = entry
+	return client
+}
+
+func (f *HTTPMCPClientFactory) SweepIdleClients(now time.Time) {
+	cutoff := now.Add(-mcpClientIdleTimeout).UnixNano()
+
+	f.cacheMu.Lock()
+	defer f.cacheMu.Unlock()
+
+	for key, entry := range f.cache {
+		if entry.lastUsedAt.Load() < cutoff {
+			delete(f.cache, key)
+		}
 	}
 }
 
@@ -82,8 +134,8 @@ func mcpBaseURL(server ServerInfo) string {
 	return baseURL
 }
 
-func (c *HTTPMCPClient) ListTools(ctx context.Context, token string) ([]MCPTool, http.Header, error) {
-	result, respHeaders, err := c.call(ctx, token, "tools/list", nil)
+func (c *HTTPMCPClient) ListTools(ctx context.Context, authorization string) ([]MCPTool, http.Header, error) {
+	result, respHeaders, err := c.call(ctx, authorization, "tools/list", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,18 +149,18 @@ func (c *HTTPMCPClient) ListTools(ctx context.Context, token string) ([]MCPTool,
 	return resp.Tools, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) CallTool(ctx context.Context, token string, toolName string, args json.RawMessage) (any, http.Header, error) {
+func (c *HTTPMCPClient) CallTool(ctx context.Context, authorization string, toolName string, args json.RawMessage) (any, http.Header, error) {
 	params := map[string]any{
 		"name": toolName,
 	}
 	if args != nil {
 		params["arguments"] = json.RawMessage(args)
 	}
-	return c.call(ctx, token, "tools/call", params)
+	return c.call(ctx, authorization, "tools/call", params)
 }
 
-func (c *HTTPMCPClient) ListResources(ctx context.Context, token string) ([]MCPResource, http.Header, error) {
-	result, respHeaders, err := c.call(ctx, token, "resources/list", nil)
+func (c *HTTPMCPClient) ListResources(ctx context.Context, authorization string) ([]MCPResource, http.Header, error) {
+	result, respHeaders, err := c.call(ctx, authorization, "resources/list", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,11 +174,11 @@ func (c *HTTPMCPClient) ListResources(ctx context.Context, token string) ([]MCPR
 	return resp.Resources, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri string) (*MCPResourceContent, http.Header, error) {
+func (c *HTTPMCPClient) ReadResource(ctx context.Context, authorization string, uri string) (*MCPResourceContent, http.Header, error) {
 	params := map[string]any{
 		"uri": uri,
 	}
-	result, respHeaders, err := c.call(ctx, token, "resources/read", params)
+	result, respHeaders, err := c.call(ctx, authorization, "resources/read", params)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,24 +190,24 @@ func (c *HTTPMCPClient) ReadResource(ctx context.Context, token string, uri stri
 	return &content, respHeaders, nil
 }
 
-func (c *HTTPMCPClient) call(ctx context.Context, token string, method string, params any) (any, http.Header, error) {
+func (c *HTTPMCPClient) call(ctx context.Context, authorization string, method string, params any) (any, http.Header, error) {
 	if method != "initialize" {
-		if err := c.ensureSession(ctx, token); err != nil {
+		if err := c.ensureSession(ctx, authorization); err != nil {
 			return nil, nil, fmt.Errorf("session initialization failed: %w", err)
 		}
 	}
 
-	res, err := c.doRequest(ctx, token, method, params, c.currentSessionID())
+	res, err := c.doRequest(ctx, authorization, method, params, c.currentSessionID())
 	if err != nil {
 		return nil, nil, err
 	}
 	c.recordSessionID(res.receivedSessionID)
 
 	if res.staleSession {
-		if err := c.reinitialize(ctx, token); err != nil {
+		if err := c.reinitialize(ctx, authorization); err != nil {
 			return nil, nil, fmt.Errorf("session expired and re-initialization failed: %w", err)
 		}
-		res, err = c.doRequest(ctx, token, method, params, c.currentSessionID())
+		res, err = c.doRequest(ctx, authorization, method, params, c.currentSessionID())
 		if err != nil {
 			return nil, nil, err
 		}
@@ -181,7 +233,7 @@ type transientUpstreamError struct {
 func (e *transientUpstreamError) Error() string { return e.err.Error() }
 func (e *transientUpstreamError) Unwrap() error { return e.err }
 
-func (c *HTTPMCPClient) doRequest(ctx context.Context, token string, method string, params any, sentSessionID string) (requestOutcome, error) {
+func (c *HTTPMCPClient) doRequest(ctx context.Context, authorization string, method string, params any, sentSessionID string) (requestOutcome, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, mcpUpstreamTimeout)
 	defer cancel()
 
@@ -207,8 +259,8 @@ func (c *HTTPMCPClient) doRequest(ctx context.Context, token string, method stri
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
 	}
 	if sentSessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sentSessionID)
@@ -281,26 +333,26 @@ func (c *HTTPMCPClient) recordSessionID(sid string) {
 	c.session.mu.Unlock()
 }
 
-func (c *HTTPMCPClient) ensureSession(ctx context.Context, token string) error {
+func (c *HTTPMCPClient) ensureSession(ctx context.Context, authorization string) error {
 	c.session.mu.Lock()
 	defer c.session.mu.Unlock()
 
 	if c.session.id != "" || c.session.sessionless {
 		return nil
 	}
-	return c.initializeLocked(ctx, token)
+	return c.initializeLocked(ctx, authorization)
 }
 
-func (c *HTTPMCPClient) reinitialize(ctx context.Context, token string) error {
+func (c *HTTPMCPClient) reinitialize(ctx context.Context, authorization string) error {
 	c.session.mu.Lock()
 	defer c.session.mu.Unlock()
 
 	c.session.id = ""
 	c.session.sessionless = false
-	return c.initializeLocked(ctx, token)
+	return c.initializeLocked(ctx, authorization)
 }
 
-func (c *HTTPMCPClient) initializeLocked(ctx context.Context, token string) error {
+func (c *HTTPMCPClient) initializeLocked(ctx context.Context, authorization string) error {
 	params := map[string]any{
 		"protocolVersion": "2025-03-26",
 		"capabilities":    map[string]any{},
@@ -312,7 +364,7 @@ func (c *HTTPMCPClient) initializeLocked(ctx context.Context, token string) erro
 
 	const retryDelay = 2 * time.Second
 
-	res, err := c.doRequest(ctx, token, "initialize", params, "")
+	res, err := c.doRequest(ctx, authorization, "initialize", params, "")
 	if err != nil {
 		var transient *transientUpstreamError
 		if !errors.As(err, &transient) {
@@ -323,7 +375,7 @@ func (c *HTTPMCPClient) initializeLocked(ctx context.Context, token string) erro
 			return ctx.Err()
 		case <-time.After(retryDelay):
 		}
-		res, err = c.doRequest(ctx, token, "initialize", params, "")
+		res, err = c.doRequest(ctx, authorization, "initialize", params, "")
 		if err != nil {
 			return err
 		}
@@ -336,11 +388,11 @@ func (c *HTTPMCPClient) initializeLocked(ctx context.Context, token string) erro
 	c.session.id = res.receivedSessionID
 	c.session.sessionless = c.session.id == ""
 
-	c.sendNotification(ctx, token, "notifications/initialized", nil)
+	c.sendNotification(ctx, authorization, "notifications/initialized", nil)
 	return nil
 }
 
-func (c *HTTPMCPClient) sendNotification(ctx context.Context, token string, method string, params any) {
+func (c *HTTPMCPClient) sendNotification(ctx context.Context, authorization string, method string, params any) {
 	notifCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -363,8 +415,8 @@ func (c *HTTPMCPClient) sendNotification(ctx context.Context, token string, meth
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
 	}
 	if sid := c.session.id; sid != "" {
 		req.Header.Set("Mcp-Session-Id", sid)

@@ -1,7 +1,3 @@
-/*
-user_consent_test.go tests the UserConsentService that builds OAuth consent URLs
-for per-user MCP server authorization.
-*/
 package mcp_gateway
 
 import (
@@ -48,7 +44,6 @@ func TestBuildConsentURL_CorrectFormat(t *testing.T) {
 		t.Fatal("expected non-empty consent URL")
 	}
 
-	// Parse the URL and verify query params
 	parsed, err := url.Parse(result.ConsentURL)
 	if err != nil {
 		t.Fatalf("invalid URL: %v", err)
@@ -72,7 +67,6 @@ func TestBuildConsentURL_CorrectFormat(t *testing.T) {
 		t.Errorf("expected scope='read:jira write:jira', got '%s'", q.Get("scope"))
 	}
 
-	// Verify state contains tenant:user:server
 	state := q.Get("state")
 	if !strings.Contains(state, tenantID.String()) {
 		t.Error("state missing tenant ID")
@@ -105,11 +99,9 @@ func TestBuildConsentURL_StateFormat(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Extract state from URL
 	parsed, _ := url.Parse(result.ConsentURL)
 	state := parsed.Query().Get("state")
 
-	// State should be exactly: tenantID:userID:serverWorkloadID
 	expected := tenantID.String() + ":" + userID + ":" + serverWorkloadID.String()
 	if state != expected {
 		t.Errorf("expected state '%s', got '%s'", expected, state)

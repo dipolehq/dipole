@@ -16,37 +16,97 @@ import (
 	"github.com/google/uuid"
 )
 
+// SecurityEvent is the envelope shared by all four access.* event types
+// (access.request, access.authorization, access.credential, access.discovery).
+// Only fields that apply to every event type regardless of what happened
+// live here; everything specific to one event type lives on Detail, in the
+// SecurityEventDetail implementation matching EventType. This means a
+// producer can only set fields that apply to the event it is building —
+// there is no flat struct with unrelated fields sitting at zero-value.
 type SecurityEvent struct {
-	TenantID                 uuid.UUID
-	ContextID                uuid.UUID
-	Timestamp                time.Time
-	SourceIP                 string
-	Source                   string
-	EventType                string
-	Severity                 string
-	Allowed                  bool
-	DenyReason               string
-	PolicyID                 *uuid.UUID
-	PolicyName               string
-	UserID                   string
-	ClientWorkload           string
-	ClientWorkloadID         *uuid.UUID
-	ServerWorkload           string
-	ServerWorkloadID         *uuid.UUID
-	ServerHost               string
-	ServerPort               int
-	TrustProvider            string
-	TrustAttested            bool
-	TrustResults             []TrustResult
-	CredentialType           string
-	CredentialName           string
-	CredentialProviderID     *uuid.UUID
-	CredentialMaxAge         int
-	ToolName                 string
-	ResourceSetID            *uuid.UUID
+	TenantID      uuid.UUID
+	ContextID     uuid.UUID
+	Timestamp     time.Time
+	SourceIP      string
+	Source        string
+	EventType     string
+	Severity      string
+	ResourceSetID *uuid.UUID
+	Detail        SecurityEventDetail
+}
+
+// SecurityEventDetail is implemented by exactly four types — RequestDetail,
+// AuthorizationDetail, CredentialDetail, DiscoveryDetail — one per access.*
+// EventType. The marker method is unexported so this set stays closed to
+// this package: producers construct one of the four existing types rather
+// than inventing a fifth event shape.
+type SecurityEventDetail interface {
+	securityEventDetail()
+}
+
+// RequestDetail is the Detail for an "access.request" event: the raw
+// inbound connection info before any policy/identity decision is made.
+type RequestDetail struct {
+	ServerHost string
+	ServerPort int
+}
+
+func (RequestDetail) securityEventDetail() {}
+
+// AuthorizationDetail is the Detail for an "access.authorization" event:
+// the full access decision — which client/server/policy/trust
+// provider(s)/credential provider were involved and the outcome.
+type AuthorizationDetail struct {
+	Allowed              bool
+	DenyReason           string
+	ClientWorkload       string
+	ClientWorkloadID     *uuid.UUID
+	ServerWorkload       string
+	ServerWorkloadID     *uuid.UUID
+	PolicyID             *uuid.UUID
+	PolicyName           string
+	TrustProvider        string
+	TrustAttested        bool
+	TrustResults         []TrustResult
+	CredentialType       string
+	CredentialName       string
+	CredentialProviderID *uuid.UUID
+	CredentialMaxAge     int
+	ToolName             string
+	UserID               string
+}
+
+func (AuthorizationDetail) securityEventDetail() {}
+
+// CredentialDetail is the Detail for an "access.credential" event: whether
+// a credential was actually retrieved for an already-authorized request.
+type CredentialDetail struct {
+	Allowed              bool
+	DenyReason           string
+	ClientWorkload       string
+	ClientWorkloadID     *uuid.UUID
+	ServerWorkload       string
+	ServerWorkloadID     *uuid.UUID
+	PolicyID             *uuid.UUID
+	PolicyName           string
+	TrustResults         []TrustResult
+	CredentialType       string
+	CredentialName       string
+	CredentialProviderID *uuid.UUID
+	CredentialMaxAge     int
+}
+
+func (CredentialDetail) securityEventDetail() {}
+
+// DiscoveryDetail is the Detail for an "access.discovery" event: which
+// client/server workloads were candidates for this request, independent of
+// whether any of them ultimately matched.
+type DiscoveryDetail struct {
 	CandidateClientWorkloads []WorkloadRef
 	CandidateServerWorkloads []WorkloadRef
 }
+
+func (DiscoveryDetail) securityEventDetail() {}
 
 type TrustResult struct {
 	ProviderID    uuid.UUID

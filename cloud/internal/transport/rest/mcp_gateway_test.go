@@ -38,15 +38,19 @@ func (a *recordingGatewayAuth) Authenticate(token string, expectedAudience strin
 }
 
 type recordingMethodHandler struct {
-	called  bool
-	gotCtx  *gw.RequestContext
-	gotName string
+	called      bool
+	gotCtx      *gw.RequestContext
+	gotName     string
+	errToReturn error
 }
 
 func (h *recordingMethodHandler) HandleMethod(_ context.Context, rCtx *gw.RequestContext, method string, _ json.RawMessage) (any, error) {
 	h.called = true
 	h.gotCtx = rCtx
 	h.gotName = method
+	if h.errToReturn != nil {
+		return nil, h.errToReturn
+	}
 	return map[string]any{}, nil
 }
 
@@ -216,6 +220,66 @@ func TestGatewayHandleMCP_MissingTokenStillChallenges(t *testing.T) {
 	}
 	if auth.called {
 		t.Error("authenticator should not be called without a token")
+	}
+}
+
+// TestGatewayHandleMCP_ConsentRequiredErrorIncludesURLInData verifies that
+// when the method handler returns a *gw.ConsentRequiredError, the JSON-RPC
+// error response carries the consent URL in its data field — the mechanism
+// by which an AI agent (which cannot itself complete a browser-based OAuth
+// flow) can relay an actionable link to its human user.
+func TestGatewayHandleMCP_ConsentRequiredErrorIncludesURLInData(t *testing.T) {
+	srv, _, handler, _ := newGatewayTestServer(t)
+	handler.errToReturn = &gw.ConsentRequiredError{
+		ServerWorkloadID: uuid.New(),
+		ConsentURL:       "https://auth.jira.com/authorize?client_id=abc&state=xyz",
+	}
+
+	rec := httptest.NewRecorder()
+	srv.HandleMCP(rec, gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (JSON-RPC errors are carried in the body), got %d", rec.Code)
+	}
+
+	var resp JSONRPCResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if resp.Error == nil {
+		t.Fatal("expected a JSON-RPC error")
+	}
+	if resp.Error.Data == nil {
+		t.Fatal("expected error.data to be populated with the consent URL")
+	}
+
+	dataMap, ok := resp.Error.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected error.data to be an object, got %T", resp.Error.Data)
+	}
+	if got := dataMap["consentUrl"]; got != "https://auth.jira.com/authorize?client_id=abc&state=xyz" {
+		t.Errorf("expected consentUrl in error.data, got %v", got)
+	}
+}
+
+// TestGatewayHandleMCP_NonConsentErrorHasNoData verifies that ordinary
+// errors do not get a spurious data field.
+func TestGatewayHandleMCP_NonConsentErrorHasNoData(t *testing.T) {
+	srv, _, handler, _ := newGatewayTestServer(t)
+	handler.errToReturn = gw.ErrMethodNotFound
+
+	rec := httptest.NewRecorder()
+	srv.HandleMCP(rec, gatewayRequest(gwTenantASubdomain+"-mcpgateway.dipolehq.com", "tok"))
+
+	var resp JSONRPCResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if resp.Error == nil {
+		t.Fatal("expected a JSON-RPC error")
+	}
+	if resp.Error.Data != nil {
+		t.Errorf("expected no data field for a non-consent error, got %v", resp.Error.Data)
 	}
 }
 

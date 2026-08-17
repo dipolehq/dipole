@@ -63,6 +63,7 @@ type JSONRPCResponse struct {
 type JSONRPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // ErrNotGatewayHost means the tenant resolved but the request arrived on a
@@ -188,12 +189,12 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		MCPSessionID:       r.Header.Get("Mcp-Session-Id"),
 		ClientIP:           clientIP,
 		ClientWorkloadName: authResult.ClientWorkloadName,
-		Headers:            redactRequestHeaders(r),
+		Headers:            gw.RedactHeaders(r.Header),
 	}
 
 	result, err := s.methodHandler.HandleMethod(r.Context(), rCtx, rpcReq.Method, rpcReq.Params)
 	if err != nil {
-		writeJSONRPCError(w, rpcReq.ID, -32603, err.Error())
+		writeJSONRPCErrorWithData(w, rpcReq.ID, -32603, err.Error(), consentErrorData(err))
 		return
 	}
 
@@ -224,13 +225,29 @@ func writeGatewayError(w http.ResponseWriter, status int, message string) {
 }
 
 func writeJSONRPCError(w http.ResponseWriter, id any, code int, message string) {
+	writeJSONRPCErrorWithData(w, id, code, message, nil)
+}
+
+func writeJSONRPCErrorWithData(w http.ResponseWriter, id any, code int, message string, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
-		Error:   &JSONRPCError{Code: code, Message: message},
+		Error:   &JSONRPCError{Code: code, Message: message, Data: data},
 	})
+}
+
+// consentErrorData extracts the consent URL from a *gw.ConsentRequiredError,
+// if err is (or wraps) one, in the shape MCP clients/AI agents can surface to
+// their user in the JSON-RPC error's data field. Returns nil for any other
+// error, leaving the response's data field omitted as before.
+func consentErrorData(err error) any {
+	var consentErr *gw.ConsentRequiredError
+	if !errors.As(err, &consentErr) || consentErr.ConsentURL == "" {
+		return nil
+	}
+	return map[string]string{"consentUrl": consentErr.ConsentURL}
 }
 
 func writeJSONRPCResponse(w http.ResponseWriter, id any, result any) {
@@ -334,25 +351,4 @@ func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redire
 		ClientWorkload: events.TraceWorkloadStatus{Name: cwName, Status: cwStatus},
 		ServerWorkload: events.TraceWorkloadStatus{Name: "Dipole MCP Gateway", Status: "Identified"},
 	})
-}
-
-var sensitiveHeaders = map[string]bool{
-	"authorization": true,
-	"cookie":        true,
-	"set-cookie":    true,
-	"x-api-key":     true,
-}
-
-func redactRequestHeaders(r *http.Request) []map[string]string {
-	headers := make([]map[string]string, 0, len(r.Header))
-	for name, values := range r.Header {
-		if sensitiveHeaders[strings.ToLower(name)] {
-			headers = append(headers, map[string]string{"[REDACTED]": "[REDACTED]"})
-			continue
-		}
-		for _, v := range values {
-			headers = append(headers, map[string]string{name: v})
-		}
-	}
-	return headers
 }

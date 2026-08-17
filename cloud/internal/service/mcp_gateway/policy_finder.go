@@ -1,7 +1,4 @@
-/*
-policy_finder.go implements the RightSidePolicyFinder interface using the
-AccessPolicyRepository to find MCP policies where the Gateway is the client.
-*/
+// policy_finder.go implements DBRightSidePolicyFinder, which finds right-side Access Policies where the Gateway is the Client Workload.
 package mcp_gateway
 
 import (

@@ -1,11 +1,8 @@
-/*
-credential_decrypter.go decrypts simple credential provider configs (API Key,
-Username/Password) for right-side auth injection. Keeps crypto concerns out of
-the auth logic itself.
-*/
+// credential_decrypter.go implements AESCredentialDecrypter, which decrypts API Key and Username/Password credential configs into ready-to-use Authorization header values.
 package mcp_gateway
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -50,7 +47,7 @@ func extractAPIKey(configJSON []byte) (string, error) {
 	if config.APIKey == "" {
 		return "", fmt.Errorf("api key is empty in credential config")
 	}
-	return config.APIKey, nil
+	return "Bearer " + config.APIKey, nil
 }
 
 func extractUsernamePassword(configJSON []byte) (string, error) {
@@ -64,7 +61,6 @@ func extractUsernamePassword(configJSON []byte) (string, error) {
 	if config.Password == "" {
 		return "", fmt.Errorf("password is empty in credential config")
 	}
-	// For Bearer injection, use password as the token value.
-	// The server workload's auth scheme determines actual injection format.
-	return config.Password, nil
+	encoded := base64.StdEncoding.EncodeToString([]byte(config.Username + ":" + config.Password))
+	return "Basic " + encoded, nil
 }

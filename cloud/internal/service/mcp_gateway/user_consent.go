@@ -1,11 +1,4 @@
-/*
-user_consent.go handles the per-user OAuth consent flow for MCP servers.
-
-When a user accesses an MCP server for the first time (no stored credential),
-the Gateway returns an error with a consent URL. The user visits this URL in
-their browser, completes the OAuth flow with the MCP server, and we store the
-resulting tokens. Subsequent requests use the stored token.
-*/
+// user_consent.go implements UserConsentService, which builds per-user OAuth consent URLs for first-time access to an MCP server.
 package mcp_gateway
 
 import (
@@ -31,22 +24,14 @@ type ConsentResult struct {
 	ConsentURL string
 }
 
-// ConsentCallbackPath is where the downstream provider returns the user after
-// consent. It is appended to the tenant's own Gateway URL, and is the value the
-// customer registers as the redirect URI with that provider.
 const ConsentCallbackPath = "/mcp/consent/callback"
 
-// ErrNoGatewayURL means no Gateway URL was supplied for the request, so no
-// tenant-correct callback URL can be built. Fail closed rather than emit a bare
-// path, which would send the user's browser to the wrong host.
 var ErrNoGatewayURL = errors.New("no gateway URL supplied for this request")
 
 type ConsentConfigResolver interface {
 	GetConsentConfig(ctx context.Context, tenantID uuid.UUID, serverWorkloadID uuid.UUID, gatewayURL string) (*ConsentConfig, error)
 }
 
-// UserConsentService holds no Gateway URL; the caller supplies the one belonging
-// to the tenant serving this request.
 type UserConsentService struct {
 	tokenStore     UserTokenStore
 	configResolver ConsentConfigResolver
