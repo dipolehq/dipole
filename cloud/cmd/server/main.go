@@ -30,7 +30,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	mcpsvc "github.com/dipolehq/dipole/cloud/internal/service/mcp"
 	mcpgw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
-	mcpserver "github.com/dipolehq/dipole/cloud/internal/service/mcp_server"
 	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
@@ -171,10 +170,6 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	wellKnownHandler := rest.NewWellKnownHandler(issuer, tenantHostResolver, logger)
 
-	mcpToolService := mcpserver.NewToolService(repos.Events, eventBus)
-	mcpResourceService := mcpserver.NewResourceService()
-	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
-
 	gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
 	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 	gwTokenStore := repos.MCPUserCredentials
@@ -201,7 +196,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, eventBus, caService)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -303,7 +298,6 @@ func buildHTTPServer(
 	edgeAPI *rest.EdgeAPIHandler,
 	mcpAuth *rest.MCPAuthServer,
 	mcpGateway *rest.MCPGatewayServer,
-	mcpDipole *rest.DipoleMCPServer,
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
 	eventBus *eventbus.EventBus,
@@ -396,9 +390,6 @@ func buildHTTPServer(
 	mcpAuth.RegisterRoutes(mux)
 
 	mcpGateway.RegisterGatewayRoutes(mux)
-	if mcpDipole != nil {
-		mcpDipole.RegisterMCPServerRoutes(mux)
-	}
 
 	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret)
 
