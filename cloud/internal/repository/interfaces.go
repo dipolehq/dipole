@@ -83,7 +83,15 @@ type AgentControllerRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentController, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AgentController) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
-	GetByDeviceCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.AgentController, error)
+	// ConsumeDeviceCode atomically claims a Controller's device code in a
+	// single UPDATE ... RETURNING: it transitions status from
+	// Unregistered to Registered, clears the code, and stores the given
+	// encrypted shared secret, so two concurrent claims of the same code
+	// cannot both succeed and the claim + secret assignment cannot
+	// partially apply. Returns nil (no error) if the code doesn't exist
+	// for this tenant, is already consumed (status != Unregistered), or
+	// has expired.
+	ConsumeDeviceCode(ctx context.Context, tenantID uuid.UUID, deviceCode string, sharedSecretEncrypted []byte) (*domain.AgentController, error)
 }
 
 type EventRepository interface {

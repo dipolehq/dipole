@@ -1,9 +1,8 @@
-/*
-kerberos_validator_test.go tests Kerberos HMAC-SHA256 attestation verification.
-*/
+// kerberos_validator_test.go tests Kerberos HMAC-SHA256 attestation verification.
 package trust
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -15,8 +14,20 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
+
+var testEncryptionKey = bytes.Repeat([]byte{0x24}, 32)
+
+func encryptSecretForTest(t *testing.T, secret []byte) []byte {
+	t.Helper()
+	encrypted, err := crypto.Encrypt([]byte(hex.EncodeToString(secret)), testEncryptionKey)
+	if err != nil {
+		t.Fatalf("encrypt test secret: %v", err)
+	}
+	return encrypted
+}
 
 type mockControllerRepoForKerberos struct {
 	controller *domain.AgentController
@@ -38,7 +49,7 @@ func (m *mockControllerRepoForKerberos) Update(_ context.Context, _ uuid.UUID, _
 func (m *mockControllerRepoForKerberos) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
 	return nil
 }
-func (m *mockControllerRepoForKerberos) GetByDeviceCode(_ context.Context, _ uuid.UUID, _ string) (*domain.AgentController, error) {
+func (m *mockControllerRepoForKerberos) ConsumeDeviceCode(_ context.Context, _ uuid.UUID, _ string, _ []byte) (*domain.AgentController, error) {
 	return nil, nil
 }
 
@@ -75,13 +86,13 @@ func TestKerberosValidator_ValidAttestation_Attested(t *testing.T) {
 
 	repo := &mockControllerRepoForKerberos{
 		controller: &domain.AgentController{
-			ID:           controllerID,
-			SharedSecret: hex.EncodeToString(secret),
-			Status:       domain.AgentStatusHealthy,
+			ID:                    controllerID,
+			SharedSecretEncrypted: encryptSecretForTest(t, secret),
+			Status:                domain.AgentStatusHealthy,
 		},
 	}
 
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 	provider := &domain.TrustProvider{
 		TenantID:   uuid.New(),
 		Config:     json.RawMessage(`{}`),
@@ -109,16 +120,16 @@ func TestKerberosValidator_InvalidSignature_NotAttested(t *testing.T) {
 	controllerID := uuid.New()
 	attest := buildKerberosAttestation("user@CORP.LOCAL", "CORP.LOCAL", "corp.local", time.Now().Unix(), secret)
 	attest.ControllerID = controllerID.String()
-	attest.Signature = "deadbeef" // Wrong signature
+	attest.Signature = "deadbeef"
 
 	repo := &mockControllerRepoForKerberos{
 		controller: &domain.AgentController{
-			ID:           controllerID,
-			SharedSecret: hex.EncodeToString(secret),
+			ID:                    controllerID,
+			SharedSecretEncrypted: encryptSecretForTest(t, secret),
 		},
 	}
 
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
 		Config:   json.RawMessage(`{}`),
@@ -144,18 +155,18 @@ func TestKerberosValidator_ExpiredTimestamp_NotAttested(t *testing.T) {
 	}
 
 	controllerID := uuid.New()
-	oldTimestamp := time.Now().Add(-10 * time.Minute).Unix() // 10 minutes ago (> 5 min limit)
+	oldTimestamp := time.Now().Add(-10 * time.Minute).Unix()
 	attest := buildKerberosAttestation("user@CORP.LOCAL", "CORP.LOCAL", "corp.local", oldTimestamp, secret)
 	attest.ControllerID = controllerID.String()
 
 	repo := &mockControllerRepoForKerberos{
 		controller: &domain.AgentController{
-			ID:           controllerID,
-			SharedSecret: hex.EncodeToString(secret),
+			ID:                    controllerID,
+			SharedSecretEncrypted: encryptSecretForTest(t, secret),
 		},
 	}
 
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
 		Config:   json.RawMessage(`{}`),
@@ -176,7 +187,7 @@ func TestKerberosValidator_ExpiredTimestamp_NotAttested(t *testing.T) {
 
 func TestKerberosValidator_NoAttestation_NotAttested(t *testing.T) {
 	repo := &mockControllerRepoForKerberos{}
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 
 	provider := &domain.TrustProvider{
 		TenantID: uuid.New(),
@@ -208,12 +219,12 @@ func TestKerberosValidator_MatchRuleFailed_NotAttested(t *testing.T) {
 
 	repo := &mockControllerRepoForKerberos{
 		controller: &domain.AgentController{
-			ID:           controllerID,
-			SharedSecret: hex.EncodeToString(secret),
+			ID:                    controllerID,
+			SharedSecretEncrypted: encryptSecretForTest(t, secret),
 		},
 	}
 
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 	provider := &domain.TrustProvider{
 		TenantID:   uuid.New(),
 		Config:     json.RawMessage(`{}`),
@@ -243,24 +254,22 @@ func TestKerberosValidator_LegacyEnvironmentFallback_Attested(t *testing.T) {
 	}
 
 	controllerID := uuid.New()
-	// Build attestation manually to put into environment map
 	attest := buildKerberosAttestation("user@CORP.LOCAL", "CORP.LOCAL", "corp.local", time.Now().Unix(), secret)
 	attest.ControllerID = controllerID.String()
 
 	repo := &mockControllerRepoForKerberos{
 		controller: &domain.AgentController{
-			ID:           controllerID,
-			SharedSecret: hex.EncodeToString(secret),
+			ID:                    controllerID,
+			SharedSecretEncrypted: encryptSecretForTest(t, secret),
 		},
 	}
 
-	v := NewKerberosValidator(repo)
+	v := NewKerberosValidator(repo, testEncryptionKey)
 	provider := &domain.TrustProvider{
 		TenantID:   uuid.New(),
 		Config:     json.RawMessage(`{}`),
 		MatchRules: []domain.MatchRule{{Attribute: "realm", Value: "CORP.LOCAL"}},
 	}
-	// Use environment map instead of KerberosAttestation field (backward compat)
 	evidence := &domain.ClientEvidence{
 		Environment: map[string]string{
 			"KERBEROS_ATTESTATION_PAYLOAD":   attest.Payload,

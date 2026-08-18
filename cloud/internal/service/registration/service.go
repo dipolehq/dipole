@@ -1,10 +1,4 @@
-/*
-Package registration handles Agent Controller and Proxy registration with Cloud.
-
-Validates device codes (6-digit, single-use, 1-hour expiry), issues proxy
-registration tokens, and tracks agent health. Controllers register on startup,
-proxies register via tokens obtained from their Controller.
-*/
+// Package registration handles Agent Controller and Proxy registration with Cloud: device codes, one-time proxy tokens, session token issuance/refresh, and health tracking.
 package registration
 
 import (
@@ -19,57 +13,44 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
-// sessionTokenLifetime is how long an Agent Proxy's bearer session token
-// remains valid before it must be renewed via RefreshSessionToken. Kept
-// short so a leaked/stale token has a bounded blast radius, matching the
-// lifetime already used for registration and proxy tokens elsewhere in
-// this file.
 const sessionTokenLifetime = 1 * time.Hour
 
 type RegistrationService struct {
 	controllerRepo repository.AgentControllerRepository
 	proxyRepo      repository.AgentProxyRepository
 	tokenRepo      repository.RegistrationTokenRepository
-	logger         interface{ Info(string, ...interface{}) }
+	encryptionKey  []byte
 }
 
-func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository) *RegistrationService {
-	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo}
+func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository, encryptionKey []byte) *RegistrationService {
+	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo, encryptionKey: encryptionKey}
 }
 
-func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (*domain.AgentController, error) {
-	controller, err := s.controllerRepo.GetByDeviceCode(ctx, tenantID, deviceCode)
+func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (controller *domain.AgentController, sharedSecret string, err error) {
+	sharedSecret, err = generateSharedSecret()
 	if err != nil {
-		return nil, fmt.Errorf("invalid or expired device code")
+		return nil, "", fmt.Errorf("generate shared secret: %w", err)
 	}
 
-	if controller.Status != domain.AgentStatusUnregistered {
-		return nil, fmt.Errorf("device code already used")
+	secretEncrypted, err := crypto.Encrypt([]byte(sharedSecret), s.encryptionKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("encrypt shared secret: %w", err)
 	}
 
-	if controller.DeviceCodeExpiresAt != nil && time.Now().After(*controller.DeviceCodeExpiresAt) {
-		return nil, fmt.Errorf("device code expired")
+	controller, err = s.controllerRepo.ConsumeDeviceCode(ctx, tenantID, deviceCode, secretEncrypted)
+	if err != nil {
+		return nil, "", fmt.Errorf("consume device code: %w", err)
+	}
+	if controller == nil {
+		return nil, "", domain.NewRegistrationError("invalid or expired device code")
 	}
 
-	controller.Status = domain.AgentStatusRegistered
-	controller.DeviceCode = ""
-
-	// Generate shared secret for Kerberos attestation signing (HMAC-SHA256)
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return nil, fmt.Errorf("generate shared secret: %w", err)
-	}
-	controller.SharedSecret = hex.EncodeToString(secret)
-
-	if err := s.controllerRepo.Update(ctx, tenantID, controller); err != nil {
-		return nil, fmt.Errorf("update controller: %w", err)
-	}
-
-	return controller, nil
+	return controller, sharedSecret, nil
 }
 
 func (s *RegistrationService) CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error) {
@@ -97,7 +78,10 @@ func (s *RegistrationService) CreateController(ctx context.Context, tenantID uui
 func (s *RegistrationService) RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error) {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return "", fmt.Errorf("controller not found: %w", err)
+		return "", fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return "", domain.NewRegistrationError("controller not found")
 	}
 
 	code := generateDeviceCode()
@@ -116,11 +100,14 @@ func (s *RegistrationService) RegenerateDeviceCode(ctx context.Context, tenantID
 func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error) {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return "", fmt.Errorf("controller not found: %w", err)
+		return "", fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return "", domain.NewRegistrationError("controller not found")
 	}
 
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return "", fmt.Errorf("controller not registered")
+		return "", domain.NewRegistrationError("controller not registered")
 	}
 
 	rawBytes := make([]byte, 32)
@@ -140,14 +127,6 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 	return token, nil
 }
 
-// RegisterProxy validates and consumes a registration token, persists a new
-// AgentProxy, and issues that proxy a bearer session token. The session
-// token (not the one-time registration token) is what authenticates every
-// subsequent gRPC call the proxy makes — see grpc.SessionAuthInterceptor.
-// Only its SHA-256 hash is stored; the raw token is returned exactly once
-// and never persisted or logged in full. The token expires after
-// sessionTokenLifetime — the proxy must call RefreshSessionToken to renew
-// it before then.
 func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, time.Time, error) {
 	if registrationToken == "" {
 		return nil, "", time.Time{}, domain.NewRegistrationError("empty registration token")
@@ -171,7 +150,6 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 		return nil, "", time.Time{}, domain.NewRegistrationError("invalid controller_id in token")
 	}
 
-	// Verify token is valid, not consumed, not expired — and consume it atomically
 	hash := sha256.Sum256([]byte(registrationToken))
 	tokenHash := hex.EncodeToString(hash[:])
 
@@ -180,7 +158,6 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 		return nil, "", time.Time{}, domain.NewRegistrationError("invalid or already consumed registration token")
 	}
 
-	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
 		return nil, "", time.Time{}, fmt.Errorf("lookup controller: %w", err)
@@ -213,21 +190,10 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 	return proxy, sessionToken, expiresAt, nil
 }
 
-// RefreshSessionToken issues a new bearer session token for an already
-// -registered proxy, replacing its current one. Unlike RegisterProxy, no
-// registration token is involved — the caller's identity is already
-// established (by the session-auth interceptor, from the token being
-// refreshed) before this is ever called; this method only re-issues a
-// fresh credential for that same identity.
 func (s *RegistrationService) RefreshSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
 	return s.issueSessionToken(ctx, tenantID, proxyID)
 }
 
-// issueSessionToken generates a new random session token, stores only its
-// SHA-256 hash (plus expiry), and returns the raw token exactly once. The
-// caller is responsible for having already established that tenantID/
-// proxyID identifies a real, authorized proxy — this function performs no
-// authorization checks of its own.
 func (s *RegistrationService) issueSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
 	sessionToken, err := generateSessionToken()
 	if err != nil {
@@ -257,17 +223,31 @@ func hashSessionToken(token string) string {
 func (s *RegistrationService) UpdateHealth(ctx context.Context, tenantID, controllerID uuid.UUID) error {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return err
+		return fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return domain.NewRegistrationError("controller not found")
 	}
 
 	now := time.Now()
 	controller.LastHealthAt = &now
 	controller.Status = domain.AgentStatusHealthy
 
-	return s.controllerRepo.Update(ctx, tenantID, controller)
+	if err := s.controllerRepo.Update(ctx, tenantID, controller); err != nil {
+		return fmt.Errorf("update controller: %w", err)
+	}
+	return nil
 }
 
 func generateDeviceCode() string {
 	n, _ := rand.Int(rand.Reader, big.NewInt(900000))
 	return fmt.Sprintf("%06d", n.Int64()+100000)
+}
+
+func generateSharedSecret() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return hex.EncodeToString(secret), nil
 }

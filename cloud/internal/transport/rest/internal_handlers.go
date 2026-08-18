@@ -2,10 +2,13 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
 )
 
@@ -45,15 +48,15 @@ func (h *InternalHandlers) handleControllerRegister(w http.ResponseWriter, r *ht
 		return
 	}
 
-	controller, err := h.registrationSvc.RegisterController(r.Context(), tenantID, req.DeviceCode)
+	controller, sharedSecret, err := h.registrationSvc.RegisterController(r.Context(), tenantID, req.DeviceCode)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "registration_failed", err.Error())
+		respondRegistrationError(w, "registration_failed", err)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"controller_id": controller.ID.String(),
-		"shared_secret": controller.SharedSecret,
+		"shared_secret": sharedSecret,
 	})
 }
 
@@ -80,7 +83,7 @@ func (h *InternalHandlers) handleControllerToken(w http.ResponseWriter, r *http.
 
 	token, err := h.registrationSvc.IssueProxyToken(r.Context(), tenantID, controllerID)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "token_failed", err.Error())
+		respondRegistrationError(w, "token_failed", err)
 		return
 	}
 
@@ -112,11 +115,22 @@ func (h *InternalHandlers) handleControllerHealth(w http.ResponseWriter, r *http
 	}
 
 	if err := h.registrationSvc.UpdateHealth(r.Context(), tenantID, controllerID); err != nil {
-		respondError(w, http.StatusInternalServerError, "health_update_failed", err.Error())
+		respondRegistrationError(w, "health_update_failed", err)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]bool{
 		"acknowledged": true,
 	})
+}
+
+// respondRegistrationError never returns wrapped internal error detail to these unauthenticated endpoints' callers: only a domain.RegistrationError's safe message is returned verbatim (400), everything else is logged and reported generically (500).
+func respondRegistrationError(w http.ResponseWriter, code string, err error) {
+	var regErr *domain.RegistrationError
+	if errors.As(err, &regErr) {
+		respondError(w, http.StatusBadRequest, code, regErr.Error())
+		return
+	}
+	slog.Error("registration request failed", "code", code, "error", err)
+	respondError(w, http.StatusInternalServerError, code, "an internal error occurred")
 }

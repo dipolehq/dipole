@@ -10,7 +10,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
-func NewConfiguredService(logger *slog.Logger, controllerRepo repository.AgentControllerRepository) *TrustValidationService {
+func NewConfiguredService(logger *slog.Logger, controllerRepo repository.AgentControllerRepository, encryptionKey []byte) *TrustValidationService {
 	cache := NewJWKSCache(logger)
 	svc := NewTrustValidationService(cache, logger)
 
@@ -23,7 +23,7 @@ func NewConfiguredService(logger *slog.Logger, controllerRepo repository.AgentCo
 	svc.RegisterValidator("aws_role", NewAWSRoleValidator())
 	svc.RegisterValidator("azure_metadata", &AzureValidator{})
 	svc.RegisterValidator("gcp_identity_token", &GCPValidator{})
-	svc.RegisterValidator("kerberos", NewKerberosValidator(controllerRepo))
+	svc.RegisterValidator("kerberos", NewKerberosValidator(controllerRepo, encryptionKey))
 	svc.RegisterValidator("certificate_signed_attestation", &CertificateValidator{})
 	svc.RegisterValidator("samlv2_response", NewSAMLValidator())
 

@@ -116,7 +116,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	}
 
 	broker := credentials.NewCredentialBroker(encKey, issuer, repos.Tenants, platformHosts)
-	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
+	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers, encKey)
 	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath, logger)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
@@ -129,7 +129,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
-	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
+	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens, encKey)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 
 	resourceCounter := service.NewDBResourceCounter(

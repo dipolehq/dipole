@@ -36,9 +36,9 @@ func (r *AgentControllerRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 	ac := &domain.AgentController{}
 	var tags []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
+		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at, shared_secret_encrypted
 		 FROM agent_controllers WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt)
+		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt, &ac.SharedSecretEncrypted)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -49,20 +49,24 @@ func (r *AgentControllerRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 	return ac, nil
 }
 
-func (r *AgentControllerRepo) GetByDeviceCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.AgentController, error) {
+func (r *AgentControllerRepo) ConsumeDeviceCode(ctx context.Context, tenantID uuid.UUID, deviceCode string, sharedSecretEncrypted []byte) (*domain.AgentController, error) {
 	ac := &domain.AgentController{}
 	var tags []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
-		 FROM agent_controllers WHERE tenant_id = $1 AND device_code = $2`, tenantID, code).
+		`UPDATE agent_controllers
+		 SET status = $3, device_code = NULL, device_code_expires_at = NULL, shared_secret_encrypted = $4, updated_at = NOW()
+		 WHERE tenant_id = $1 AND device_code = $2 AND status = $5 AND device_code_expires_at > NOW()
+		 RETURNING id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at`,
+		tenantID, deviceCode, domain.AgentStatusRegistered, sharedSecretEncrypted, domain.AgentStatusUnregistered).
 		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get agent controller by device code: %w", err)
+		return nil, fmt.Errorf("consume device code: %w", err)
 	}
 	json.Unmarshal(tags, &ac.Tags)
+	ac.SharedSecretEncrypted = sharedSecretEncrypted
 	return ac, nil
 }
 
