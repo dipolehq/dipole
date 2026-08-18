@@ -31,11 +31,14 @@ type PolicyEvaluator interface {
 	Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
 }
 
-// ProxyRegistrar abstracts the registration service for proxy registration.
-// It returns the newly registered proxy plus a bearer session token the
-// proxy must present (via gRPC metadata) on every later call.
+// ProxyRegistrar abstracts the registration service for proxy registration
+// and session token renewal. RegisterProxy returns the newly registered
+// proxy plus a bearer session token (and its expiry) the proxy must
+// present (via gRPC metadata) on every later call, until it expires.
+// RefreshSessionToken renews that token for an already-registered proxy.
 type ProxyRegistrar interface {
-	RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, error)
+	RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (proxy *domain.AgentProxy, sessionToken string, sessionTokenExpiresAt time.Time, err error)
+	RefreshSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (sessionToken string, sessionTokenExpiresAt time.Time, err error)
 }
 
 // ProxyHealthUpdater abstracts the repository for updating proxy health.
@@ -131,7 +134,7 @@ func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterR
 		return &pb.RegisterResponse{Success: false, ErrorMessage: "invalid tenant_id"}, nil
 	}
 
-	proxy, sessionToken, err := s.registrar.RegisterProxy(ctx, tenantID, req.RegistrationToken)
+	proxy, sessionToken, sessionTokenExpiresAt, err := s.registrar.RegisterProxy(ctx, tenantID, req.RegistrationToken)
 	if err != nil {
 		var regErr *domain.RegistrationError
 		if errors.As(err, &regErr) {
@@ -153,7 +156,12 @@ func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterR
 
 	s.logger.Info("proxy registered", "tenant_id", tenantID, "proxy_id", proxy.ID)
 
-	resp := &pb.RegisterResponse{Success: true, ProxyId: proxy.ID.String(), SessionToken: sessionToken}
+	resp := &pb.RegisterResponse{
+		Success:               true,
+		ProxyId:               proxy.ID.String(),
+		SessionToken:          sessionToken,
+		SessionTokenExpiresAt: sessionTokenExpiresAt.Unix(),
+	}
 
 	certPEM, _, err := s.caProvider.GetOrCreateTenantCA(ctx, tenantID)
 	if err != nil {
@@ -163,6 +171,34 @@ func (s *PolicyEvaluationServer) Register(ctx context.Context, req *pb.RegisterR
 
 	resp.CaCertPem = certPEM
 	return resp, nil
+}
+
+// RefreshSessionToken renews the caller's bearer session token before it
+// expires. Like every RPC except Register, this requires an already
+// -verified session identity — the token being used to authenticate this
+// very call is what gets replaced.
+func (s *PolicyEvaluationServer) RefreshSessionToken(ctx context.Context, _ *pb.RefreshSessionTokenRequest) (*pb.RefreshSessionTokenResponse, error) {
+	verified, ok := VerifiedProxyFromContext(ctx)
+	if !ok {
+		s.logger.Error("refresh-session-token: no verified proxy identity in context (session auth interceptor did not run)")
+		return &pb.RefreshSessionTokenResponse{Success: false, ErrorMessage: "authentication required"}, nil
+	}
+
+	sessionToken, expiresAt, err := s.registrar.RefreshSessionToken(ctx, verified.TenantID, verified.ProxyID)
+	if err != nil {
+		// Same rationale as Register: never return wrapped internal error
+		// detail (DB failures, etc.) to the caller.
+		s.logger.Error("refresh-session-token: refresh failed", "tenant_id", verified.TenantID, "proxy_id", verified.ProxyID, "error", err)
+		return &pb.RefreshSessionTokenResponse{Success: false, ErrorMessage: "session token refresh failed"}, nil
+	}
+
+	s.logger.Info("session token refreshed", "tenant_id", verified.TenantID, "proxy_id", verified.ProxyID)
+
+	return &pb.RefreshSessionTokenResponse{
+		Success:               true,
+		SessionToken:          sessionToken,
+		SessionTokenExpiresAt: expiresAt.Unix(),
+	}, nil
 }
 
 func (s *PolicyEvaluationServer) ReportHealth(ctx context.Context, req *pb.HealthReport) (*pb.HealthAck, error) {

@@ -126,13 +126,14 @@ type AgentController struct {
 }
 
 type AgentProxy struct {
-	ID                uuid.UUID
-	TenantID          uuid.UUID
-	AgentControllerID *uuid.UUID
-	Status            string
-	LastHealthAt      *time.Time
-	ResourceSetID     *uuid.UUID
-	RegisteredAt      *time.Time
+	ID                    uuid.UUID
+	TenantID              uuid.UUID
+	AgentControllerID     *uuid.UUID
+	Status                string
+	LastHealthAt          *time.Time
+	ResourceSetID         *uuid.UUID
+	RegisteredAt          *time.Time
+	SessionTokenExpiresAt *time.Time
 }
 
 type LogStream struct {

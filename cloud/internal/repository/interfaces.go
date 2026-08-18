@@ -151,14 +151,17 @@ type AgentProxyRepository interface {
 	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
 	ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error)
 	// SetSessionTokenHash stores the SHA-256 hash of the bearer session
-	// token issued to this proxy at registration, overwriting any
-	// previous hash (re-registering invalidates the old token).
-	SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string) error
+	// token issued to this proxy, along with its expiry, overwriting any
+	// previous hash (re-registering or refreshing invalidates the old
+	// token).
+	SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	// GetBySessionTokenHash resolves a proxy by its session token hash,
 	// with no tenant scoping — the token itself is the proof of tenant
 	// membership and is looked up globally, exactly like API token and
 	// registration token lookups elsewhere in this package. Returns nil
-	// (no error) if no proxy holds this hash.
+	// (no error) if no proxy holds this hash OR if the hash matches but
+	// the token has expired — an expired token must be indistinguishable
+	// from an unknown one to the caller.
 	GetBySessionTokenHash(ctx context.Context, tokenHash string) (*domain.AgentProxy, error)
 }
 

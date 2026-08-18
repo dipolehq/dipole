@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	PolicyEvaluationService_Evaluate_FullMethodName            = "/dipole.v1.PolicyEvaluationService/Evaluate"
 	PolicyEvaluationService_Register_FullMethodName            = "/dipole.v1.PolicyEvaluationService/Register"
+	PolicyEvaluationService_RefreshSessionToken_FullMethodName = "/dipole.v1.PolicyEvaluationService/RefreshSessionToken"
 	PolicyEvaluationService_ReportHealth_FullMethodName        = "/dipole.v1.PolicyEvaluationService/ReportHealth"
 	PolicyEvaluationService_IngestEvents_FullMethodName        = "/dipole.v1.PolicyEvaluationService/IngestEvents"
 	PolicyEvaluationService_SignLeafCertificate_FullMethodName = "/dipole.v1.PolicyEvaluationService/SignLeafCertificate"
@@ -32,6 +33,7 @@ const (
 type PolicyEvaluationServiceClient interface {
 	Evaluate(ctx context.Context, in *PolicyEvaluationRequest, opts ...grpc.CallOption) (*PolicyEvaluationResponse, error)
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	RefreshSessionToken(ctx context.Context, in *RefreshSessionTokenRequest, opts ...grpc.CallOption) (*RefreshSessionTokenResponse, error)
 	ReportHealth(ctx context.Context, in *HealthReport, opts ...grpc.CallOption) (*HealthAck, error)
 	IngestEvents(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WorkloadEventBatch, EventAck], error)
 	SignLeafCertificate(ctx context.Context, in *SignLeafRequest, opts ...grpc.CallOption) (*SignLeafResponse, error)
@@ -59,6 +61,16 @@ func (c *policyEvaluationServiceClient) Register(ctx context.Context, in *Regist
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RegisterResponse)
 	err := c.cc.Invoke(ctx, PolicyEvaluationService_Register_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *policyEvaluationServiceClient) RefreshSessionToken(ctx context.Context, in *RefreshSessionTokenRequest, opts ...grpc.CallOption) (*RefreshSessionTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshSessionTokenResponse)
+	err := c.cc.Invoke(ctx, PolicyEvaluationService_RefreshSessionToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +116,7 @@ func (c *policyEvaluationServiceClient) SignLeafCertificate(ctx context.Context,
 type PolicyEvaluationServiceServer interface {
 	Evaluate(context.Context, *PolicyEvaluationRequest) (*PolicyEvaluationResponse, error)
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	RefreshSessionToken(context.Context, *RefreshSessionTokenRequest) (*RefreshSessionTokenResponse, error)
 	ReportHealth(context.Context, *HealthReport) (*HealthAck, error)
 	IngestEvents(grpc.ClientStreamingServer[WorkloadEventBatch, EventAck]) error
 	SignLeafCertificate(context.Context, *SignLeafRequest) (*SignLeafResponse, error)
@@ -122,6 +135,9 @@ func (UnimplementedPolicyEvaluationServiceServer) Evaluate(context.Context, *Pol
 }
 func (UnimplementedPolicyEvaluationServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedPolicyEvaluationServiceServer) RefreshSessionToken(context.Context, *RefreshSessionTokenRequest) (*RefreshSessionTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RefreshSessionToken not implemented")
 }
 func (UnimplementedPolicyEvaluationServiceServer) ReportHealth(context.Context, *HealthReport) (*HealthAck, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReportHealth not implemented")
@@ -190,6 +206,24 @@ func _PolicyEvaluationService_Register_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PolicyEvaluationService_RefreshSessionToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshSessionTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PolicyEvaluationServiceServer).RefreshSessionToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PolicyEvaluationService_RefreshSessionToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PolicyEvaluationServiceServer).RefreshSessionToken(ctx, req.(*RefreshSessionTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _PolicyEvaluationService_ReportHealth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthReport)
 	if err := dec(in); err != nil {
@@ -247,6 +281,10 @@ var PolicyEvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _PolicyEvaluationService_Register_Handler,
+		},
+		{
+			MethodName: "RefreshSessionToken",
+			Handler:    _PolicyEvaluationService_RefreshSessionToken_Handler,
 		},
 		{
 			MethodName: "ReportHealth",

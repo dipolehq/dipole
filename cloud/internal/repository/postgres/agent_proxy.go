@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -94,10 +95,10 @@ func (r *AgentProxyRepo) UpdateHealth(ctx context.Context, tenantID uuid.UUID, p
 	return nil
 }
 
-func (r *AgentProxyRepo) SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string) error {
+func (r *AgentProxyRepo) SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string, expiresAt time.Time) error {
 	tag, err := r.pool.Exec(ctx,
-		`UPDATE agent_proxies SET session_token_hash = $3 WHERE tenant_id = $1 AND id = $2`,
-		tenantID, proxyID, tokenHash)
+		`UPDATE agent_proxies SET session_token_hash = $3, session_token_expires_at = $4 WHERE tenant_id = $1 AND id = $2`,
+		tenantID, proxyID, tokenHash, expiresAt)
 	if err != nil {
 		return fmt.Errorf("set agent proxy session token hash: %w", err)
 	}
@@ -110,9 +111,9 @@ func (r *AgentProxyRepo) SetSessionTokenHash(ctx context.Context, tenantID uuid.
 func (r *AgentProxyRepo) GetBySessionTokenHash(ctx context.Context, tokenHash string) (*domain.AgentProxy, error) {
 	proxy := &domain.AgentProxy{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at
-		 FROM agent_proxies WHERE session_token_hash = $1`, tokenHash).
-		Scan(&proxy.ID, &proxy.TenantID, &proxy.AgentControllerID, &proxy.Status, &proxy.LastHealthAt, &proxy.ResourceSetID, &proxy.RegisteredAt)
+		`SELECT id, tenant_id, agent_controller_id, status, last_health_at, resource_set_id, registered_at, session_token_expires_at
+		 FROM agent_proxies WHERE session_token_hash = $1 AND session_token_expires_at > now()`, tokenHash).
+		Scan(&proxy.ID, &proxy.TenantID, &proxy.AgentControllerID, &proxy.Status, &proxy.LastHealthAt, &proxy.ResourceSetID, &proxy.RegisteredAt, &proxy.SessionTokenExpiresAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}

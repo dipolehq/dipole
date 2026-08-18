@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,13 +20,19 @@ import (
 )
 
 type mockRegistrar struct {
-	proxy        *domain.AgentProxy
-	sessionToken string
-	err          error
+	proxy                 *domain.AgentProxy
+	sessionToken          string
+	sessionTokenExpiresAt time.Time
+	err                   error
+	refreshErr            error
 }
 
-func (m *mockRegistrar) RegisterProxy(_ context.Context, _ uuid.UUID, _ string) (*domain.AgentProxy, string, error) {
-	return m.proxy, m.sessionToken, m.err
+func (m *mockRegistrar) RegisterProxy(_ context.Context, _ uuid.UUID, _ string) (*domain.AgentProxy, string, time.Time, error) {
+	return m.proxy, m.sessionToken, m.sessionTokenExpiresAt, m.err
+}
+
+func (m *mockRegistrar) RefreshSessionToken(_ context.Context, _, _ uuid.UUID) (string, time.Time, error) {
+	return m.sessionToken, m.sessionTokenExpiresAt, m.refreshErr
 }
 
 type mockCAProvider struct {
@@ -83,10 +90,12 @@ func TestRegister_RegistrationErrorMessageIsReturnedVerbatim(t *testing.T) {
 func TestRegister_HappyPath_ReturnsSessionTokenAndCACert(t *testing.T) {
 	proxyID := uuid.New()
 	tenantID := uuid.New()
+	expiresAt := time.Now().Add(1 * time.Hour)
 	server := &PolicyEvaluationServer{
 		registrar: &mockRegistrar{
-			proxy:        &domain.AgentProxy{ID: proxyID, TenantID: tenantID},
-			sessionToken: "raw-session-token",
+			proxy:                 &domain.AgentProxy{ID: proxyID, TenantID: tenantID},
+			sessionToken:          "raw-session-token",
+			sessionTokenExpiresAt: expiresAt,
 		},
 		caProvider: &mockCAProvider{certPEM: "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"},
 		logger:     newTestLogger(),
@@ -104,6 +113,9 @@ func TestRegister_HappyPath_ReturnsSessionTokenAndCACert(t *testing.T) {
 	}
 	if resp.SessionToken != "raw-session-token" {
 		t.Errorf("SessionToken = %q, want %q", resp.SessionToken, "raw-session-token")
+	}
+	if resp.SessionTokenExpiresAt != expiresAt.Unix() {
+		t.Errorf("SessionTokenExpiresAt = %d, want %d", resp.SessionTokenExpiresAt, expiresAt.Unix())
 	}
 	if resp.ProxyId != proxyID.String() {
 		t.Errorf("ProxyId = %q, want %q", resp.ProxyId, proxyID.String())

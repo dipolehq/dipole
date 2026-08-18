@@ -45,12 +45,17 @@ type CloudClient struct {
 	resourceSetID string
 	logger        *slog.Logger
 	connected     atomic.Bool
-	// sessionToken is the bearer token issued by Register and required by
-	// every other RPC on this connection (see sessionAuthUnaryInterceptor).
-	// Stored in an atomic.Value since Register runs once at startup but
-	// ReportHealth/Evaluate/SignLeaf may be read concurrently from other
-	// goroutines afterward.
+	// sessionToken is the bearer token issued by Register (and later
+	// renewed by RefreshSessionToken) and required by every other RPC on
+	// this connection (see sessionAuthUnaryInterceptor). Stored in an
+	// atomic.Value since it's written once at startup and again on every
+	// refresh, but ReportHealth/Evaluate/SignLeaf may read it concurrently
+	// from other goroutines at any time.
 	sessionToken atomic.Value
+	// sessionTokenExpiresAt is when the current sessionToken stops being
+	// accepted by Cloud. The refresh loop (see registration.go) uses this
+	// to decide when to proactively renew.
+	sessionTokenExpiresAt atomic.Value
 }
 
 func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInsecure bool, logger *slog.Logger) (*CloudClient, error) {
@@ -70,6 +75,7 @@ func NewCloudClient(endpoint string, tenantID string, trustPath string, grpcInse
 		logger:   logger,
 	}
 	c.sessionToken.Store("")
+	c.sessionTokenExpiresAt.Store(time.Time{})
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
@@ -273,10 +279,51 @@ func (c *CloudClient) Register(ctx context.Context, token, version string) (*Reg
 
 	c.proxyID = resp.ProxyId
 	c.sessionToken.Store(resp.SessionToken)
+	c.sessionTokenExpiresAt.Store(time.Unix(resp.SessionTokenExpiresAt, 0))
 	return &RegisterResult{
 		ProxyID:   resp.ProxyId,
 		CACertPEM: resp.CaCertPem,
 	}, nil
+}
+
+// RefreshSessionToken renews the current session token before it expires,
+// authenticated via the (still valid) token being replaced — the same
+// mechanism used for every other RPC on this connection. On success the
+// new token and expiry replace the stored ones atomically; every
+// concurrent caller of attachSessionToken picks up the new value on its
+// next call, with no gap where no token is set.
+func (c *CloudClient) RefreshSessionToken(ctx context.Context) (time.Time, error) {
+	resp, err := c.client.RefreshSessionToken(ctx, &pb.RefreshSessionTokenRequest{})
+	if err != nil {
+		st, _ := status.FromError(err)
+		if st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded {
+			c.connected.Store(false)
+			metrics.GRPCConnectionStatus.Set(0)
+		}
+		return time.Time{}, fmt.Errorf("refresh session token rpc: %w", err)
+	}
+
+	c.connected.Store(true)
+	metrics.GRPCConnectionStatus.Set(1)
+
+	if !resp.Success {
+		return time.Time{}, fmt.Errorf("session token refresh denied: %s", resp.ErrorMessage)
+	}
+	if resp.SessionToken == "" {
+		return time.Time{}, fmt.Errorf("refresh succeeded but cloud did not issue a new session token")
+	}
+
+	expiresAt := time.Unix(resp.SessionTokenExpiresAt, 0)
+	c.sessionToken.Store(resp.SessionToken)
+	c.sessionTokenExpiresAt.Store(expiresAt)
+	return expiresAt, nil
+}
+
+// SessionTokenExpiresAt returns when the current session token expires.
+// Zero if no token has been issued yet.
+func (c *CloudClient) SessionTokenExpiresAt() time.Time {
+	t, _ := c.sessionTokenExpiresAt.Load().(time.Time)
+	return t
 }
 
 func (c *CloudClient) ReportHealth(ctx context.Context, activeConns int32) error {

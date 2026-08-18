@@ -23,6 +23,13 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
+// sessionTokenLifetime is how long an Agent Proxy's bearer session token
+// remains valid before it must be renewed via RefreshSessionToken. Kept
+// short so a leaked/stale token has a bounded blast radius, matching the
+// lifetime already used for registration and proxy tokens elsewhere in
+// this file.
+const sessionTokenLifetime = 1 * time.Hour
+
 type RegistrationService struct {
 	controllerRepo repository.AgentControllerRepository
 	proxyRepo      repository.AgentProxyRepository
@@ -138,28 +145,30 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 // token (not the one-time registration token) is what authenticates every
 // subsequent gRPC call the proxy makes — see grpc.SessionAuthInterceptor.
 // Only its SHA-256 hash is stored; the raw token is returned exactly once
-// and never persisted or logged in full.
-func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, error) {
+// and never persisted or logged in full. The token expires after
+// sessionTokenLifetime — the proxy must call RefreshSessionToken to renew
+// it before then.
+func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, time.Time, error) {
 	if registrationToken == "" {
-		return nil, "", domain.NewRegistrationError("empty registration token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("empty registration token")
 	}
 
 	parts := strings.SplitN(registrationToken, ":", 3)
 	if len(parts) != 3 {
-		return nil, "", domain.NewRegistrationError("invalid registration token format")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid registration token format")
 	}
 
 	tokenTenantID, err := uuid.Parse(parts[0])
 	if err != nil {
-		return nil, "", domain.NewRegistrationError("invalid tenant_id in token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid tenant_id in token")
 	}
 	if tokenTenantID != tenantID {
-		return nil, "", domain.NewRegistrationError("token tenant mismatch")
+		return nil, "", time.Time{}, domain.NewRegistrationError("token tenant mismatch")
 	}
 
 	controllerID, err := uuid.Parse(parts[1])
 	if err != nil {
-		return nil, "", domain.NewRegistrationError("invalid controller_id in token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid controller_id in token")
 	}
 
 	// Verify token is valid, not consumed, not expired — and consume it atomically
@@ -168,19 +177,19 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 
 	consumed, err := s.tokenRepo.Consume(ctx, tenantID, tokenHash)
 	if err != nil || consumed == nil {
-		return nil, "", domain.NewRegistrationError("invalid or already consumed registration token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid or already consumed registration token")
 	}
 
 	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return nil, "", fmt.Errorf("lookup controller: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("lookup controller: %w", err)
 	}
 	if controller == nil {
-		return nil, "", domain.NewRegistrationError("controller not found")
+		return nil, "", time.Time{}, domain.NewRegistrationError("controller not found")
 	}
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return nil, "", domain.NewRegistrationError("controller not in valid state for proxy registration")
+		return nil, "", time.Time{}, domain.NewRegistrationError("controller not in valid state for proxy registration")
 	}
 
 	now := time.Now()
@@ -193,19 +202,43 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 	}
 
 	if err := s.proxyRepo.Create(ctx, tenantID, proxy); err != nil {
-		return nil, "", fmt.Errorf("persist proxy: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("persist proxy: %w", err)
 	}
 
+	sessionToken, expiresAt, err := s.issueSessionToken(ctx, tenantID, proxy.ID)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+
+	return proxy, sessionToken, expiresAt, nil
+}
+
+// RefreshSessionToken issues a new bearer session token for an already
+// -registered proxy, replacing its current one. Unlike RegisterProxy, no
+// registration token is involved — the caller's identity is already
+// established (by the session-auth interceptor, from the token being
+// refreshed) before this is ever called; this method only re-issues a
+// fresh credential for that same identity.
+func (s *RegistrationService) RefreshSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
+	return s.issueSessionToken(ctx, tenantID, proxyID)
+}
+
+// issueSessionToken generates a new random session token, stores only its
+// SHA-256 hash (plus expiry), and returns the raw token exactly once. The
+// caller is responsible for having already established that tenantID/
+// proxyID identifies a real, authorized proxy — this function performs no
+// authorization checks of its own.
+func (s *RegistrationService) issueSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
 	sessionToken, err := generateSessionToken()
 	if err != nil {
-		return nil, "", fmt.Errorf("generate session token: %w", err)
+		return "", time.Time{}, fmt.Errorf("generate session token: %w", err)
 	}
 	sessionTokenHash := hashSessionToken(sessionToken)
-	if err := s.proxyRepo.SetSessionTokenHash(ctx, tenantID, proxy.ID, sessionTokenHash); err != nil {
-		return nil, "", fmt.Errorf("store session token: %w", err)
+	expiresAt := time.Now().Add(sessionTokenLifetime)
+	if err := s.proxyRepo.SetSessionTokenHash(ctx, tenantID, proxyID, sessionTokenHash, expiresAt); err != nil {
+		return "", time.Time{}, fmt.Errorf("store session token: %w", err)
 	}
-
-	return proxy, sessionToken, nil
+	return sessionToken, expiresAt, nil
 }
 
 func generateSessionToken() (string, error) {

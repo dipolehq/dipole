@@ -146,3 +146,49 @@ func TestCloudClient_AttachSessionToken_ReflectsMostRecentlyStoredToken(t *testi
 		t.Errorf("authorization metadata = %v, want [\"Bearer second-token\"] (most recent token)", values)
 	}
 }
+
+func TestCloudClient_SessionTokenExpiresAt_ZeroBeforeAnyTokenIssued(t *testing.T) {
+	c := &CloudClient{}
+
+	if got := c.SessionTokenExpiresAt(); !got.IsZero() {
+		t.Errorf("expected zero time before any token is issued, got %v", got)
+	}
+}
+
+func TestCloudClient_SessionTokenExpiresAt_ReflectsStoredValue(t *testing.T) {
+	c := &CloudClient{}
+	want := time.Now().Add(1 * time.Hour)
+	c.sessionTokenExpiresAt.Store(want)
+
+	if got := c.SessionTokenExpiresAt(); !got.Equal(want) {
+		t.Errorf("SessionTokenExpiresAt() = %v, want %v", got, want)
+	}
+}
+
+func TestNextRefreshDelay_HalfOfRemainingLifetime(t *testing.T) {
+	expiresAt := time.Now().Add(1 * time.Hour)
+
+	delay := nextRefreshDelay(expiresAt)
+
+	// Allow a small tolerance for time elapsed between computing expiresAt
+	// and calling nextRefreshDelay.
+	want := 30 * time.Minute
+	tolerance := 1 * time.Second
+	if delay < want-tolerance || delay > want+tolerance {
+		t.Errorf("nextRefreshDelay(1h from now) = %v, want ~%v", delay, want)
+	}
+}
+
+func TestNextRefreshDelay_AlreadyExpired_ReturnsZero(t *testing.T) {
+	expiresAt := time.Now().Add(-1 * time.Minute)
+
+	if delay := nextRefreshDelay(expiresAt); delay != 0 {
+		t.Errorf("nextRefreshDelay(already expired) = %v, want 0", delay)
+	}
+}
+
+func TestNextRefreshDelay_ZeroTime_ReturnsZero(t *testing.T) {
+	if delay := nextRefreshDelay(time.Time{}); delay != 0 {
+		t.Errorf("nextRefreshDelay(zero time) = %v, want 0", delay)
+	}
+}
