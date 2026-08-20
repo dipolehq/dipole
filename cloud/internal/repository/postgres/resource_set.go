@@ -15,7 +15,14 @@ type ResourceSetRepo struct {
 }
 
 func (r *ResourceSetRepo) Create(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error {
-	rs.ID = uuid.New()
+	// Respect a caller-supplied ID (signup.go creates the tenant's Default
+	// resource set with the well-known scope.DefaultResourceSetID so it
+	// matches every resource-scoped table's column default) and only
+	// generate one when the caller hasn't set one — the same pattern used
+	// by every other repository's Create (e.g. TrustProviderRepo.Create).
+	if rs.ID == uuid.Nil {
+		rs.ID = uuid.New()
+	}
 	rs.TenantID = tenantID
 
 	_, err := r.pool.Exec(ctx,

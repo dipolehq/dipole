@@ -108,6 +108,10 @@ func (r *Repositories) SetLogStreamEncryptionKey(key []byte) {
 	r.LogStreams.encKey = key
 }
 
+func (r *Repositories) SetTrustProviderEncryptionKey(key []byte) {
+	r.TrustProviders.encKey = key
+}
+
 func (r *Repositories) Close() {
 	if p, ok := r.pool.(*pgxpool.Pool); ok {
 		p.Close()

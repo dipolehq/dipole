@@ -6,11 +6,13 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
@@ -24,11 +26,12 @@ import (
 // — so the subdomain is looked up per call from the tenant that's creating the
 // provider, not captured once at startup.
 type TrustProviderService struct {
-	repo    repository.TrustProviderRepository
-	tenants repository.TenantRepository
-	region  string
-	hosts   *platform.Hosts
-	limiter *service.PlanLimiter
+	repo          repository.TrustProviderRepository
+	tenants       repository.TenantRepository
+	region        string
+	hosts         *platform.Hosts
+	encryptionKey []byte
+	limiter       *service.PlanLimiter
 }
 
 func NewTrustProviderService(
@@ -36,8 +39,9 @@ func NewTrustProviderService(
 	tenants repository.TenantRepository,
 	region string,
 	hosts *platform.Hosts,
+	encryptionKey []byte,
 ) *TrustProviderService {
-	return &TrustProviderService{repo: repo, tenants: tenants, region: region, hosts: hosts}
+	return &TrustProviderService{repo: repo, tenants: tenants, region: region, hosts: hosts, encryptionKey: encryptionKey}
 }
 
 func (s *TrustProviderService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
@@ -88,6 +92,10 @@ func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, t
 	tp.ID = uuid.New()
 	tp.EdgeSDKClientID = trust.GenerateEdgeSDKClientID(s.region, tenant.Subdomain, tp.Type, tp.ID)
 	tp.EdgeSDKAudience = audience
+
+	if err := s.extractAndEncryptSymmetricKey(tp); err != nil {
+		return err
+	}
 	return s.repo.Create(ctx, tenantID, tp)
 }
 
@@ -105,7 +113,69 @@ func (s *TrustProviderService) Update(ctx context.Context, tenantID uuid.UUID, t
 	}
 	tp.EdgeSDKClientID = existing.EdgeSDKClientID
 	tp.EdgeSDKAudience = existing.EdgeSDKAudience
+
+	if err := s.extractAndEncryptSymmetricKey(tp); err != nil {
+		return err
+	}
+	// The symmetric key is never returned to API clients (see
+	// extractAndEncryptSymmetricKey), so an update request that doesn't
+	// include a new one is not "the customer wants to clear it" — it's
+	// "the client never had it to resend." Preserve the previously
+	// stored encrypted value unless this request actually supplied a new
+	// plaintext key.
+	if tp.SymmetricKeyEncrypted == nil {
+		tp.SymmetricKeyEncrypted = existing.SymmetricKeyEncrypted
+	}
 	return s.repo.Update(ctx, tenantID, tp)
+}
+
+// extractAndEncryptSymmetricKey removes the "symmetricKey" field from a
+// symmetric_key-attestation OIDC trust provider's Config (a real HMAC
+// shared secret, historically stored there in plaintext) and encrypts it
+// into SymmetricKeyEncrypted instead. Config keeps every other field
+// (attestationMethod, oidcEndpoint, jwks, publicKey) exactly as supplied —
+// none of those are secret. If Config has no "symmetricKey" key at all
+// (any other attestation method, or an update that intentionally omits
+// it), this is a no-op: tp.SymmetricKeyEncrypted stays nil, and the caller
+// decides what nil means for that operation (Create: no secret; Update:
+// caller re-applies the previously stored value).
+func (s *TrustProviderService) extractAndEncryptSymmetricKey(tp *domain.TrustProvider) error {
+	if len(tp.Config) == 0 {
+		return nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(tp.Config, &raw); err != nil {
+		return domain.NewValidationError("config", "config must be a JSON object")
+	}
+
+	rawKey, ok := raw["symmetricKey"]
+	if !ok {
+		return nil
+	}
+
+	var symmetricKey string
+	if err := json.Unmarshal(rawKey, &symmetricKey); err != nil {
+		return domain.NewValidationError("config.symmetricKey", "symmetricKey must be a string")
+	}
+
+	delete(raw, "symmetricKey")
+	strippedConfig, err := json.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("re-marshal trust provider config after stripping symmetricKey: %w", err)
+	}
+	tp.Config = strippedConfig
+
+	if symmetricKey == "" {
+		return nil
+	}
+
+	encrypted, err := crypto.Encrypt([]byte(symmetricKey), s.encryptionKey)
+	if err != nil {
+		return domain.NewValidationError("config.symmetricKey", "failed to encrypt symmetric key")
+	}
+	tp.SymmetricKeyEncrypted = encrypted
+	return nil
 }
 
 func (s *TrustProviderService) Delete(ctx context.Context, tenantID, id uuid.UUID) error {

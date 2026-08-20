@@ -7,6 +7,7 @@ package resources
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -46,10 +47,9 @@ func (s *CredentialProviderService) Get(ctx context.Context, tenantID, id uuid.U
 	if len(cp.ConfigEncrypted) > 0 {
 		decrypted, err := crypto.Decrypt(cp.ConfigEncrypted, s.encryptionKey)
 		if err != nil {
-			config = json.RawMessage("{}")
-		} else {
-			config = json.RawMessage(decrypted)
+			return nil, nil, fmt.Errorf("decrypt credential provider config: %w", err)
 		}
+		config = json.RawMessage(decrypted)
 	} else {
 		config = json.RawMessage("{}")
 	}

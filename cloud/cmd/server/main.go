@@ -102,11 +102,18 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
 	repos.SetLogStreamEncryptionKey(encKey)
+	repos.SetTrustProviderEncryptionKey(encKey)
 
 	if n, err := repos.LogStreams.BackfillConfigEncryption(ctx); err != nil {
 		return fmt.Errorf("backfill log stream config encryption: %w", err)
 	} else if n > 0 {
 		logger.Info("backfilled log stream config encryption", "count", n)
+	}
+
+	if n, err := repos.TrustProviders.BackfillSymmetricKeyEncryption(ctx); err != nil {
+		return fmt.Errorf("backfill trust provider symmetric key encryption: %w", err)
+	} else if n > 0 {
+		logger.Info("backfilled trust provider symmetric key encryption", "count", n)
 	}
 
 	if err := devBootstrap(ctx, repos, cfg, logger); err != nil {
@@ -129,7 +136,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	clientWorkloadSvc := resources.NewClientWorkloadService(repos.ClientWorkloads)
 	serverWorkloadSvc := resources.NewServerWorkloadService(repos.ServerWorkloads)
-	trustProviderSvc := resources.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts)
+	trustProviderSvc := resources.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts, encKey)
 	accessConditionSvc := resources.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := resources.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies)

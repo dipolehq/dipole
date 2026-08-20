@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
@@ -43,7 +44,7 @@ func TestOIDCValidator_Discovery_Attested(t *testing.T) {
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
 	}
 
-	v := &OIDCValidator{}
+	v := NewOIDCValidator(nil)
 	result, err := v.Validate(context.Background(), provider, evidence, cache)
 
 	if err != nil {
@@ -82,7 +83,7 @@ func TestOIDCValidator_UploadJWKS_Attested(t *testing.T) {
 	}
 
 	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
-	v := &OIDCValidator{}
+	v := NewOIDCValidator(nil)
 	result, err := v.Validate(context.Background(), provider, evidence, cache)
 
 	if err != nil {
@@ -91,6 +92,20 @@ func TestOIDCValidator_UploadJWKS_Attested(t *testing.T) {
 	if !result.Attested {
 		t.Errorf("expected attested=true, got reason=%s", result.Reason)
 	}
+}
+
+// encryptSymmetricKeyForTest encrypts a base64-encoded HMAC secret exactly
+// as TrustProviderService does, so these tests exercise the real
+// symmetric_key attestation path (TrustProvider.SymmetricKeyEncrypted must
+// be a real ciphertext, not a plaintext value embedded in Config).
+// testEncryptionKey is shared package-wide (kerberos_validator_test.go).
+func encryptSymmetricKeyForTest(t *testing.T, secretB64 string) []byte {
+	t.Helper()
+	encrypted, err := crypto.Encrypt([]byte(secretB64), testEncryptionKey)
+	if err != nil {
+		t.Fatalf("encrypt test symmetric key: %v", err)
+	}
+	return encrypted
 }
 
 func TestOIDCValidator_SymmetricKey_Attested(t *testing.T) {
@@ -114,16 +129,17 @@ func TestOIDCValidator_SymmetricKey_Attested(t *testing.T) {
 	token := signingInput + "." + sig
 
 	provider := &domain.TrustProvider{
-		Type:       "oidc_id_token",
-		Config:     json.RawMessage(`{"attestationMethod":"symmetric_key","symmetricKey":"` + secretB64 + `"}`),
-		MatchRules: []domain.MatchRule{{Attribute: "sub", Value: "test-workload"}},
+		Type:                  "oidc_id_token",
+		Config:                json.RawMessage(`{"attestationMethod":"symmetric_key"}`),
+		SymmetricKeyEncrypted: encryptSymmetricKeyForTest(t, secretB64),
+		MatchRules:            []domain.MatchRule{{Attribute: "sub", Value: "test-workload"}},
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
 	}
 
 	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
-	v := &OIDCValidator{}
+	v := NewOIDCValidator(testEncryptionKey)
 	result, err := v.Validate(context.Background(), provider, evidence, cache)
 
 	if err != nil {
@@ -150,19 +166,44 @@ func TestOIDCValidator_SymmetricKey_WrongSecret(t *testing.T) {
 	token := signingInput + "." + sig
 
 	provider := &domain.TrustProvider{
-		Type:   "oidc_id_token",
-		Config: json.RawMessage(`{"attestationMethod":"symmetric_key","symmetricKey":"` + wrongB64 + `"}`),
+		Type:                  "oidc_id_token",
+		Config:                json.RawMessage(`{"attestationMethod":"symmetric_key"}`),
+		SymmetricKeyEncrypted: encryptSymmetricKeyForTest(t, wrongB64),
 	}
 	evidence := &domain.ClientEvidence{
 		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
 	}
 
 	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
-	v := &OIDCValidator{}
+	v := NewOIDCValidator(testEncryptionKey)
 	result, _ := v.Validate(context.Background(), provider, evidence, cache)
 
 	if result.Attested {
 		t.Error("expected attested=false for wrong symmetric key")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}
+
+func TestOIDCValidator_SymmetricKey_NoEncryptedKeyConfigured(t *testing.T) {
+	provider := &domain.TrustProvider{
+		Type:   "oidc_id_token",
+		Config: json.RawMessage(`{"attestationMethod":"symmetric_key"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		GitLab: &domain.IdentityTokenEvidence{IdentityToken: "a.b.c"},
+	}
+
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
+	v := NewOIDCValidator(testEncryptionKey)
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Attested {
+		t.Error("expected attested=false when no symmetric key is configured")
 	}
 	if result.Reason != "InvalidSignature" {
 		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
@@ -174,7 +215,7 @@ func TestOIDCValidator_NoToken_NoDataFound(t *testing.T) {
 	evidence := &domain.ClientEvidence{}
 
 	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
-	v := &OIDCValidator{}
+	v := NewOIDCValidator(nil)
 	result, _ := v.Validate(context.Background(), provider, evidence, cache)
 
 	if result.Reason != "NoDataFound" {

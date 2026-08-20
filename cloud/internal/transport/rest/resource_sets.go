@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -134,6 +135,15 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
 		return
 	}
+	// The Default Resource Set is where every resource without an explicit
+	// assignment lives (enforced at the database column-default level, not
+	// just convention) — deleting it would orphan any such resource, so it
+	// can never be deleted, mirroring the equivalent guard other resources
+	// with a protected default already have in this codebase.
+	if existing.ID == scope.DefaultResourceSetID {
+		respondError(w, http.StatusBadRequest, "cannot_delete_default", "the Default Resource Set cannot be deleted")
+		return
+	}
 	if err := h.resourceSets.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
@@ -160,6 +170,7 @@ type resourceSetResponse struct {
 	ID                  uuid.UUID `json:"id"`
 	Name                string    `json:"name"`
 	Description         string    `json:"description"`
+	IsDefault           bool      `json:"isDefault"`
 	AccessPolicies      int       `json:"accessPolicies"`
 	ClientWorkloads     int       `json:"clientWorkloads"`
 	TrustProviders      int       `json:"trustProviders"`
@@ -175,6 +186,7 @@ func toResourceSetResponse(rs *domain.ResourceSet) resourceSetResponse {
 		ID:          rs.ID,
 		Name:        rs.Name,
 		Description: rs.Description,
+		IsDefault:   rs.ID == scope.DefaultResourceSetID,
 		CreatedAt:   rs.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   rs.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

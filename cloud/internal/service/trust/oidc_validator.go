@@ -20,16 +20,27 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-type OIDCValidator struct{}
+// OIDCValidator needs the tenant encryption key because the symmetric_key
+// attestation method's HMAC shared secret is stored encrypted
+// (TrustProvider.SymmetricKeyEncrypted), not in the plaintext Config blob
+// — the same reason KerberosValidator holds an encryption key for its
+// AgentController shared secret.
+type OIDCValidator struct {
+	encryptionKey []byte
+}
+
+func NewOIDCValidator(encryptionKey []byte) *OIDCValidator {
+	return &OIDCValidator{encryptionKey: encryptionKey}
+}
 
 type oidcConfig struct {
 	AttestationMethod string `json:"attestationMethod"`
 	OIDCEndpoint      string `json:"oidcEndpoint"`
 	JWKS              string `json:"jwks"`
-	SymmetricKey      string `json:"symmetricKey"`
 	PublicKey         string `json:"publicKey"`
 }
 
@@ -53,7 +64,11 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 	case "upload_jwks":
 		claims, err = v.verifyWithUploadedJWKS(token, cfg.JWKS)
 	case "symmetric_key":
-		claims, err = v.verifyWithSymmetricKey(token, cfg.SymmetricKey)
+		var symmetricKey string
+		symmetricKey, err = v.decryptSymmetricKey(provider)
+		if err == nil {
+			claims, err = v.verifyWithSymmetricKey(token, symmetricKey)
+		}
 	default:
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
@@ -148,6 +163,23 @@ func (v *OIDCValidator) verifyWithUploadedJWKS(token, jwksJSON string) (map[stri
 		return nil, err
 	}
 	return claims, nil
+}
+
+// decryptSymmetricKey returns the base64-encoded HMAC shared secret for a
+// symmetric_key-attestation trust provider, decrypting it from
+// SymmetricKeyEncrypted. There is no legacy plaintext fallback: by the
+// time a Trust Provider using this attestation method reaches Validate,
+// the resources.TrustProviderService/repository backfill has already
+// moved its secret out of Config and into this encrypted field.
+func (v *OIDCValidator) decryptSymmetricKey(provider *domain.TrustProvider) (string, error) {
+	if len(provider.SymmetricKeyEncrypted) == 0 {
+		return "", fmt.Errorf("trust provider has no symmetric key configured")
+	}
+	plaintext, err := crypto.Decrypt(provider.SymmetricKeyEncrypted, v.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("decrypt symmetric key: %w", err)
+	}
+	return string(plaintext), nil
 }
 
 func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[string]interface{}, error) {
