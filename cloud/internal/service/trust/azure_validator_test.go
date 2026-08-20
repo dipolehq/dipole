@@ -22,9 +22,20 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
+// freshAzureTimeStamp returns a `timeStamp` JSON fragment (Azure's
+// "1/2/06 15:04:05 -0700"-style format) whose createdOn/expiresOn window
+// covers the current moment, for use in test payloads that must pass the
+// freshness check.
+func freshAzureTimeStamp() string {
+	now := time.Now().UTC()
+	created := now.Add(-10 * time.Second).Format(azureTimestampLayout)
+	expires := now.Add(1 * time.Minute).Format(azureTimestampLayout)
+	return `"timeStamp":{"createdOn":"` + created + `","expiresOn":"` + expires + `"}`
+}
+
 func TestAzureValidator_ValidPKCS7_Attested(t *testing.T) {
 	caKey, caCert, caPEM := generateTestCA(t)
-	payload := `{"subscriptionId":"sub-123","vmId":"vm-456","sku":"Standard_D2s_v3"}`
+	payload := `{"subscriptionId":"sub-123","vmId":"vm-456","sku":"Standard_D2s_v3",` + freshAzureTimeStamp() + `}`
 	sig := signPKCS7(t, []byte(payload), caKey, caCert)
 	sigBase64 := base64.StdEncoding.EncodeToString(sig)
 
@@ -96,7 +107,7 @@ func TestAzureValidator_TamperedPayload_NotAttested(t *testing.T) {
 
 func TestAzureValidator_MatchRuleFails_NotAttested(t *testing.T) {
 	caKey, caCert, caPEM := generateTestCA(t)
-	payload := `{"subscriptionId":"sub-999","vmId":"vm-456"}`
+	payload := `{"subscriptionId":"sub-999","vmId":"vm-456",` + freshAzureTimeStamp() + `}`
 	sig := signPKCS7(t, []byte(payload), caKey, caCert)
 	sigBase64 := base64.StdEncoding.EncodeToString(sig)
 
@@ -204,4 +215,126 @@ func escapePEM(pemStr string) string {
 		}
 	}
 	return result
+}
+
+func TestAzureValidator_ExpiredAttestation_NotAttested(t *testing.T) {
+	caKey, caCert, caPEM := generateTestCA(t)
+	now := time.Now().UTC()
+	// A document whose validity window closed 10 minutes ago — simulates
+	// a captured/replayed attestation being presented well after Azure's
+	// short signing window expired.
+	created := now.Add(-15 * time.Minute).Format(azureTimestampLayout)
+	expires := now.Add(-10 * time.Minute).Format(azureTimestampLayout)
+	payload := `{"subscriptionId":"sub-123","vmId":"vm-456","timeStamp":{"createdOn":"` + created + `","expiresOn":"` + expires + `"}}`
+	sig := signPKCS7(t, []byte(payload), caKey, caCert)
+	sigBase64 := base64.StdEncoding.EncodeToString(sig)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		Azure: &domain.AzureEvidence{Signature: sigBase64},
+	}
+
+	v := &AzureValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Attested {
+		t.Error("expected attested=false for expired attestation window")
+	}
+	if result.Reason != "AttestationExpired" {
+		t.Errorf("expected reason 'AttestationExpired', got '%s'", result.Reason)
+	}
+}
+
+func TestAzureValidator_NotYetValidAttestation_NotAttested(t *testing.T) {
+	caKey, caCert, caPEM := generateTestCA(t)
+	now := time.Now().UTC()
+	// A document whose validity window doesn't start for another 10
+	// minutes — clock-skewed or forged createdOn far in the future.
+	created := now.Add(10 * time.Minute).Format(azureTimestampLayout)
+	expires := now.Add(15 * time.Minute).Format(azureTimestampLayout)
+	payload := `{"subscriptionId":"sub-123","vmId":"vm-456","timeStamp":{"createdOn":"` + created + `","expiresOn":"` + expires + `"}}`
+	sig := signPKCS7(t, []byte(payload), caKey, caCert)
+	sigBase64 := base64.StdEncoding.EncodeToString(sig)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		Azure: &domain.AzureEvidence{Signature: sigBase64},
+	}
+
+	v := &AzureValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Attested {
+		t.Error("expected attested=false for not-yet-valid attestation window")
+	}
+	if result.Reason != "AttestationNotYetValid" {
+		t.Errorf("expected reason 'AttestationNotYetValid', got '%s'", result.Reason)
+	}
+}
+
+func TestAzureValidator_MissingTimestamp_NotAttested(t *testing.T) {
+	// A validly signed document that omits the timeStamp block entirely
+	// (e.g. a classic/non-ARM deployment, or an unexpected payload
+	// shape) must not attest — there's no basis to judge freshness.
+	caKey, caCert, caPEM := generateTestCA(t)
+	payload := `{"subscriptionId":"sub-123","vmId":"vm-456"}`
+	sig := signPKCS7(t, []byte(payload), caKey, caCert)
+	sigBase64 := base64.StdEncoding.EncodeToString(sig)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		Azure: &domain.AzureEvidence{Signature: sigBase64},
+	}
+
+	v := &AzureValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Attested {
+		t.Error("expected attested=false when timeStamp block is missing")
+	}
+	if result.Reason != "MissingTimestamp" {
+		t.Errorf("expected reason 'MissingTimestamp', got '%s'", result.Reason)
+	}
+}
+
+func TestAzureValidator_WithinClockSkew_Attested(t *testing.T) {
+	// A document whose expiresOn is slightly in the past, but still
+	// within azureClockSkew tolerance, must still attest — otherwise
+	// minor clock drift between Azure and this server would cause
+	// spurious rejections for legitimate, freshly-issued documents.
+	caKey, caCert, caPEM := generateTestCA(t)
+	now := time.Now().UTC()
+	created := now.Add(-1 * time.Minute).Format(azureTimestampLayout)
+	expires := now.Add(-30 * time.Second).Format(azureTimestampLayout) // within 180s skew
+	payload := `{"subscriptionId":"sub-123","vmId":"vm-456","timeStamp":{"createdOn":"` + created + `","expiresOn":"` + expires + `"}}`
+	sig := signPKCS7(t, []byte(payload), caKey, caCert)
+	sigBase64 := base64.StdEncoding.EncodeToString(sig)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"signingCaPem":"` + escapePEM(caPEM) + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		Azure: &domain.AzureEvidence{Signature: sigBase64},
+	}
+
+	v := &AzureValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true within clock skew tolerance, got reason: %s", result.Reason)
+	}
 }

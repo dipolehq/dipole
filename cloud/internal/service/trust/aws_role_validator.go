@@ -15,11 +15,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
+
+// awsRegionPattern matches AWS's own region-name format (e.g. us-east-1,
+// ap-south-1, cn-north-1, us-gov-west-1). region is client-supplied
+// evidence used directly in URL construction (fmt.Sprintf(v.stsURLFmt,
+// region)) — validating it against the shape AWS itself uses closes off
+// unvalidated input flowing into that URL, even though the destination
+// host is already constrained to the .amazonaws.com suffix.
+var awsRegionPattern = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z]+-\d$`)
 
 type AWSRoleValidator struct {
 	httpClient *http.Client
@@ -28,8 +37,11 @@ type AWSRoleValidator struct {
 
 func NewAWSRoleValidator() *AWSRoleValidator {
 	return &AWSRoleValidator{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		stsURLFmt:  "https://sts.%s.amazonaws.com/",
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: newSSRFSafeTransport(),
+		},
+		stsURLFmt: "https://sts.%s.amazonaws.com/",
 	}
 }
 
@@ -41,6 +53,15 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 	sts := evidence.AWS.STSGetCallerIdentity
 	if len(sts.SignedHeaders) == 0 || sts.Region == "" {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
+	}
+
+	// region is client-supplied and flows directly into URL construction
+	// in replaySTS (fmt.Sprintf(v.stsURLFmt, region)) — reject anything
+	// that doesn't look like a real AWS region name before it's used,
+	// rather than letting arbitrary characters (path separators, query
+	// delimiters, etc.) reach URL construction unexamined.
+	if !awsRegionPattern.MatchString(sts.Region) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidRegion"}, nil
 	}
 
 	identity, err := v.replaySTS(ctx, sts.SignedHeaders, sts.Region)
@@ -87,6 +108,21 @@ type getCallerIdentityResult struct {
 	UserID  string `xml:"UserId"`
 }
 
+// allowedSigV4Headers is the exact set of headers a genuine SigV4-signed
+// GetCallerIdentity request needs. signedHeaders comes directly from
+// client-supplied evidence and is replayed verbatim onto the outbound
+// request — without this allowlist, a malicious client could smuggle in
+// headers like Host or Content-Length that influence request
+// routing/parsing, since nothing previously restricted which header
+// names evidence was allowed to inject.
+var allowedSigV4Headers = map[string]bool{
+	"Authorization":        true,
+	"X-Amz-Date":           true,
+	"X-Amz-Security-Token": true,
+	"X-Amz-Content-Sha256": true,
+	"Content-Type":         true,
+}
+
 func (v *AWSRoleValidator) replaySTS(ctx context.Context, signedHeaders map[string]string, region string) (*stsIdentity, error) {
 	url := fmt.Sprintf(v.stsURLFmt, region)
 	body := "Action=GetCallerIdentity&Version=2011-06-15"
@@ -97,6 +133,9 @@ func (v *AWSRoleValidator) replaySTS(ctx context.Context, signedHeaders map[stri
 	}
 
 	for key, value := range signedHeaders {
+		if !allowedSigV4Headers[http.CanonicalHeaderKey(key)] {
+			continue
+		}
 		req.Header.Set(key, value)
 	}
 

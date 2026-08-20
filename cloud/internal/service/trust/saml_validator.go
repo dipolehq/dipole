@@ -34,7 +34,10 @@ type SAMLValidator struct {
 
 func NewSAMLValidator() *SAMLValidator {
 	return &SAMLValidator{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: newSSRFSafeTransport(),
+		},
 	}
 }
 
