@@ -1,20 +1,19 @@
-/*
-certificate_validator.go verifies Certificate Signed Attestation documents.
-
-CertificateValidator verifies that a signed attestation document was signed
-by a certificate that chains to a configured trust anchor. This Trust Provider
-validates ONLY the cryptographic signature — confirming
-that a trusted certificate signed the attestation document. Match rules on
-subject fields are also supported for additional filtering.
-*/
+// certificate_validator.go verifies certificate chain-of-trust plus proof-of-possession (stateless, bounded-freshness, not nonce-based) over a signed timestamp.
 package trust
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -25,13 +24,15 @@ type certificateConfig struct {
 	TrustAnchorPEM string `json:"trustAnchorPem"`
 }
 
-func (v *CertificateValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
-	if evidence.Environment == nil {
-		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
-	}
+const certificateChallengePrefix = "dipole-certificate-challenge-v1\x00"
 
-	certPEM := evidence.Environment["ATTESTATION_CERTIFICATE"]
-	if certPEM == "" {
+const certificateClockSkew = 180 * time.Second
+
+const certificateMaxAge = 5 * time.Minute
+
+func (v *CertificateValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
+	attest := evidence.CertificateAttestation
+	if attest == nil || attest.CertificatePEM == "" {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
 	}
 
@@ -40,7 +41,7 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		return nil, fmt.Errorf("parse certificate config: %w", err)
 	}
 
-	cert, err := parseCertificatePEM(certPEM)
+	cert, err := parseCertificatePEM(attest.CertificatePEM)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
@@ -50,9 +51,20 @@ func (v *CertificateValidator) Validate(_ context.Context, provider *domain.Trus
 		return nil, fmt.Errorf("parse trust anchor: %w", err)
 	}
 
-	_, err = cert.Verify(x509.VerifyOptions{Roots: roots})
+	_, err = cert.Verify(x509.VerifyOptions{
+		Roots:     roots,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	})
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
+	}
+
+	if err := verifyCertificateChallenge(cert, attest.Timestamp, attest.Signature); err != nil {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
+	}
+
+	if fresh, reason := certificateAttestationFresh(attest.Timestamp); !fresh {
+		return &domain.TrustProviderResult{Attested: false, Reason: reason}, nil
 	}
 
 	subjectFields := map[string]interface{}{
@@ -88,6 +100,47 @@ func parseCertificatePEM(pemStr string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("no PEM block found")
 	}
 	return x509.ParseCertificate(block.Bytes)
+}
+
+func buildCertificateChallenge(certDER []byte, timestamp int64) []byte {
+	certHash := sha256.Sum256(certDER)
+	challenge := certificateChallengePrefix +
+		hex.EncodeToString(certHash[:]) + "\x00" +
+		strconv.FormatInt(timestamp, 10)
+	return []byte(challenge)
+}
+
+func verifyCertificateChallenge(cert *x509.Certificate, timestamp int64, signature []byte) error {
+	challenge := buildCertificateChallenge(cert.Raw, timestamp)
+	digest := sha256.Sum256(challenge)
+
+	switch pub := cert.PublicKey.(type) {
+	case *rsa.PublicKey:
+		return rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], signature)
+	case *ecdsa.PublicKey:
+		if !ecdsa.VerifyASN1(pub, digest[:], signature) {
+			return fmt.Errorf("ecdsa signature verification failed")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported public key type %T", pub)
+	}
+}
+
+func certificateAttestationFresh(timestamp int64) (ok bool, reason string) {
+	if timestamp <= 0 {
+		return false, "MissingTimestamp"
+	}
+	signedAt := time.Unix(timestamp, 0)
+	now := time.Now().UTC()
+
+	if signedAt.After(now.Add(certificateClockSkew)) {
+		return false, "AttestationNotYetValid"
+	}
+	if signedAt.Add(certificateMaxAge).Before(now) {
+		return false, "AttestationExpired"
+	}
+	return true, ""
 }
 
 func buildTrustPool(trustAnchorPEM string) (*x509.CertPool, error) {

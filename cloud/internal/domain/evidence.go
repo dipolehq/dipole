@@ -3,20 +3,37 @@ package domain
 import "github.com/google/uuid"
 
 type ClientEvidence struct {
-	SourceIP            string
-	Hostname            string
-	K8s                 *K8sEvidence
-	AWS                 *AWSEvidence
-	Azure               *AzureEvidence
-	GCP                 *GCPEvidence
-	GitHub              *IdentityTokenEvidence
-	GitLab              *IdentityTokenEvidence
-	Terraform           *IdentityTokenEvidence
-	Process             *ProcessEvidence
-	Environment         map[string]string
-	DipoleClientID      string
-	RedirectURI         string
-	KerberosAttestation *KerberosAttestation
+	SourceIP               string
+	Hostname               string
+	K8s                    *K8sEvidence
+	AWS                    *AWSEvidence
+	Azure                  *AzureEvidence
+	GCP                    *GCPEvidence
+	GitHub                 *IdentityTokenEvidence
+	GitLab                 *IdentityTokenEvidence
+	Terraform              *IdentityTokenEvidence
+	Process                *ProcessEvidence
+	Environment            map[string]string
+	DipoleClientID         string
+	RedirectURI            string
+	KerberosAttestation    *KerberosAttestation
+	CertificateAttestation *CertificateAttestation
+}
+
+// CertificateAttestation holds a workload's X.509 certificate plus proof
+// that the presenter possesses the certificate's private key: a signature,
+// produced by that private key, over a canonical challenge binding the
+// certificate and a timestamp. A certificate alone is public information
+// (visible in TLS handshakes, logs, etc.) and proves nothing on its own —
+// this signature is what distinguishes "I hold this identity" from "I saw
+// this identity somewhere."
+//
+// See buildCertificateChallenge in certificate_validator.go for the exact
+// canonical byte format the signature covers.
+type CertificateAttestation struct {
+	CertificatePEM string
+	Timestamp      int64 // unix seconds, UTC, as claimed by the signer
+	Signature      []byte
 }
 
 // KerberosAttestation holds an HMAC-SHA256 signed attestation from the Agent

@@ -1,7 +1,4 @@
-/*
-factory.go creates a fully-configured TrustValidationService with all
-type-specific validators registered. Called during Cloud service initialization.
-*/
+// factory.go creates a fully-configured TrustValidationService with all type-specific validators registered.
 package trust
 
 import (
@@ -22,7 +19,7 @@ func NewConfiguredService(logger *slog.Logger, controllerRepo repository.AgentCo
 	svc.RegisterValidator("oidc_id_token", oidcValidator)
 	svc.RegisterValidator("aws_metadata_service", &AWSIMDSValidator{})
 	svc.RegisterValidator("aws_role", NewAWSRoleValidator())
-	svc.RegisterValidator("azure_metadata", &AzureValidator{})
+	svc.RegisterValidator("azure_metadata", NewAzureValidator())
 	svc.RegisterValidator("gcp_identity_token", &GCPValidator{})
 	svc.RegisterValidator("kerberos", NewKerberosValidator(controllerRepo, encryptionKey))
 	svc.RegisterValidator("certificate_signed_attestation", &CertificateValidator{})

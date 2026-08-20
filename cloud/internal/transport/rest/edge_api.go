@@ -175,14 +175,26 @@ type edgeCredentialRequest struct {
 }
 
 type edgeClientBlock struct {
-	GitHub    *edgeIdentityToken `json:"github,omitempty"`
-	GitLab    *edgeIdentityToken `json:"gitlab,omitempty"`
-	Terraform *edgeIdentityToken `json:"terraform,omitempty"`
-	OIDC      *edgeIdentityToken `json:"oidc,omitempty"`
+	GitHub      *edgeIdentityToken   `json:"github,omitempty"`
+	GitLab      *edgeIdentityToken   `json:"gitlab,omitempty"`
+	Terraform   *edgeIdentityToken   `json:"terraform,omitempty"`
+	OIDC        *edgeIdentityToken   `json:"oidc,omitempty"`
+	Certificate *edgeCertificateAttn `json:"certificate,omitempty"`
 }
 
 type edgeIdentityToken struct {
 	IdentityToken string `json:"identityToken"`
+}
+
+// edgeCertificateAttn carries a workload's X.509 certificate plus proof of
+// private-key possession for the certificate_signed_attestation Trust
+// Provider type. Signature is base64-encoded (JSON has no native binary
+// type); see certificate_validator.go's buildCertificateChallenge for the
+// exact bytes it covers.
+type edgeCertificateAttn struct {
+	CertificatePEM string `json:"certificatePem"`
+	Timestamp      int64  `json:"timestamp"`
+	Signature      string `json:"signature"`
 }
 
 type edgeServerBlock struct {
@@ -243,6 +255,22 @@ func buildEdgeEvidence(client edgeClientBlock, identityType string) *domain.Clie
 	case "oidc_id_token":
 		if client.OIDC != nil {
 			evidence.Environment = map[string]string{"OIDC_ID_TOKEN": client.OIDC.IdentityToken}
+		}
+	case "certificate":
+		if client.Certificate != nil {
+			sig, err := base64.StdEncoding.DecodeString(client.Certificate.Signature)
+			if err == nil {
+				evidence.CertificateAttestation = &domain.CertificateAttestation{
+					CertificatePEM: client.Certificate.CertificatePEM,
+					Timestamp:      client.Certificate.Timestamp,
+					Signature:      sig,
+				}
+			}
+			// A malformed (non-base64) signature is deliberately left as a
+			// nil CertificateAttestation rather than surfaced as a request
+			// error here — CertificateValidator.Validate already treats
+			// "no attestation present" as NoDataFound, which is the
+			// correct fail-closed outcome for malformed evidence too.
 		}
 	}
 

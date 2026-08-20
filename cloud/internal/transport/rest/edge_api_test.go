@@ -7,6 +7,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -336,6 +337,60 @@ func TestHandleCredentials_ExpiredToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+// --- buildEdgeEvidence tests ---
+
+func TestBuildEdgeEvidence_Certificate_WiresAttestation(t *testing.T) {
+	sigBytes := []byte{0x01, 0x02, 0x03, 0xFF}
+	client := edgeClientBlock{
+		Certificate: &edgeCertificateAttn{
+			CertificatePEM: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+			Timestamp:      1700000000,
+			Signature:      base64.StdEncoding.EncodeToString(sigBytes),
+		},
+	}
+
+	evidence := buildEdgeEvidence(client, "certificate")
+
+	if evidence.CertificateAttestation == nil {
+		t.Fatal("expected CertificateAttestation to be populated")
+	}
+	if evidence.CertificateAttestation.CertificatePEM != client.Certificate.CertificatePEM {
+		t.Errorf("CertificatePEM mismatch: got %q", evidence.CertificateAttestation.CertificatePEM)
+	}
+	if evidence.CertificateAttestation.Timestamp != 1700000000 {
+		t.Errorf("Timestamp mismatch: got %d", evidence.CertificateAttestation.Timestamp)
+	}
+	if !bytes.Equal(evidence.CertificateAttestation.Signature, sigBytes) {
+		t.Errorf("Signature mismatch: got %x, want %x", evidence.CertificateAttestation.Signature, sigBytes)
+	}
+}
+
+func TestBuildEdgeEvidence_Certificate_MalformedSignatureBase64_LeavesAttestationNil(t *testing.T) {
+	client := edgeClientBlock{
+		Certificate: &edgeCertificateAttn{
+			CertificatePEM: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----",
+			Timestamp:      1700000000,
+			Signature:      "not-valid-base64!!!",
+		},
+	}
+
+	evidence := buildEdgeEvidence(client, "certificate")
+
+	if evidence.CertificateAttestation != nil {
+		t.Error("expected CertificateAttestation to remain nil for malformed signature base64, letting CertificateValidator fail closed with NoDataFound")
+	}
+}
+
+func TestBuildEdgeEvidence_Certificate_MissingBlock_NoAttestation(t *testing.T) {
+	client := edgeClientBlock{}
+
+	evidence := buildEdgeEvidence(client, "certificate")
+
+	if evidence.CertificateAttestation != nil {
+		t.Error("expected CertificateAttestation to be nil when no certificate block is present")
 	}
 }
 
