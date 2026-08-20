@@ -1,13 +1,9 @@
-/*
-dashboard.go provides admin dashboard statistics.
-
-DashboardService computes entity counts and recent event aggregates for the
-admin UI dashboard summary view.
-*/
+// dashboard.go computes entity counts and recent event aggregates for the admin UI dashboard summary view.
 package reporting
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -123,14 +119,31 @@ func NewDashboardService(
 func (s *DashboardService) GetStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*DashboardStats, error) {
 	opts := domain.ListOptions{Page: 1, PerPage: 1}
 
-	_, cwCount, _ := s.cwRepo.List(ctx, tenantID, opts)
-	_, swCount, _ := s.swRepo.List(ctx, tenantID, opts)
-	_, tpCount, _ := s.tpRepo.List(ctx, tenantID, opts)
-	_, cpCount, _ := s.cpRepo.List(ctx, tenantID, opts)
-	_, apCount, _ := s.apRepo.List(ctx, tenantID, opts)
-	_, acCount, _ := s.acRepo.List(ctx, tenantID, opts)
+	_, cwCount, err := s.cwRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count client workloads: %w", err)
+	}
+	_, swCount, err := s.swRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count server workloads: %w", err)
+	}
+	_, tpCount, err := s.tpRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count trust providers: %w", err)
+	}
+	_, cpCount, err := s.cpRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count credential providers: %w", err)
+	}
+	_, apCount, err := s.apRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count access policies: %w", err)
+	}
+	_, acCount, err := s.acRepo.List(ctx, tenantID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("count access conditions: %w", err)
+	}
 
-	// Get inactive counts
 	cwInactive := s.cwRepo.CountInactive(ctx, tenantID)
 	swInactive := s.swRepo.CountInactive(ctx, tenantID)
 	tpInactive := s.tpRepo.CountInactive(ctx, tenantID)

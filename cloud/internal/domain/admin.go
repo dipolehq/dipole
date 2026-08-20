@@ -146,6 +146,7 @@ type LogStream struct {
 	DestinationType string
 	Config          json.RawMessage
 	LastExportedAt  *time.Time
+	LastExportError *string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

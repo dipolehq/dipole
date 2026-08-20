@@ -193,16 +193,25 @@ type logStreamResponse struct {
 	EventType       string          `json:"eventType"`
 	DestinationType string          `json:"destinationType"`
 	Config          json.RawMessage `json:"config"`
+	LastExportedAt  *string         `json:"lastExportedAt,omitempty"`
+	LastExportError *string         `json:"lastExportError,omitempty"`
 	CreatedAt       string          `json:"createdAt"`
 	UpdatedAt       string          `json:"updatedAt"`
 }
 
-// TODO: Encrypt Log Stream config at rest (contains apiKey/authToken for SIEM destinations).
-// For now, config is stored as plaintext JSONB — acceptable for MVP behind auth.
+// toLogStreamResponse renders a log stream for API responses. Config is
+// encrypted at rest (LogStreamRepo) and decrypted back to plaintext JSON by
+// the time it reaches this function — it is redacted here before leaving
+// the process, the same principle applied to credential providers: secrets
+// (HEC token, client secret, AWS secret key, GCS service account JSON) are
+// never echoed back once stored, only non-sensitive fields (bucket name,
+// region, URLs) are.
 func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
-	config := ls.Config
-	if config == nil {
-		config = json.RawMessage(`{}`)
+	config := redactLogStreamConfig(ls.Config)
+	var lastExportedAt *string
+	if ls.LastExportedAt != nil {
+		formatted := ls.LastExportedAt.Format("2006-01-02T15:04:05Z07:00")
+		lastExportedAt = &formatted
 	}
 	return logStreamResponse{
 		ID:              ls.ID,
@@ -212,9 +221,47 @@ func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
 		EventType:       ls.EventType,
 		DestinationType: ls.DestinationType,
 		Config:          config,
+		LastExportedAt:  lastExportedAt,
+		LastExportError: ls.LastExportError,
 		CreatedAt:       ls.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:       ls.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// logStreamSensitiveConfigKeys lists the config keys, across all 4
+// destination types, that hold a secret and must never be echoed back in
+// an API response. Kept in sync with credential_providers.go's
+// redactCredentialConfig — both redact the same class of destination
+// secrets and should stay consistent.
+var logStreamSensitiveConfigKeys = map[string]bool{
+	"hec_token":            true, // Splunk
+	"client_secret":        true, // CrowdStrike
+	"access_key_id":        true, // S3 (identifies the credential; still redacted since it's part of a credential pair)
+	"secret_access_key":    true, // S3
+	"service_account_json": true, // GCS
+}
+
+func redactLogStreamConfig(config json.RawMessage) json.RawMessage {
+	if len(config) == 0 {
+		return json.RawMessage(`{}`)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(config, &parsed); err != nil {
+		return json.RawMessage(`{}`)
+	}
+
+	for key := range parsed {
+		if logStreamSensitiveConfigKeys[key] {
+			parsed[key] = "**REDACTED**"
+		}
+	}
+
+	redacted, err := json.Marshal(parsed)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return redacted
 }
 
 func toLogStreamResponses(streams []domain.LogStream) []logStreamResponse {

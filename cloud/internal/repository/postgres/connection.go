@@ -104,6 +104,10 @@ func (r *Repositories) SetMCPEncryptionKey(key []byte) {
 	r.MCPUserCredentials.encKey = key
 }
 
+func (r *Repositories) SetLogStreamEncryptionKey(key []byte) {
+	r.LogStreams.encKey = key
+}
+
 func (r *Repositories) Close() {
 	if p, ok := r.pool.(*pgxpool.Pool); ok {
 		p.Close()

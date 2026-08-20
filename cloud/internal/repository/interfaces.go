@@ -149,7 +149,13 @@ type LogStreamRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	ListAllActive(ctx context.Context) ([]domain.LogStream, error)
+	// UpdateLastExportedAt records a successful export and clears any
+	// previously recorded export error.
 	UpdateLastExportedAt(ctx context.Context, id uuid.UUID, t time.Time) error
+	// SetLastExportError records that the most recent export attempt for
+	// this stream failed, with the given error message surfaced to the
+	// customer via the log stream's REST representation.
+	SetLastExportError(ctx context.Context, id uuid.UUID, errMsg string) error
 }
 
 type AgentProxyRepository interface {

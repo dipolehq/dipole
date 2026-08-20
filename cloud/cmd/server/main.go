@@ -101,6 +101,13 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
+	repos.SetLogStreamEncryptionKey(encKey)
+
+	if n, err := repos.LogStreams.BackfillConfigEncryption(ctx); err != nil {
+		return fmt.Errorf("backfill log stream config encryption: %w", err)
+	} else if n > 0 {
+		logger.Info("backfilled log stream config encryption", "count", n)
+	}
 
 	if err := devBootstrap(ctx, repos, cfg, logger); err != nil {
 		return fmt.Errorf("dev bootstrap: %w", err)
@@ -227,8 +234,8 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	logStreamSvc := reporting.NewLogStreamService(repos.Events, repos.LogStreams, logger)
 	logStreamSvc.RegisterExporter("splunk_siem", reporting.NewSplunkExporter())
 	logStreamSvc.RegisterExporter("crowdstrike_siem", reporting.NewCrowdStrikeExporter())
-	logStreamSvc.RegisterExporter("aws_s3", &reporting.S3Exporter{})
-	logStreamSvc.RegisterExporter("gcs_bucket", &reporting.GCSExporter{})
+	logStreamSvc.RegisterExporter("aws_s3", reporting.NewS3Exporter())
+	logStreamSvc.RegisterExporter("gcs_bucket", reporting.NewGCSExporter())
 
 	wg.Add(1)
 	go func() {
@@ -315,7 +322,7 @@ func buildHTTPServer(
 		repos.SignOnPolicies,
 		repos.LogStreams,
 		repos.GlobalPolicyCompliance,
-		reporting.NewComplianceService(repos.AccessPolicies),
+		repos.AccessPolicies,
 		repos.TenantProfiles,
 		registrationSvc,
 		repos.Tenants,

@@ -1,10 +1,12 @@
 package rest
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
@@ -106,6 +108,28 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 	})
 }
 
+// complianceAttributeStatus reports whether a policy actually satisfies an
+// enforced attribute (Trust Provider or Access Condition), given the
+// tenant's configured enforcement level for that attribute:
+//   - "optional": no enforcement — always reported as "optional" regardless
+//     of whether the policy has the attribute, matching what the Global
+//     Policy Compliance settings page promises ("no enforcement").
+//   - "required"/"recommended": if the policy has the attribute, it is
+//     compliant; if not, the configured level itself is returned so the
+//     frontend can render "Missing Required"/"Missing Recommended".
+func complianceAttributeStatus(level string, present bool) string {
+	if level == "" {
+		level = "optional"
+	}
+	if level == "optional" {
+		return "optional"
+	}
+	if present {
+		return "compliant"
+	}
+	return level
+}
+
 func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 
@@ -122,6 +146,15 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	resourceSetNames, err := h.resourceSetNames(r.Context(), tenantID)
+	if err != nil {
+		// Non-fatal: the report is still useful without resource set
+		// names — fall back to "Default" for every row rather than
+		// failing the whole report over a display-only lookup.
+		slog.Error("compliance report: list resource sets failed", "error", err)
+		resourceSetNames = map[uuid.UUID]string{}
+	}
+
 	type complianceRow struct {
 		ID                 uuid.UUID `json:"id"`
 		PolicyName         string    `json:"policyName"`
@@ -135,24 +168,18 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 
 	items := make([]complianceRow, 0, len(policies))
 	for _, pol := range policies {
-		tp := p.APTrustProvider
-		if tp == "" {
-			tp = "optional"
-		}
-
-		ac := p.APAccessCondition
-		if ac == "" {
-			ac = "optional"
-		}
+		tp := complianceAttributeStatus(p.APTrustProvider, len(pol.TrustProviders) > 0)
+		ac := complianceAttributeStatus(p.APAccessCondition, len(pol.AccessConditions) > 0)
 
 		cpName := ""
 		if len(pol.CredentialProviders) > 0 {
 			cpName = pol.CredentialProviders[0].Name
 		}
 
-		rsName := "Default"
-		if pol.Policy.ResourceSetID != nil && *pol.Policy.ResourceSetID != uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff") {
-			rsName = pol.Policy.ResourceSetID.String()
+		rsID := scope.ResolveResourceSetID(pol.Policy.ResourceSetID)
+		rsName, ok := resourceSetNames[rsID]
+		if !ok {
+			rsName = "Default"
 		}
 
 		items = append(items, complianceRow{
@@ -168,4 +195,21 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// resourceSetNames returns every resource set name for the tenant, keyed by
+// ID, so GetComplianceReport can render a human-readable name instead of a
+// raw UUID. A tenant's resource set count is small (teams/environments, not
+// a per-entity resource), so one unpaginated list is a single query and
+// safe to hold in memory.
+func (h *APIHandlers) resourceSetNames(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
+	sets, _, err := h.resourceSets.List(ctx, tenantID, domain.ListOptions{Page: 1, PerPage: 1000})
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]string, len(sets))
+	for _, rs := range sets {
+		names[rs.ID] = rs.Name
+	}
+	return names, nil
 }

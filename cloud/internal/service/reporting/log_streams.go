@@ -1,11 +1,4 @@
-/*
-log_streams.go implements event export to external SIEM/storage systems.
-
-LogStreamService manages CRUD for log stream configurations and provides the
-export worker that periodically batches events and sends them to configured
-destinations (AWS S3, GCS, Splunk HEC, CrowdStrike SIEM). Events are tracked
-by last_exported_at to avoid re-exporting. Failed exports retry next cycle.
-*/
+// log_streams.go implements event export to external SIEM/storage systems (AWS S3, GCS, Splunk HEC, CrowdStrike SIEM) — all customer-owned destinations authenticated with customer-supplied, encrypted-at-rest credentials.
 package reporting
 
 import (
@@ -15,14 +8,22 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+
+	"cloud.google.com/go/storage"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
+	"google.golang.org/api/option"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
 type LogExporter interface {
-	Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error
+	Export(ctx context.Context, tenantID uuid.UUID, config json.RawMessage, events []json.RawMessage) error
 }
 
 type LogStreamService struct {
@@ -57,15 +58,24 @@ func (s *LogStreamService) ExportCycle(ctx context.Context) {
 
 		exporter, ok := s.exporters[stream.DestinationType]
 		if !ok {
+			errMsg := fmt.Sprintf("no exporter registered for destination type %q", stream.DestinationType)
 			s.logger.Warn("no exporter for log stream type", "type", stream.DestinationType, "stream_id", stream.ID)
+			if err := s.lsRepo.SetLastExportError(ctx, stream.ID, errMsg); err != nil {
+				s.logger.Error("failed to record export error", "stream_id", stream.ID, "error", err)
+			}
 			continue
 		}
 
 		if err := s.exportForStream(ctx, stream, exporter); err != nil {
 			s.logger.Error("log stream export failed", "stream_id", stream.ID, "type", stream.DestinationType, "error", err)
+			if setErr := s.lsRepo.SetLastExportError(ctx, stream.ID, err.Error()); setErr != nil {
+				s.logger.Error("failed to record export error", "stream_id", stream.ID, "error", setErr)
+			}
 		}
 	}
 }
+
+const exportTimeout = 30 * time.Second
 
 func (s *LogStreamService) exportForStream(ctx context.Context, stream *domain.LogStream, exporter LogExporter) error {
 	events, err := s.gatherEvents(ctx, stream)
@@ -77,7 +87,10 @@ func (s *LogStreamService) exportForStream(ctx context.Context, stream *domain.L
 		return nil
 	}
 
-	if err := exporter.Export(ctx, stream.Config, events); err != nil {
+	exportCtx, cancel := context.WithTimeout(ctx, exportTimeout)
+	defer cancel()
+
+	if err := exporter.Export(exportCtx, stream.TenantID, stream.Config, events); err != nil {
 		return err
 	}
 
@@ -167,47 +180,136 @@ func (s *LogStreamService) gatherEvents(ctx context.Context, stream *domain.LogS
 	return events, nil
 }
 
-// S3Exporter writes JSON event files to AWS S3.
+func buildJSONLines(events []json.RawMessage) []byte {
+	var buf bytes.Buffer
+	for _, event := range events {
+		buf.Write(event)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+func objectKey(prefix string, tenantID uuid.UUID) string {
+	now := time.Now().UTC()
+	key := fmt.Sprintf("%s/%s/%s.jsonl", tenantID.String(), now.Format("2006-01-02"), now.Format("20060102T150405.000000000Z"))
+	if prefix != "" {
+		key = strings.Trim(prefix, "/") + "/" + key
+	}
+	return key
+}
+
 type S3Exporter struct{}
 
-func (e *S3Exporter) Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error {
-	var cfg struct {
-		BucketName string `json:"bucket_name"`
-		Region     string `json:"region"`
-		Prefix     string `json:"prefix"`
-		RoleARN    string `json:"role_arn"`
-	}
+func NewS3Exporter() *S3Exporter { return &S3Exporter{} }
+
+type s3ExporterConfig struct {
+	BucketName      string `json:"bucket_name"`
+	Region          string `json:"region"`
+	Prefix          string `json:"prefix"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+}
+
+func parseS3Config(config json.RawMessage) (s3ExporterConfig, error) {
+	var cfg s3ExporterConfig
 	if err := json.Unmarshal(config, &cfg); err != nil {
-		return fmt.Errorf("parse S3 config: %w", err)
+		return cfg, fmt.Errorf("parse S3 config: %w", err)
+	}
+	if cfg.BucketName == "" {
+		return cfg, fmt.Errorf("S3 config missing bucket_name")
+	}
+	if cfg.Region == "" {
+		return cfg, fmt.Errorf("S3 config missing region")
+	}
+	if cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
+		return cfg, fmt.Errorf("S3 config missing access_key_id/secret_access_key")
+	}
+	return cfg, nil
+}
+
+func (e *S3Exporter) Export(ctx context.Context, tenantID uuid.UUID, config json.RawMessage, events []json.RawMessage) error {
+	if len(events) == 0 {
+		return nil
+	}
+	cfg, err := parseS3Config(config)
+	if err != nil {
+		return err
 	}
 
-	// Production: assume role via STS, write to s3://<bucket>/<prefix>/<date>/<timestamp>.json
-	_ = ctx
-	_ = events
+	client := s3.New(s3.Options{
+		Region:      cfg.Region,
+		Credentials: credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
+	})
+
+	key := objectKey(cfg.Prefix, tenantID)
+	body := buildJSONLines(events)
+
+	_, err = client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(cfg.BucketName),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(body),
+		ContentType: aws.String("application/x-ndjson"),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 PutObject failed: %w", err)
+	}
 	return nil
 }
 
-// GCSExporter writes JSON event files to Google Cloud Storage.
 type GCSExporter struct{}
 
-func (e *GCSExporter) Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error {
-	var cfg struct {
-		BucketName         string `json:"bucket_name"`
-		ProjectID          string `json:"project_id"`
-		Prefix             string `json:"prefix"`
-		ServiceAccountJSON string `json:"service_account_json"`
-	}
+func NewGCSExporter() *GCSExporter { return &GCSExporter{} }
+
+type gcsExporterConfig struct {
+	BucketName         string `json:"bucket_name"`
+	Prefix             string `json:"prefix"`
+	ServiceAccountJSON string `json:"service_account_json"`
+}
+
+func parseGCSConfig(config json.RawMessage) (gcsExporterConfig, error) {
+	var cfg gcsExporterConfig
 	if err := json.Unmarshal(config, &cfg); err != nil {
-		return fmt.Errorf("parse GCS config: %w", err)
+		return cfg, fmt.Errorf("parse GCS config: %w", err)
+	}
+	if cfg.BucketName == "" {
+		return cfg, fmt.Errorf("GCS config missing bucket_name")
+	}
+	if cfg.ServiceAccountJSON == "" {
+		return cfg, fmt.Errorf("GCS config missing service_account_json")
+	}
+	return cfg, nil
+}
+
+func (e *GCSExporter) Export(ctx context.Context, tenantID uuid.UUID, config json.RawMessage, events []json.RawMessage) error {
+	if len(events) == 0 {
+		return nil
+	}
+	cfg, err := parseGCSConfig(config)
+	if err != nil {
+		return err
 	}
 
-	// Production: use service account to write to gs://<bucket>/<prefix>/<date>/<timestamp>.json
-	_ = ctx
-	_ = events
+	client, err := storage.NewClient(ctx, option.WithCredentialsJSON([]byte(cfg.ServiceAccountJSON)))
+	if err != nil {
+		return fmt.Errorf("create GCS client: %w", err)
+	}
+	defer client.Close()
+
+	key := objectKey(cfg.Prefix, tenantID)
+	writer := client.Bucket(cfg.BucketName).Object(key).NewWriter(ctx)
+	writer.ContentType = "application/x-ndjson"
+
+	body := buildJSONLines(events)
+	if _, err := writer.Write(body); err != nil {
+		_ = writer.Close()
+		return fmt.Errorf("gcs write failed: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("gcs write failed: %w", err)
+	}
 	return nil
 }
 
-// SplunkExporter sends events to Splunk via HTTP Event Collector.
 type SplunkExporter struct {
 	httpClient *http.Client
 }
@@ -216,7 +318,11 @@ func NewSplunkExporter() *SplunkExporter {
 	return &SplunkExporter{httpClient: &http.Client{Timeout: 30 * time.Second}}
 }
 
-func (e *SplunkExporter) Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error {
+func (e *SplunkExporter) Export(ctx context.Context, tenantID uuid.UUID, config json.RawMessage, events []json.RawMessage) error {
+	if len(events) == 0 {
+		return nil
+	}
+
 	var cfg struct {
 		HECURL     string `json:"hec_url"`
 		HECToken   string `json:"hec_token"`
@@ -226,7 +332,11 @@ func (e *SplunkExporter) Export(ctx context.Context, config json.RawMessage, eve
 	if err := json.Unmarshal(config, &cfg); err != nil {
 		return fmt.Errorf("parse Splunk config: %w", err)
 	}
+	if cfg.HECURL == "" || cfg.HECToken == "" {
+		return fmt.Errorf("Splunk config missing hec_url/hec_token")
+	}
 
+	var buf bytes.Buffer
 	for _, event := range events {
 		splunkEvent := map[string]any{
 			"event":      json.RawMessage(event),
@@ -234,29 +344,33 @@ func (e *SplunkExporter) Export(ctx context.Context, config json.RawMessage, eve
 			"sourcetype": cfg.SourceType,
 			"source":     "dipole",
 		}
-		body, _ := json.Marshal(splunkEvent)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.HECURL, bytes.NewReader(body))
+		body, err := json.Marshal(splunkEvent)
 		if err != nil {
-			return err
+			return fmt.Errorf("marshal splunk event: %w", err)
 		}
-		req.Header.Set("Authorization", "Splunk "+cfg.HECToken)
-		req.Header.Set("Content-Type", "application/json")
+		buf.Write(body)
+		buf.WriteByte('\n')
+	}
 
-		resp, err := e.httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("splunk HEC request failed: %w", err)
-		}
-		resp.Body.Close()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.HECURL, bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Splunk "+cfg.HECToken)
+	req.Header.Set("Content-Type", "application/json")
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("splunk HEC returned %d", resp.StatusCode)
-		}
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("splunk HEC request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("splunk HEC returned %d", resp.StatusCode)
 	}
 	return nil
 }
 
-// CrowdStrikeExporter sends events to CrowdStrike Next-Gen SIEM.
 type CrowdStrikeExporter struct {
 	httpClient *http.Client
 }
@@ -265,7 +379,11 @@ func NewCrowdStrikeExporter() *CrowdStrikeExporter {
 	return &CrowdStrikeExporter{httpClient: &http.Client{Timeout: 30 * time.Second}}
 }
 
-func (e *CrowdStrikeExporter) Export(ctx context.Context, config json.RawMessage, events []json.RawMessage) error {
+func (e *CrowdStrikeExporter) Export(ctx context.Context, tenantID uuid.UUID, config json.RawMessage, events []json.RawMessage) error {
+	if len(events) == 0 {
+		return nil
+	}
+
 	var cfg struct {
 		APIURL       string `json:"api_url"`
 		ClientID     string `json:"client_id"`
@@ -288,7 +406,7 @@ func (e *CrowdStrikeExporter) Export(ctx context.Context, config json.RawMessage
 	if err != nil {
 		return fmt.Errorf("crowdstrike request failed: %w", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("crowdstrike returned %d", resp.StatusCode)
