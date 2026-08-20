@@ -77,6 +77,7 @@ func TestGitHubValidator_AudienceMismatch(t *testing.T) {
 	}, logger: nil}
 
 	claims := map[string]interface{}{
+		"iss": githubOIDCEndpoint,
 		"aud": "https://wrong-audience.dipolehq.com",
 		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
 	}
@@ -116,6 +117,7 @@ func TestGitHubValidator_WrongRepository_MatchRuleFailed(t *testing.T) {
 
 	audience := "https://acme-id.dipolehq.com"
 	claims := map[string]interface{}{
+		"iss":        githubOIDCEndpoint,
 		"aud":        audience,
 		"repository": "other-org/other-repo",
 		"exp":        float64(time.Now().Add(1 * time.Hour).Unix()),
@@ -155,5 +157,102 @@ func TestGitHubValidator_NoToken_NoDataFound(t *testing.T) {
 
 	if result.Reason != "NoDataFound" {
 		t.Errorf("reason = %q, want NoDataFound", result.Reason)
+	}
+}
+
+func TestGitHubValidator_IssuerMismatch(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "gh-kid-4"
+
+	jwk := jose.JSONWebKey{Key: &key.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+	keySet := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{
+		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
+	}, logger: nil}
+
+	claims := map[string]interface{}{
+		"iss": "https://attacker-controlled.example.com",
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{Config: json.RawMessage(`{}`)}
+	evidence := &domain.ClientEvidence{
+		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	v := &GitHubValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for issuer mismatch")
+	}
+	if result.Reason != "InvalidIssuer" {
+		t.Errorf("reason = %q, want InvalidIssuer", result.Reason)
+	}
+}
+
+func TestGitHubValidator_ExpiredToken(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "gh-kid-5"
+
+	jwk := jose.JSONWebKey{Key: &key.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+	keySet := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{
+		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
+	}, logger: nil}
+
+	claims := map[string]interface{}{
+		"iss": githubOIDCEndpoint,
+		"exp": float64(time.Now().Add(-1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{Config: json.RawMessage(`{}`)}
+	evidence := &domain.ClientEvidence{
+		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	v := &GitHubValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for expired token")
+	}
+	if result.Reason != "TokenExpired" {
+		t.Errorf("reason = %q, want TokenExpired", result.Reason)
+	}
+}
+
+func TestGitHubValidator_NotBeforeInFuture(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "gh-kid-6"
+
+	jwk := jose.JSONWebKey{Key: &key.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+	keySet := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{
+		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
+	}, logger: nil}
+
+	claims := map[string]interface{}{
+		"iss": githubOIDCEndpoint,
+		"exp": float64(time.Now().Add(2 * time.Hour).Unix()),
+		"nbf": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{Config: json.RawMessage(`{}`)}
+	evidence := &domain.ClientEvidence{
+		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	v := &GitHubValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for not-yet-valid token")
+	}
+	if result.Reason != "TokenNotYetValid" {
+		t.Errorf("reason = %q, want TokenNotYetValid", result.Reason)
 	}
 }

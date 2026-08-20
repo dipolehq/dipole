@@ -77,6 +77,31 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
+	// Check issuer for oidc_discovery: the token must have been issued by
+	// the OIDC endpoint this Trust Provider trusts, not merely signed by
+	// a key that happens to be reachable at that endpoint's JWKS. For
+	// upload_jwks and symmetric_key there's no single "endpoint" the
+	// customer configured to compare against — the trust anchor there is
+	// the uploaded key material or shared secret itself, so issuer
+	// enforcement for those methods is expressed via match rules instead.
+	//
+	// Trailing slashes are trimmed from both sides before comparing:
+	// cfg.OIDCEndpoint is raw customer input (FetchJWKS already tolerates
+	// a trailing slash there), while the iss claim emitted by the actual
+	// issuer normally has none — without normalizing, a customer who
+	// configured "https://gitlab.example.com/" would see every
+	// legitimate token rejected as InvalidIssuer. An empty
+	// cfg.OIDCEndpoint is rejected explicitly so a misconfigured Trust
+	// Provider can never match a token that's simply missing its iss
+	// claim (both would otherwise trim to "").
+	if cfg.AttestationMethod == "oidc_discovery" || cfg.AttestationMethod == "" {
+		iss, _ := claims["iss"].(string)
+		expectedIssuer := strings.TrimRight(cfg.OIDCEndpoint, "/")
+		if expectedIssuer == "" || strings.TrimRight(iss, "/") != expectedIssuer {
+			return &domain.TrustProviderResult{Attested: false, Reason: "InvalidIssuer"}, nil
+		}
+	}
+
 	// Check audience if configured
 	if provider.EdgeSDKAudience != "" {
 		aud := fmt.Sprint(claims["aud"])
@@ -90,6 +115,11 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		if int64(exp) < time.Now().Unix() {
 			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 		}
+	}
+
+	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)
+	if nbfNotYetValid(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
 	}
 
 	// Evaluate match rules

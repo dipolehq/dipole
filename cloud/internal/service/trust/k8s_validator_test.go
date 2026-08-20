@@ -127,7 +127,10 @@ func TestK8sValidator_ExpiredToken(t *testing.T) {
 	server, cache := jwksServer(t, key, kid)
 	defer server.Close()
 
-	claims := map[string]interface{}{"exp": float64(time.Now().Add(-1 * time.Hour).Unix())}
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(-1 * time.Hour).Unix()),
+	}
 	token := signJWT(t, key, kid, claims)
 
 	provider := &domain.TrustProvider{
@@ -155,6 +158,7 @@ func TestK8sValidator_MatchRuleFailed(t *testing.T) {
 	defer server.Close()
 
 	claims := map[string]interface{}{
+		"iss": server.URL,
 		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
 		"kubernetes.io": map[string]interface{}{
 			"namespace": "staging",
@@ -203,5 +207,238 @@ func TestK8sValidator_NoToken_NoDataFound(t *testing.T) {
 	}
 	if result.Reason != "NoDataFound" {
 		t.Errorf("reason = %q, want NoDataFound", result.Reason)
+	}
+}
+
+func TestK8sValidator_IssuerMismatch(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-5"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	claims := map[string]interface{}{
+		"iss": "https://attacker-controlled.example.com",
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for issuer mismatch")
+	}
+	if result.Reason != "InvalidIssuer" {
+		t.Errorf("reason = %q, want InvalidIssuer", result.Reason)
+	}
+}
+
+func TestK8sValidator_MissingIssuerClaim(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-6"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	// No "iss" claim at all — must be rejected, not treated as a match.
+	claims := map[string]interface{}{
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for missing issuer claim")
+	}
+	if result.Reason != "InvalidIssuer" {
+		t.Errorf("reason = %q, want InvalidIssuer", result.Reason)
+	}
+}
+
+func TestK8sValidator_NotBeforeInFuture(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-7"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(2 * time.Hour).Unix()),
+		"nbf": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for not-yet-valid token")
+	}
+	if result.Reason != "TokenNotYetValid" {
+		t.Errorf("reason = %q, want TokenNotYetValid", result.Reason)
+	}
+}
+
+func TestK8sValidator_NotBeforeInPast_Attested(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-8"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+		"nbf": float64(time.Now().Add(-1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true for nbf in the past, got reason=%s", result.Reason)
+	}
+}
+
+func TestK8sValidator_IssuerTrailingSlashNormalized_Attested(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-9"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	// JWKSCache keys are the raw configured endpoint string (not
+	// URL-normalized), so the cache must be populated under the exact
+	// same key the validator will look up — the trailing-slash endpoint,
+	// matching what a real customer would have configured.
+	configuredEndpoint := server.URL + "/"
+	cache.entries[configuredEndpoint] = cache.entries[server.URL]
+
+	// Token's issuer has no trailing slash (typical of real issuers), but
+	// the customer configured the endpoint WITH one — a common
+	// copy-paste artifact. This must still attest.
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + configuredEndpoint + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true despite trailing slash in configured endpoint, got reason=%s", result.Reason)
+	}
+}
+
+func TestK8sValidator_EmptyOIDCEndpoint_MissingIssuerClaim_NotAttested(t *testing.T) {
+	// A misconfigured Trust Provider (empty oidcEndpoint) must never
+	// attest just because the presented token also happens to lack an
+	// iss claim — both trimming to "" must not be treated as a match.
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-10"
+
+	jwk := jose.JSONWebKey{Key: &key.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+	keySet := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{
+		"": {keys: &keySet, fetchedAt: time.Now()},
+	}, logger: nil}
+
+	claims := map[string]interface{}{
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+		// no "iss" claim
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":""}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false when configured oidcEndpoint is empty")
+	}
+	if result.Reason != "InvalidIssuer" {
+		t.Errorf("reason = %q, want InvalidIssuer", result.Reason)
+	}
+}
+
+func TestK8sValidator_NotBeforeWithinClockSkew_Attested(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-11"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	// nbf is 30s in the future — within the 180s clock-skew tolerance a
+	// legitimate token can have if the issuer's clock runs slightly
+	// ahead of this server's. Must still attest.
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+		"nbf": float64(time.Now().Add(30 * time.Second).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true for nbf within clock skew tolerance, got reason=%s", result.Reason)
 	}
 }

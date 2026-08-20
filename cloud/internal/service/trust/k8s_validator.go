@@ -10,6 +10,7 @@ package trust
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -66,11 +67,38 @@ func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
+	// Check issuer: the token must have been issued by the OIDC endpoint
+	// this Trust Provider is configured to trust. Without this check, a
+	// signature-valid JWT from ANY issuer whose JWKS happens to be
+	// reachable at cfg.OIDCEndpoint (or whose kid collides) would pass —
+	// this is the check that binds the verified signature to the
+	// specific K8s cluster the customer configured.
+	//
+	// Trailing slashes are trimmed from both sides before comparing:
+	// cfg.OIDCEndpoint is raw customer input (fetchJWKSURI already
+	// tolerates a trailing slash there), while the iss claim emitted by
+	// the actual issuer normally has none. Without normalizing, a
+	// customer who configured "https://cluster.example.com/" would see
+	// every legitimate token rejected as InvalidIssuer. An empty
+	// cfg.OIDCEndpoint is rejected explicitly so a misconfigured Trust
+	// Provider (empty expected issuer) can never match a token that's
+	// simply missing its iss claim (both would otherwise trim to "").
+	iss, _ := claims["iss"].(string)
+	expectedIssuer := strings.TrimRight(cfg.OIDCEndpoint, "/")
+	if expectedIssuer == "" || strings.TrimRight(iss, "/") != expectedIssuer {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidIssuer"}, nil
+	}
+
 	// Check expiry
 	if exp, ok := claims["exp"].(float64); ok {
 		if int64(exp) < time.Now().Unix() {
 			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 		}
+	}
+
+	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)
+	if nbfNotYetValid(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
 	}
 
 	// Evaluate match rules
