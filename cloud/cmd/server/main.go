@@ -139,7 +139,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	trustProviderSvc := resources.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts, encKey)
 	accessConditionSvc := resources.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := resources.NewCredentialProviderService(repos.CredentialProviders, encKey)
-	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies)
+	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies, repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders, repos.CredentialProviders, repos.AccessConditions)
 	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
@@ -322,6 +322,7 @@ func buildHTTPServer(
 		repos.AgentControllers,
 		repos.AgentProxies,
 		repos.APITokens,
+		repos.TrustProviders,
 		repos.Users,
 		repos.Roles,
 		repos.ResourceSets,

@@ -50,6 +50,7 @@ type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	agentProxies           repository.AgentProxyRepository
 	apiTokens              repository.APITokenRepository
+	trustProviders         repository.TrustProviderRepository
 	users                  repository.UserRepository
 	roles                  repository.RoleRepository
 	resourceSets           repository.ResourceSetRepository
@@ -70,6 +71,7 @@ func NewAPIHandlers(
 	agc repository.AgentControllerRepository,
 	ap repository.AgentProxyRepository,
 	at repository.APITokenRepository,
+	tpr repository.TrustProviderRepository,
 	u repository.UserRepository,
 	r repository.RoleRepository,
 	rs repository.ResourceSetRepository,
@@ -86,6 +88,7 @@ func NewAPIHandlers(
 		agentControllers:       agc,
 		agentProxies:           ap,
 		apiTokens:              at,
+		trustProviders:         tpr,
 		users:                  u,
 		roles:                  r,
 		resourceSets:           rs,

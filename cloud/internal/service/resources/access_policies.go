@@ -1,11 +1,9 @@
-/*
-Package resources — access_policies.go implements business logic and
-validation for Access Policies.
-*/
+// access_policies.go implements business logic and validation for Access Policies.
 package resources
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -16,12 +14,31 @@ import (
 )
 
 type AccessPolicyService struct {
-	repo    repository.AccessPolicyRepository
-	limiter *service.PlanLimiter
+	repo                repository.AccessPolicyRepository
+	clientWorkloads     repository.ClientWorkloadRepository
+	serverWorkloads     repository.ServerWorkloadRepository
+	trustProviders      repository.TrustProviderRepository
+	credentialProviders repository.CredentialProviderRepository
+	accessConditions    repository.AccessConditionRepository
+	limiter             *service.PlanLimiter
 }
 
-func NewAccessPolicyService(repo repository.AccessPolicyRepository) *AccessPolicyService {
-	return &AccessPolicyService{repo: repo}
+func NewAccessPolicyService(
+	repo repository.AccessPolicyRepository,
+	clientWorkloads repository.ClientWorkloadRepository,
+	serverWorkloads repository.ServerWorkloadRepository,
+	trustProviders repository.TrustProviderRepository,
+	credentialProviders repository.CredentialProviderRepository,
+	accessConditions repository.AccessConditionRepository,
+) *AccessPolicyService {
+	return &AccessPolicyService{
+		repo:                repo,
+		clientWorkloads:     clientWorkloads,
+		serverWorkloads:     serverWorkloads,
+		trustProviders:      trustProviders,
+		credentialProviders: credentialProviders,
+		accessConditions:    accessConditions,
+	}
 }
 
 func (s *AccessPolicyService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
@@ -51,6 +68,9 @@ func (s *AccessPolicyService) Create(ctx context.Context, tenantID uuid.UUID, p 
 	if err := validateAccessPolicy(p); err != nil {
 		return err
 	}
+	if err := s.validateReferencesBelongToTenant(ctx, tenantID, p); err != nil {
+		return err
+	}
 	return s.repo.Create(ctx, tenantID, p)
 }
 
@@ -66,7 +86,60 @@ func (s *AccessPolicyService) Update(ctx context.Context, tenantID uuid.UUID, p 
 	if existing == nil {
 		return domain.ErrNotFound
 	}
+	if err := s.validateReferencesBelongToTenant(ctx, tenantID, p); err != nil {
+		return err
+	}
 	return s.repo.Update(ctx, tenantID, p)
+}
+
+func (s *AccessPolicyService) validateReferencesBelongToTenant(ctx context.Context, tenantID uuid.UUID, p *domain.AccessPolicy) error {
+	cw, err := s.clientWorkloads.GetByID(ctx, tenantID, p.ClientWorkloadID)
+	if err != nil {
+		return fmt.Errorf("resolve client workload: %w", err)
+	}
+	if cw == nil {
+		return domain.NewValidationError("clientWorkloadId", "client workload not found")
+	}
+
+	sw, err := s.serverWorkloads.GetByID(ctx, tenantID, p.ServerWorkloadID)
+	if err != nil {
+		return fmt.Errorf("resolve server workload: %w", err)
+	}
+	if sw == nil {
+		return domain.NewValidationError("serverWorkloadId", "server workload not found")
+	}
+
+	for _, id := range p.TrustProviderIDs {
+		tp, err := s.trustProviders.GetByID(ctx, tenantID, id)
+		if err != nil {
+			return fmt.Errorf("resolve trust provider %s: %w", id, err)
+		}
+		if tp == nil {
+			return domain.NewValidationError("trustProviderIds", fmt.Sprintf("trust provider %s not found", id))
+		}
+	}
+
+	for _, pcp := range p.CredentialProviderIDs {
+		cp, err := s.credentialProviders.GetByID(ctx, tenantID, pcp.CredentialProviderID)
+		if err != nil {
+			return fmt.Errorf("resolve credential provider %s: %w", pcp.CredentialProviderID, err)
+		}
+		if cp == nil {
+			return domain.NewValidationError("credentialProviderIds", fmt.Sprintf("credential provider %s not found", pcp.CredentialProviderID))
+		}
+	}
+
+	for _, id := range p.AccessConditionIDs {
+		ac, err := s.accessConditions.GetByID(ctx, tenantID, id)
+		if err != nil {
+			return fmt.Errorf("resolve access condition %s: %w", id, err)
+		}
+		if ac == nil {
+			return domain.NewValidationError("accessConditionIds", fmt.Sprintf("access condition %s not found", id))
+		}
+	}
+
+	return nil
 }
 
 func (s *AccessPolicyService) Delete(ctx context.Context, tenantID, id uuid.UUID) error {

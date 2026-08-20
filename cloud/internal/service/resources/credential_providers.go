@@ -1,7 +1,4 @@
-/*
-Package resources — credential_providers.go implements business logic for
-Credential Providers including encryption/decryption of config at rest.
-*/
+// credential_providers.go implements business logic for Credential Providers including encryption/decryption of config at rest.
 package resources
 
 import (

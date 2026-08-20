@@ -57,10 +57,6 @@ func TestCredentialProviderService_Get_DecryptFailure_ReturnsError(t *testing.T)
 		t.Fatalf("create failed: %v", err)
 	}
 
-	// Simulate ciphertext that can no longer be decrypted (e.g. the
-	// encryption key rotated, or the stored bytes are corrupted) by
-	// encrypting with a different key than the service will use to
-	// decrypt.
 	wrongKey := []byte("00000000000000000000000000000000")[:32]
 	encrypted, err := crypto.Encrypt([]byte(`{"apiKey":"secret"}`), wrongKey)
 	if err != nil {

@@ -1,12 +1,4 @@
-/*
-Package resources implements business logic and validation for the core
-policy entities — Client Workloads, Server Workloads, Trust Providers,
-Credential Providers, Access Conditions, and Access Policies — sitting
-between transport and repository.
-
-access_conditions.go implements business logic and validation for Access
-Conditions.
-*/
+// access_conditions.go implements business logic and validation for Access Conditions.
 package resources
 
 import (

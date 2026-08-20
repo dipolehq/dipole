@@ -1,7 +1,4 @@
-/*
-Package resources — client_workloads.go implements business logic and
-validation for Client Workloads.
-*/
+// client_workloads.go implements business logic and validation for Client Workloads.
 package resources
 
 import (

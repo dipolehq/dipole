@@ -1,7 +1,4 @@
-/*
-Package resources — trust_providers.go implements business logic and
-validation for Trust Providers.
-*/
+// trust_providers.go implements business logic and validation for Trust Providers.
 package resources
 
 import (
@@ -20,11 +17,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 )
 
-// TrustProviderService is stateless with respect to tenant. The Edge SDK Client
-// ID and Audience it generates embed the OWNING tenant's subdomain — these are
-// the values a customer copies into their GitHub Actions workflow or CLI config
-// — so the subdomain is looked up per call from the tenant that's creating the
-// provider, not captured once at startup.
 type TrustProviderService struct {
 	repo          repository.TrustProviderRepository
 	tenants       repository.TenantRepository
@@ -80,8 +72,6 @@ func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, t
 		return domain.ErrNotFound
 	}
 
-	// These two values are immutable after creation and get copied by the
-	// customer into their CI/CD config, so refuse to persist a malformed one.
 	audience := s.hosts.IdentityIssuerURL(tenant.Subdomain)
 	if audience == "" {
 		return fmt.Errorf(
@@ -117,28 +107,12 @@ func (s *TrustProviderService) Update(ctx context.Context, tenantID uuid.UUID, t
 	if err := s.extractAndEncryptSymmetricKey(tp); err != nil {
 		return err
 	}
-	// The symmetric key is never returned to API clients (see
-	// extractAndEncryptSymmetricKey), so an update request that doesn't
-	// include a new one is not "the customer wants to clear it" — it's
-	// "the client never had it to resend." Preserve the previously
-	// stored encrypted value unless this request actually supplied a new
-	// plaintext key.
 	if tp.SymmetricKeyEncrypted == nil {
 		tp.SymmetricKeyEncrypted = existing.SymmetricKeyEncrypted
 	}
 	return s.repo.Update(ctx, tenantID, tp)
 }
 
-// extractAndEncryptSymmetricKey removes the "symmetricKey" field from a
-// symmetric_key-attestation OIDC trust provider's Config (a real HMAC
-// shared secret, historically stored there in plaintext) and encrypts it
-// into SymmetricKeyEncrypted instead. Config keeps every other field
-// (attestationMethod, oidcEndpoint, jwks, publicKey) exactly as supplied —
-// none of those are secret. If Config has no "symmetricKey" key at all
-// (any other attestation method, or an update that intentionally omits
-// it), this is a no-op: tp.SymmetricKeyEncrypted stays nil, and the caller
-// decides what nil means for that operation (Create: no secret; Update:
-// caller re-applies the previously stored value).
 func (s *TrustProviderService) extractAndEncryptSymmetricKey(tp *domain.TrustProvider) error {
 	if len(tp.Config) == 0 {
 		return nil
@@ -203,7 +177,3 @@ func validateTrustProvider(tp *domain.TrustProvider) error {
 	}
 	return nil
 }
-
-// Edge SDK identifier generation lives in service/trust/edge_sdk.go. It used to
-// be duplicated here (with a second, unused exported copy in that package),
-// which is how the two drifted apart during the subdomain pattern change.

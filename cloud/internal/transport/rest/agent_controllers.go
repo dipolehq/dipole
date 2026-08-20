@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -94,6 +96,10 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		needsUpdate = true
 	}
 	if req.TrustProviderID != nil {
+		if err := h.validateTrustProviderBelongsToTenant(r.Context(), tenantID, *req.TrustProviderID); err != nil {
+			respondDomainError(w, err)
+			return
+		}
 		ac.TrustProviderID = req.TrustProviderID
 		needsUpdate = true
 	}
@@ -170,6 +176,12 @@ func (h *APIHandlers) UpdateAgentController(w http.ResponseWriter, r *http.Reque
 		respondBadRequest(w, err.Error())
 		return
 	}
+	if req.TrustProviderID != nil {
+		if err := h.validateTrustProviderBelongsToTenant(r.Context(), tenantID, *req.TrustProviderID); err != nil {
+			respondDomainError(w, err)
+			return
+		}
+	}
 	ac := req.toDomain()
 	ac.ID = id
 	ac.TenantID = tenantID
@@ -209,6 +221,24 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 	}
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AgentControllers", "agent_controller", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validateTrustProviderBelongsToTenant confirms trustProviderID belongs to
+// tenantID before an Agent Controller is allowed to reference it. Without
+// this check, a tenant could attach another tenant's Trust Provider ID
+// (guessed, leaked, or otherwise obtained) to their own controller, which
+// would then be used for real attestation via the edge trust validator.
+// TrustProviderRepository.GetByID is already tenant-scoped, so a
+// cross-tenant ID resolves to nil exactly like a nonexistent one.
+func (h *APIHandlers) validateTrustProviderBelongsToTenant(ctx context.Context, tenantID, trustProviderID uuid.UUID) error {
+	tp, err := h.trustProviders.GetByID(ctx, tenantID, trustProviderID)
+	if err != nil {
+		return fmt.Errorf("resolve trust provider: %w", err)
+	}
+	if tp == nil {
+		return domain.NewValidationError("trustProviderId", "trust provider not found")
+	}
+	return nil
 }
 
 func (h *APIHandlers) RegenerateDeviceCode(w http.ResponseWriter, r *http.Request) {
