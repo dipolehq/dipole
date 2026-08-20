@@ -210,7 +210,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, logger)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -315,6 +315,7 @@ func buildHTTPServer(
 	issuer *identity.IdentityIssuer,
 	eventBus *eventbus.EventBus,
 	caService *pki.TenantCAService,
+	logger *slog.Logger,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -405,7 +406,7 @@ func buildHTTPServer(
 
 	mcpGateway.RegisterGatewayRoutes(mux)
 
-	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret)
+	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret, repos.Users, repos.Roles, logger)
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),

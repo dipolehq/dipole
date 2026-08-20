@@ -66,6 +66,13 @@ func respondDomainError(w http.ResponseWriter, err error) {
 		respondError(w, http.StatusNotFound, "not_found", "resource not found")
 	case errors.Is(err, service.ErrPlanLimitReached):
 		respondError(w, http.StatusForbidden, "plan_limit_reached", err.Error())
+	case errors.Is(err, service.ErrForbidden):
+		var forbiddenErr *service.ForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			respondError(w, http.StatusForbidden, "forbidden", forbiddenErr.Error())
+			return
+		}
+		respondError(w, http.StatusForbidden, "forbidden", "insufficient permissions for this resource")
 	case errors.As(err, &validationErr):
 		respondJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: ErrorDetail{
 			Code:    "validation_failed",

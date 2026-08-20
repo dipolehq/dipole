@@ -10,21 +10,25 @@ package rest
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const (
-	ctxTenantID  contextKey = "tenant_id"
-	ctxUserEmail contextKey = "user_email"
-	ctxRequestID contextKey = "request_id"
+	ctxTenantID    contextKey = "tenant_id"
+	ctxUserEmail   contextKey = "user_email"
+	ctxRequestID   contextKey = "request_id"
+	ctxPermissions contextKey = "permissions"
 )
 
 func TenantIDFromContext(ctx context.Context) uuid.UUID {
@@ -43,6 +47,19 @@ func UserEmailFromContext(ctx context.Context) string {
 func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
 	if s := scope.FromContext(ctx); s != nil {
 		return &s.ResourceSetID
+	}
+	return nil
+}
+
+// PermissionsFromContext returns the effective RBAC permissions for the
+// current request, as loaded by RBACPermissionsMiddleware. Returns an
+// empty (nil) Permissions map if the middleware hasn't run or found no
+// permissions — since service.CheckPermission treats a resource absent
+// from the map as forbidden, an empty map is the fail-closed default,
+// not a special case callers need to check for separately.
+func PermissionsFromContext(ctx context.Context) service.Permissions {
+	if p, ok := ctx.Value(ctxPermissions).(service.Permissions); ok {
+		return p
 	}
 	return nil
 }
@@ -234,9 +251,11 @@ func extractAPIToken(r *http.Request) string {
 	return parts[1]
 }
 
-func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string) http.Handler {
+func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string, users repository.UserRepository, roles repository.RoleRepository, logger *slog.Logger) http.Handler {
 	rateLimiter := NewRateLimiter(100, 30)
 	protected := rateLimiter.Middleware(mux)
+	protected = RBACEnforcementMiddleware(protected)
+	protected = RBACPermissionsMiddleware(users, roles, logger)(protected)
 	protected = ResourceSetMiddleware(protected)
 	protected = AuthMiddleware(authenticator)(protected)
 	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
