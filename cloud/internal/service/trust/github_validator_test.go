@@ -256,3 +256,36 @@ func TestGitHubValidator_NotBeforeInFuture(t *testing.T) {
 		t.Errorf("reason = %q, want TokenNotYetValid", result.Reason)
 	}
 }
+
+func TestGitHubValidator_WrongKey_InvalidSignature(t *testing.T) {
+	signingKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	jwksKey, _ := rsa.GenerateKey(rand.Reader, 2048) // JWKS has a different key under the same kid
+	kid := "gh-kid-7"
+
+	jwk := jose.JSONWebKey{Key: &jwksKey.PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"}
+	keySet := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{
+		githubOIDCEndpoint: {keys: &keySet, fetchedAt: time.Now()},
+	}, logger: nil}
+
+	claims := map[string]interface{}{
+		"iss": githubOIDCEndpoint,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, signingKey, kid, claims)
+
+	provider := &domain.TrustProvider{Config: json.RawMessage(`{}`)}
+	evidence := &domain.ClientEvidence{
+		GitHub: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	v := &GitHubValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for signature verified against wrong key")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}

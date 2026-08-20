@@ -542,3 +542,69 @@ func TestK8sValidator_NoAudienceConfigured_NotEnforced_Attested(t *testing.T) {
 		t.Errorf("expected attested=true when no EdgeSDKAudience is configured, got reason=%s", result.Reason)
 	}
 }
+
+func TestK8sValidator_MalformedJWT_InvalidSignature(t *testing.T) {
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"https://cluster.example.com"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: "not-a-jwt-at-all"},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for malformed JWT")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}
+
+func TestK8sValidator_MissingKid_InvalidSignature(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-15"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	// Sign the token WITHOUT a kid header — go-jose's ParseSigned still
+	// succeeds (kid is optional at the JWS layer), but the JWKS lookup
+	// by kid ("") must find no matching key.
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	payload, _ := json.Marshal(claims)
+	jws, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := jws.CompactSerialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for token with missing kid")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}

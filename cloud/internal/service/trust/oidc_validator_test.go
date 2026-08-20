@@ -536,3 +536,83 @@ func TestOIDCValidator_Discovery_EmptyOIDCEndpoint_MissingIssuerClaim_NotAtteste
 		t.Errorf("reason = %q, want InvalidIssuer", result.Reason)
 	}
 }
+
+func TestOIDCValidator_UploadJWKS_MalformedJWKS(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	token := signJWT(t, key, "some-kid", map[string]interface{}{"sub": "x"})
+
+	provider := &domain.TrustProvider{
+		Type:   "oidc_id_token",
+		Config: json.RawMessage(`{"attestationMethod":"upload_jwks","jwks":"not valid json"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
+	v := NewOIDCValidator(nil)
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Attested {
+		t.Error("expected attested=false for malformed uploaded JWKS")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}
+
+func TestOIDCValidator_SymmetricKey_TamperedPayload_InvalidSignature(t *testing.T) {
+	// An attacker who intercepts a valid symmetric_key-signed token and
+	// modifies the claims (e.g. to change "sub" and pass a different
+	// match rule) without knowing the shared secret must be rejected —
+	// the HMAC won't match the tampered payload.
+	secret := []byte("my-super-secret-key-for-hmac256!")
+	secretB64 := base64.StdEncoding.EncodeToString(secret)
+
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	originalClaims := map[string]interface{}{
+		"sub": "test-workload",
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	originalClaimsBytes, _ := json.Marshal(originalClaims)
+	originalPayload := base64.RawURLEncoding.EncodeToString(originalClaimsBytes)
+
+	signingInput := header + "." + originalPayload
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(signingInput))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	// Tamper: swap in different claims after signing, keeping the
+	// original (now-invalid) signature.
+	tamperedClaims := map[string]interface{}{
+		"sub": "attacker-controlled-workload",
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	tamperedClaimsBytes, _ := json.Marshal(tamperedClaims)
+	tamperedPayload := base64.RawURLEncoding.EncodeToString(tamperedClaimsBytes)
+	token := header + "." + tamperedPayload + "." + sig
+
+	provider := &domain.TrustProvider{
+		Type:                  "oidc_id_token",
+		Config:                json.RawMessage(`{"attestationMethod":"symmetric_key"}`),
+		SymmetricKeyEncrypted: encryptSymmetricKeyForTest(t, secretB64),
+		MatchRules:            []domain.MatchRule{{Attribute: "sub", Value: "test-workload"}},
+	}
+	evidence := &domain.ClientEvidence{
+		GitLab: &domain.IdentityTokenEvidence{IdentityToken: token},
+	}
+
+	cache := &JWKSCache{entries: map[string]*jwksCacheEntry{}, logger: nil}
+	v := NewOIDCValidator(testEncryptionKey)
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for tampered payload")
+	}
+	if result.Reason != "InvalidSignature" {
+		t.Errorf("reason = %q, want InvalidSignature", result.Reason)
+	}
+}
