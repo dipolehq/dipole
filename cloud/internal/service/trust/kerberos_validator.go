@@ -1,4 +1,4 @@
-// kerberos_validator.go verifies Kerberos-attested workload identity via Controller-signed HMAC-SHA256 attestation documents, checking timestamp freshness to prevent replay.
+// kerberos_validator.go verifies Kerberos-attested workload identity via Controller-signed HMAC-SHA256 attestation, checking timestamp freshness.
 package trust
 
 import (

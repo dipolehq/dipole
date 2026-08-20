@@ -1,9 +1,4 @@
-/*
-Package trust provides Trust Provider validation for the policy evaluation engine.
-
-TrustValidator verifies workload identity evidence against Trust Provider configs.
-StubTrustValidator always returns attested=true (replaced with real validators in Jobs 5-6).
-*/
+// validator.go provides the TrustValidator interface for Trust Provider validation against the policy evaluation engine.
 package trust
 
 import (

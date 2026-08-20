@@ -1,10 +1,4 @@
-/*
-edge_validator.go implements the EdgeTrustValidator interface for the Edge API.
-
-EdgeTrustValidatorService loads a Trust Provider by ID from the database,
-verifies it is active, then delegates to the TrustValidationService for
-real OIDC JWKS verification, AWS signature validation, or K8s token validation.
-*/
+// edge_validator.go implements EdgeTrustValidator for the Edge API, loading and delegating Trust Provider validation.
 package trust
 
 import (

@@ -1,26 +1,4 @@
-/*
-aws_imds_validator.go verifies EC2 instance identity documents.
-
-AWSIMDSValidator base64-decodes the identity document and RSA signature from
-evidence, verifies the signature using the AWS public certificate stored in
-the Trust Provider config, then evaluates match rules against document fields
-(accountId, instanceId, region, etc.).
-
-The signing certificate is customer-supplied config (there is no single
-global AWS public certificate to hardcode as a default trust anchor: AWS
-publishes distinct certificates per verification method — PKCS7/DSA,
-base64-encoded RSA, RSA-2048 — and per partition (standard, GovCloud,
-China), documented at
-https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/regions-certs.html.
-Embedding an incomplete or outdated subset would silently break customers
-in a region/partition not covered, which is worse than requiring upload.
-What this validator DOES enforce is that the configured certificate is
-currently within its own stated validity window (NotBefore/NotAfter) —
-a customer using a rotated-out or not-yet-valid certificate is a
-misconfiguration that should be reported clearly (CertificateExpired /
-CertificateNotYetValid) rather than surfacing as an opaque signature
-failure.
-*/
+// aws_imds_validator.go verifies EC2 instance identity documents via customer-supplied AWS signing certificate.
 package trust
 
 import (
@@ -74,13 +52,6 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		return nil, fmt.Errorf("aws certificate does not contain an RSA public key")
 	}
 
-	// A signature that verifies against an expired or not-yet-valid
-	// certificate is not proof the document came from AWS's currently
-	// operative signing key — reject with a specific, actionable reason
-	// rather than letting this surface as an indistinguishable
-	// InvalidSignature. Checked before signature verification since a
-	// cert outside its validity window shouldn't be trusted regardless
-	// of what it signs.
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
 		return &domain.TrustProviderResult{Attested: false, Reason: "CertificateNotYetValid"}, nil

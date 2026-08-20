@@ -1,10 +1,4 @@
-/*
-gcp_validator.go verifies GCP identity tokens from the Google metadata server.
-
-GCPValidator validates Google-signed identity tokens using standard OIDC
-verification (Google's JWKS endpoint). This is effectively OIDC validation
-with Google as the issuer. Evaluates match rules against token claims (email).
-*/
+// gcp_validator.go verifies GCP identity tokens from the Google metadata server via standard OIDC verification.
 package trust
 
 import (
@@ -42,11 +36,6 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Check issuer: same rationale and trailing-slash normalization as
-	// K8sValidator/OIDCValidator's oidc_discovery path — binds the
-	// verified signature to the specific endpoint this Trust Provider is
-	// configured to trust (Google's own endpoint by default), rather
-	// than any issuer whose JWKS happens to be reachable there.
 	iss, _ := claims["iss"].(string)
 	expectedIssuer := strings.TrimRight(endpoint, "/")
 	if expectedIssuer == "" || strings.TrimRight(iss, "/") != expectedIssuer {
@@ -57,7 +46,6 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 	}
 
-	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)
 	if nbfNotYetValid(claims) {
 		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
 	}

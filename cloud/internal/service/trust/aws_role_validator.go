@@ -1,12 +1,4 @@
-/*
-aws_role_validator.go verifies AWS IAM Role identity by replaying a SigV4-signed
-STS GetCallerIdentity request.
-
-AWSRoleValidator reconstructs an HTTP POST to STS using the signed headers from
-evidence. If STS accepts the request (HTTP 200), the identity is proven. The
-response ARN, Account, and UserId are then evaluated against match rules.
-This is the only validator that makes an outbound HTTP call from Cloud.
-*/
+// aws_role_validator.go verifies AWS IAM Role identity by replaying a SigV4-signed STS GetCallerIdentity request.
 package trust
 
 import (
@@ -22,12 +14,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// awsRegionPattern matches AWS's own region-name format (e.g. us-east-1,
-// ap-south-1, cn-north-1, us-gov-west-1). region is client-supplied
-// evidence used directly in URL construction (fmt.Sprintf(v.stsURLFmt,
-// region)) — validating it against the shape AWS itself uses closes off
-// unvalidated input flowing into that URL, even though the destination
-// host is already constrained to the .amazonaws.com suffix.
 var awsRegionPattern = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z]+-\d$`)
 
 type AWSRoleValidator struct {
@@ -55,11 +41,6 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
 	}
 
-	// region is client-supplied and flows directly into URL construction
-	// in replaySTS (fmt.Sprintf(v.stsURLFmt, region)) — reject anything
-	// that doesn't look like a real AWS region name before it's used,
-	// rather than letting arbitrary characters (path separators, query
-	// delimiters, etc.) reach URL construction unexamined.
 	if !awsRegionPattern.MatchString(sts.Region) {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidRegion"}, nil
 	}
@@ -108,13 +89,6 @@ type getCallerIdentityResult struct {
 	UserID  string `xml:"UserId"`
 }
 
-// allowedSigV4Headers is the exact set of headers a genuine SigV4-signed
-// GetCallerIdentity request needs. signedHeaders comes directly from
-// client-supplied evidence and is replayed verbatim onto the outbound
-// request — without this allowlist, a malicious client could smuggle in
-// headers like Host or Content-Length that influence request
-// routing/parsing, since nothing previously restricted which header
-// names evidence was allowed to inject.
 var allowedSigV4Headers = map[string]bool{
 	"Authorization":        true,
 	"X-Amz-Date":           true,

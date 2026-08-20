@@ -1,11 +1,4 @@
-/*
-service.go provides the TrustValidationService that dispatches trust validation
-to type-specific validators based on the Trust Provider's type field.
-
-TypeValidator is the interface each provider type (K8s, GitHub, OIDC, etc.)
-implements. TrustValidationService looks up the correct validator by type and
-delegates. Returns "UnsupportedProviderType" for unknown types.
-*/
+// service.go provides TrustValidationService, dispatching validation to type-specific validators by Trust Provider type.
 package trust
 
 import (

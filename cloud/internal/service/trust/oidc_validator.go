@@ -1,11 +1,4 @@
-/*
-oidc_validator.go is the generic OIDC validator covering GitLab, Terraform Cloud,
-and any standards-compliant OIDC provider.
-
-OIDCValidator supports three attestation methods: oidc_discovery (fetch JWKS from
-endpoint), upload_jwks (JWKS stored in config), symmetric_key (HMAC-SHA256).
-Used for gitlab_job, terraform_cloud, and oidc_id_token trust provider types.
-*/
+// oidc_validator.go is the generic OIDC validator (oidc_discovery, upload_jwks, symmetric_key) covering GitLab, Terraform Cloud, and any standards-compliant OIDC provider.
 package trust
 
 import (
@@ -21,11 +14,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// OIDCValidator needs the tenant encryption key because the symmetric_key
-// attestation method's HMAC shared secret is stored encrypted
-// (TrustProvider.SymmetricKeyEncrypted), not in the plaintext Config blob
-// — the same reason KerberosValidator holds an encryption key for its
-// AgentController shared secret.
 type OIDCValidator struct {
 	encryptionKey []byte
 }
@@ -82,23 +70,6 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Check issuer for oidc_discovery: the token must have been issued by
-	// the OIDC endpoint this Trust Provider trusts, not merely signed by
-	// a key that happens to be reachable at that endpoint's JWKS. For
-	// upload_jwks and symmetric_key there's no single "endpoint" the
-	// customer configured to compare against — the trust anchor there is
-	// the uploaded key material or shared secret itself, so issuer
-	// enforcement for those methods is expressed via match rules instead.
-	//
-	// Trailing slashes are trimmed from both sides before comparing:
-	// cfg.OIDCEndpoint is raw customer input (FetchJWKS already tolerates
-	// a trailing slash there), while the iss claim emitted by the actual
-	// issuer normally has none — without normalizing, a customer who
-	// configured "https://gitlab.example.com/" would see every
-	// legitimate token rejected as InvalidIssuer. An empty
-	// cfg.OIDCEndpoint is rejected explicitly so a misconfigured Trust
-	// Provider can never match a token that's simply missing its iss
-	// claim (both would otherwise trim to "").
 	if cfg.AttestationMethod == "oidc_discovery" || cfg.AttestationMethod == "" {
 		iss, _ := claims["iss"].(string)
 		expectedIssuer := strings.TrimRight(cfg.OIDCEndpoint, "/")
@@ -107,7 +78,6 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}
 	}
 
-	// Check audience if configured
 	if provider.EdgeSDKAudience != "" {
 		aud := fmt.Sprint(claims["aud"])
 		if aud != provider.EdgeSDKAudience {
@@ -115,17 +85,14 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}
 	}
 
-	// Check expiry
 	if expIsExpired(claims) {
 		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 	}
 
-	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)
 	if nbfNotYetValid(claims) {
 		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
 	}
 
-	// Evaluate match rules
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
@@ -140,12 +107,6 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
-// decryptSymmetricKey returns the base64-encoded HMAC shared secret for a
-// symmetric_key-attestation trust provider, decrypting it from
-// SymmetricKeyEncrypted. There is no legacy plaintext fallback: by the
-// time a Trust Provider using this attestation method reaches Validate,
-// the resources.TrustProviderService/repository backfill has already
-// moved its secret out of Config and into this encrypted field.
 func (v *OIDCValidator) decryptSymmetricKey(provider *domain.TrustProvider) (string, error) {
 	if len(provider.SymmetricKeyEncrypted) == 0 {
 		return "", fmt.Errorf("trust provider has no symmetric key configured")
@@ -163,13 +124,11 @@ func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[str
 		return nil, fmt.Errorf("decode symmetric key: %w", err)
 	}
 
-	// Split JWT into parts
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format")
 	}
 
-	// Verify HMAC-SHA256
 	signingInput := parts[0] + "." + parts[1]
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -184,7 +143,6 @@ func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[str
 		return nil, fmt.Errorf("signature mismatch")
 	}
 
-	// Decode payload
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, fmt.Errorf("decode payload: %w", err)
@@ -208,7 +166,6 @@ func extractOIDCToken(providerType string, evidence *domain.ClientEvidence) stri
 			return evidence.Terraform.IdentityToken
 		}
 	case "oidc_id_token":
-		// Generic OIDC — check multiple sources
 		if evidence.GitHub != nil && evidence.GitHub.IdentityToken != "" {
 			return evidence.GitHub.IdentityToken
 		}
