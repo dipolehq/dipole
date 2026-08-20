@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
@@ -65,10 +66,14 @@ func (f *fakeUserRepoForSignup) Delete(_ context.Context, _ uuid.UUID, _ uuid.UU
 	return nil
 }
 
-type fakeRoleRepoForSignup struct{}
+type fakeRoleRepoForSignup struct {
+	created []domain.Role
+}
 
-func (f *fakeRoleRepoForSignup) Create(_ context.Context, _ uuid.UUID, r *domain.Role) error {
+func (f *fakeRoleRepoForSignup) Create(_ context.Context, tenantID uuid.UUID, r *domain.Role) error {
 	r.ID = uuid.New()
+	r.TenantID = tenantID
+	f.created = append(f.created, *r)
 	return nil
 }
 func (f *fakeRoleRepoForSignup) GetByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.Role, error) {
@@ -173,5 +178,67 @@ func TestSignup_CreatesDefaultResourceSetWithWellKnownID(t *testing.T) {
 	}
 	if got.TenantID != resourceSets.created[0].TenantID {
 		t.Errorf("resource set TenantID mismatch")
+	}
+}
+
+func TestSignup_SuperAdminRoleGetsRealPermissions(t *testing.T) {
+	// Regression coverage for the exact bug Phase 4 fixes: the bootstrap
+	// "SuperAdmin" role created at signup used to be left with a nil/empty
+	// Permissions field (service.ParsePermissions on it would error or
+	// yield nil), which combined with Phase 3's fail-closed
+	// RBACEnforcementMiddleware would have locked every brand-new tenant
+	// out of their own account immediately after signing up. The role
+	// created here must carry service.SuperAdminPermissions() — every
+	// resource in service.ResourceRegistry at ReadWrite — not an empty map.
+	tenants := &fakeTenantRepoForSignup{}
+	users := &fakeUserRepoForSignup{}
+	roles := &fakeRoleRepoForSignup{}
+	resourceSets := &fakeResourceSetRepoForSignup{}
+	profiles := &fakeTenantProfileWriterForSignup{}
+
+	issuer, err := identity.NewIdentityIssuer("https://id.dipolehq.dev")
+	if err != nil {
+		t.Fatalf("failed to construct issuer: %v", err)
+	}
+
+	svc := NewSignupService(tenants, users, roles, resourceSets, profiles, issuer)
+
+	_, err = svc.Signup(context.Background(), &SignupRequest{
+		FirstName:   "Ada",
+		LastName:    "Lovelace",
+		CompanyName: "Acme Inc",
+		Email:       "ada@acme.example",
+		Password:    "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("signup failed: %v", err)
+	}
+
+	if len(roles.created) != 1 {
+		t.Fatalf("expected exactly 1 role created, got %d", len(roles.created))
+	}
+	created := roles.created[0]
+	if created.Name != "SuperAdmin" {
+		t.Errorf("expected role name %q, got %q", "SuperAdmin", created.Name)
+	}
+	if !created.IsActive {
+		t.Error("expected bootstrap SuperAdmin role to be active")
+	}
+	if len(created.Permissions) == 0 {
+		t.Fatal("bootstrap SuperAdmin role has empty Permissions — new tenant would be locked out of every endpoint under fail-closed RBAC enforcement")
+	}
+
+	perms, err := service.ParsePermissions(created.Permissions)
+	if err != nil {
+		t.Fatalf("bootstrap role Permissions failed to parse: %v", err)
+	}
+	want := service.SuperAdminPermissions()
+	if len(perms) != len(want) {
+		t.Fatalf("bootstrap role has %d permission entries, want %d (one per service.ResourceRegistry entry)", len(perms), len(want))
+	}
+	for _, res := range service.ResourceRegistry {
+		if perms[res.ID] != service.ReadWrite {
+			t.Errorf("bootstrap role Permissions[%q] = %q, want ReadWrite", res.ID, perms[res.ID])
+		}
 	}
 }

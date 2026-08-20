@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 )
 
@@ -129,10 +131,15 @@ func (s *SignupService) Signup(ctx context.Context, req *SignupRequest) (*Signup
 		PasswordHash: passwordHash,
 	}
 
+	superAdminPermissions, err := json.Marshal(service.SuperAdminPermissions())
+	if err != nil {
+		return nil, fmt.Errorf("marshal super admin permissions: %w", err)
+	}
 	superAdminRole := &domain.Role{
 		Name:        "SuperAdmin",
 		Description: "Full administrative access",
 		IsActive:    true,
+		Permissions: superAdminPermissions,
 	}
 	if err := s.roles.Create(ctx, tenant.ID, superAdminRole); err != nil {
 		return nil, fmt.Errorf("create super admin role: %w", err)

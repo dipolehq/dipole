@@ -202,9 +202,11 @@ func TestResolvePermissions_InactiveRole_ReturnsNil(t *testing.T) {
 }
 
 func TestResolvePermissions_EmptyRolePermissions_ReturnsNil(t *testing.T) {
-	// This is the exact state today's tenant-bootstrap "SuperAdmin" role
-	// is left in (auth/signup.go never sets Permissions) - must fail
-	// closed, not silently grant access because the field is absent.
+	// This was the exact state the tenant-bootstrap "SuperAdmin" role used
+	// to be left in before Phase 4 fixed auth/signup.go to set real
+	// SuperAdminPermissions() - kept as a general defensive case (any role
+	// with a nil/absent Permissions field, however it got that way, must
+	// fail closed, not silently grant access).
 	tenantID := uuid.New()
 	roleID := uuid.New()
 	users := newFakeUserRepoForRBAC()
