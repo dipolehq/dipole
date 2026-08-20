@@ -5,6 +5,21 @@ AWSIMDSValidator base64-decodes the identity document and RSA signature from
 evidence, verifies the signature using the AWS public certificate stored in
 the Trust Provider config, then evaluates match rules against document fields
 (accountId, instanceId, region, etc.).
+
+The signing certificate is customer-supplied config (there is no single
+global AWS public certificate to hardcode as a default trust anchor: AWS
+publishes distinct certificates per verification method — PKCS7/DSA,
+base64-encoded RSA, RSA-2048 — and per partition (standard, GovCloud,
+China), documented at
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/regions-certs.html.
+Embedding an incomplete or outdated subset would silently break customers
+in a region/partition not covered, which is worse than requiring upload.
+What this validator DOES enforce is that the configured certificate is
+currently within its own stated validity window (NotBefore/NotAfter) —
+a customer using a rotated-out or not-yet-valid certificate is a
+misconfiguration that should be reported clearly (CertificateExpired /
+CertificateNotYetValid) rather than surfacing as an opaque signature
+failure.
 */
 package trust
 
@@ -18,6 +33,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -48,9 +64,29 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	pubKey, err := parseRSAPublicKeyFromPEM(cfg.Certificate)
+	cert, err := parseCertificateFromPEM(cfg.Certificate)
 	if err != nil {
 		return nil, fmt.Errorf("parse aws certificate: %w", err)
+	}
+
+	pubKey, ok := cert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("aws certificate does not contain an RSA public key")
+	}
+
+	// A signature that verifies against an expired or not-yet-valid
+	// certificate is not proof the document came from AWS's currently
+	// operative signing key — reject with a specific, actionable reason
+	// rather than letting this surface as an indistinguishable
+	// InvalidSignature. Checked before signature verification since a
+	// cert outside its validity window shouldn't be trusted regardless
+	// of what it signs.
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "CertificateNotYetValid"}, nil
+	}
+	if now.After(cert.NotAfter) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "CertificateExpired"}, nil
 	}
 
 	hash := sha256.Sum256(docBytes)
@@ -77,7 +113,7 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 	return &domain.TrustProviderResult{Attested: true, Claims: docFields}, nil
 }
 
-func parseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
+func parseCertificateFromPEM(pemStr string) (*x509.Certificate, error) {
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("no PEM block found in certificate")
@@ -88,10 +124,5 @@ func parseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
 		return nil, fmt.Errorf("parse x509 certificate: %w", err)
 	}
 
-	rsaKey, ok := cert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("certificate does not contain RSA public key")
-	}
-
-	return rsaKey, nil
+	return cert, nil
 }

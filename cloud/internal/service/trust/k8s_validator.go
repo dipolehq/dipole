@@ -10,10 +10,8 @@ package trust
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
-	"time"
-
-	"github.com/go-jose/go-jose/v4"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -36,34 +34,11 @@ func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 
 	token := evidence.K8s.ServiceAccountToken
 
-	// Parse JWT without verification to get header
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-	if err != nil {
-		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
-	}
-
-	// Fetch JWKS
-	keySet, err := jwksCache.Get(ctx, cfg.OIDCEndpoint)
-	if err != nil {
-		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
-	}
-
-	// Find key by kid
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
-	}
-
-	// Verify signature
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
-	}
-
-	// Parse claims
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
+	claims, verr := verifyJWS(ctx, token, cachedKeySetResolver{cache: jwksCache, endpoint: cfg.OIDCEndpoint})
+	if verr != nil {
+		if verr.keySetUnavailable() {
+			return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
+		}
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
@@ -89,11 +64,20 @@ func (v *K8sValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidIssuer"}, nil
 	}
 
-	// Check expiry
-	if exp, ok := claims["exp"].(float64); ok {
-		if int64(exp) < time.Now().Unix() {
-			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
+	// Check audience matches edge_sdk_audience, same as GitHubValidator and
+	// OIDCValidator. Only enforced if configured, matching those validators'
+	// existing behavior (see Part 1's Open Questions on whether this should
+	// become mandatory across all three).
+	if provider.EdgeSDKAudience != "" {
+		aud := fmt.Sprint(claims["aud"])
+		if aud != provider.EdgeSDKAudience {
+			return &domain.TrustProviderResult{Attested: false, Reason: "InvalidAudience"}, nil
 		}
+	}
+
+	// Check expiry
+	if expIsExpired(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 	}
 
 	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)

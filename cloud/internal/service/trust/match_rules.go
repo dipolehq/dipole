@@ -5,6 +5,48 @@ EvaluateMatchRules checks ALL rules (AND logic) against a claims map. Supports
 dot-notation for nested claims with special handling for compound keys like
 "kubernetes.io". Wildcard value "*" matches any non-empty field. Returns
 detailed failure info (attribute, expected, actual) on mismatch.
+
+# Claim value type semantics
+
+rule.Value is always a plain string (it's user-configured Trust Provider
+config), but the claim value it's compared against comes from decoded JSON
+and can be any of the types encoding/json produces: string, float64 (JSON
+has no distinct int type), bool, nil, []interface{}, or map[string]interface{}.
+resolveClaimPath converts whatever it finds to a string via fmt.Sprint
+before comparing, so match rules work correctly and predictably against
+the JSON scalar types:
+  - string: compared as-is (the common case: sub, repository, email, etc.)
+  - number (float64): fmt.Sprint renders whole numbers without a decimal
+    point ("42", not "42.000000") and fractional numbers with one
+    ("42.5"), so a rule.Value of "42" correctly matches a claim of 42.
+  - bool: renders as "true" or "false", matchable with rule.Value "true"/"false".
+  - null: renders as "<nil>". No rule.Value will ever equal this except
+    the literal string "<nil>", which is not a realistic customer input —
+    in practice this means a null claim value can only satisfy a "*"
+    (wildcard) rule if the claim key exists (found=true) with a non-empty
+    stringified value... but "<nil>" IS non-empty, so a wildcard rule
+    against an explicit null actually passes. This is almost certainly
+    not what a customer configuring "field must be present and non-empty"
+    intends, but it is what the code does today; documented here rather
+    than silently changed, since "should a wildcard rule treat null as
+    absent" is a product decision, not a bug fix.
+
+# Array and object claim values are not usefully matchable
+
+If the value at the resolved path is a JSON array or object rather than a
+scalar, fmt.Sprint produces Go's internal representation, not JSON: e.g.
+a claim value ["prod","web"] renders as the string "[prod web]", and
+{"a":1} renders as "map[a:1]". These are deterministic (Go's fmt sorts
+map keys for stable output) but not values any customer configuring a
+Trust Provider would reasonably guess or write into a match rule's Value
+field. There is no supported way today to match "array contains X" or
+match on individual array elements — a match rule against an array-typed
+claim can, in practice, only ever succeed by a customer copy-pasting the
+exact "[elem1 elem2]" string, which is not a realistic or documented
+usage pattern. If per-element or "contains" array matching is needed,
+that is a product decision (what should it mean — exact match on the
+whole array, any-element match, all-elements match?) requiring its own
+design, not something this function does today.
 */
 package trust
 

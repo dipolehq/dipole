@@ -16,9 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
-
-	"github.com/go-jose/go-jose/v4"
 
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
@@ -60,9 +57,17 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 
 	switch cfg.AttestationMethod {
 	case "oidc_discovery", "":
-		claims, err = v.verifyWithDiscovery(ctx, token, cfg.OIDCEndpoint, jwksCache)
+		var verr *jwsVerifyError
+		claims, verr = verifyJWS(ctx, token, cachedKeySetResolver{cache: jwksCache, endpoint: cfg.OIDCEndpoint})
+		if verr != nil {
+			err = verr
+		}
 	case "upload_jwks":
-		claims, err = v.verifyWithUploadedJWKS(token, cfg.JWKS)
+		var verr *jwsVerifyError
+		claims, verr = verifyJWS(ctx, token, staticKeySetResolver{jwksJSON: cfg.JWKS})
+		if verr != nil {
+			err = verr
+		}
 	case "symmetric_key":
 		var symmetricKey string
 		symmetricKey, err = v.decryptSymmetricKey(provider)
@@ -111,10 +116,8 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 	}
 
 	// Check expiry
-	if exp, ok := claims["exp"].(float64); ok {
-		if int64(exp) < time.Now().Unix() {
-			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
-		}
+	if expIsExpired(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 	}
 
 	// Check not-before: reject tokens that aren't valid yet (RFC 7519 §4.1.5)
@@ -135,64 +138,6 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 	}
 
 	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
-}
-
-func (v *OIDCValidator) verifyWithDiscovery(ctx context.Context, token, oidcEndpoint string, jwksCache *JWKSCache) (map[string]interface{}, error) {
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-	if err != nil {
-		return nil, err
-	}
-
-	keySet, err := jwksCache.Get(ctx, oidcEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("key not found: %s", kid)
-	}
-
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-	return claims, nil
-}
-
-func (v *OIDCValidator) verifyWithUploadedJWKS(token, jwksJSON string) (map[string]interface{}, error) {
-	var keySet jose.JSONWebKeySet
-	if err := json.Unmarshal([]byte(jwksJSON), &keySet); err != nil {
-		return nil, err
-	}
-
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-	if err != nil {
-		return nil, err
-	}
-
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("key not found: %s", kid)
-	}
-
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-	return claims, nil
 }
 
 // decryptSymmetricKey returns the base64-encoded HMAC shared secret for a

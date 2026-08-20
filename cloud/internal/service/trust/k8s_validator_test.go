@@ -442,3 +442,103 @@ func TestK8sValidator_NotBeforeWithinClockSkew_Attested(t *testing.T) {
 		t.Errorf("expected attested=true for nbf within clock skew tolerance, got reason=%s", result.Reason)
 	}
 }
+
+func TestK8sValidator_AudienceMismatch(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-12"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"aud": "https://wrong-audience.dipolehq.com",
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		EdgeSDKAudience: "https://acme-id.dipolehq.com",
+		Config:          json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, _ := v.Validate(context.Background(), provider, evidence, cache)
+
+	if result.Attested {
+		t.Error("expected attested=false for audience mismatch")
+	}
+	if result.Reason != "InvalidAudience" {
+		t.Errorf("reason = %q, want InvalidAudience", result.Reason)
+	}
+}
+
+func TestK8sValidator_AudienceMatch_Attested(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-13"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	audience := "https://acme-id.dipolehq.com"
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"aud": audience,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		EdgeSDKAudience: audience,
+		Config:          json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true for matching audience, got reason=%s", result.Reason)
+	}
+}
+
+func TestK8sValidator_NoAudienceConfigured_NotEnforced_Attested(t *testing.T) {
+	// When EdgeSDKAudience is not configured on the Trust Provider, the
+	// audience check must be skipped entirely (opt-in, matching
+	// GitHubValidator/OIDCValidator behavior) — a token with any aud
+	// value, or none at all, must still attest.
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	kid := "test-kid-14"
+	server, cache := jwksServer(t, key, kid)
+	defer server.Close()
+
+	claims := map[string]interface{}{
+		"iss": server.URL,
+		"exp": float64(time.Now().Add(1 * time.Hour).Unix()),
+		// no "aud" claim, and provider.EdgeSDKAudience is unset below
+	}
+	token := signJWT(t, key, kid, claims)
+
+	provider := &domain.TrustProvider{
+		Config: json.RawMessage(`{"oidcEndpoint":"` + server.URL + `"}`),
+	}
+	evidence := &domain.ClientEvidence{
+		K8s: &domain.K8sEvidence{ServiceAccountToken: token},
+	}
+
+	v := &K8sValidator{}
+	result, err := v.Validate(context.Background(), provider, evidence, cache)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Attested {
+		t.Errorf("expected attested=true when no EdgeSDKAudience is configured, got reason=%s", result.Reason)
+	}
+}
