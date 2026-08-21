@@ -260,7 +260,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 			errCh <- fmt.Errorf("grpc server: %w", err)
 		}
 	}()
-	
+
 	logStreamSvc := reporting.NewLogStreamService(repos.Events, repos.LogStreams, logger)
 	logStreamSvc.RegisterExporter("splunk_siem", reporting.NewSplunkExporter())
 	logStreamSvc.RegisterExporter("crowdstrike_siem", reporting.NewCrowdStrikeExporter())
