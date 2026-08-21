@@ -16,6 +16,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 const sessionTokenLifetime = 1 * time.Hour
@@ -56,6 +57,12 @@ func (s *RegistrationService) RegisterController(ctx context.Context, tenantID u
 func (s *RegistrationService) CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error) {
 	code := generateDeviceCode()
 	expiresAt := time.Now().Add(1 * time.Hour)
+	// agent_controllers.resource_set_id is NOT NULL DEFAULT
+	// scope.DefaultResourceSetID, but a column DEFAULT only applies when
+	// the column is omitted from the INSERT — AgentControllerRepo.Create
+	// always includes it, so it must be resolved here rather than left
+	// nil, or the insert violates the NOT NULL constraint.
+	defaultRS := scope.DefaultResourceSetID
 
 	controller := &domain.AgentController{
 		ID:                  uuid.New(),
@@ -65,6 +72,7 @@ func (s *RegistrationService) CreateController(ctx context.Context, tenantID uui
 		Status:              domain.AgentStatusUnregistered,
 		DeviceCode:          code,
 		DeviceCodeExpiresAt: &expiresAt,
+		ResourceSetID:       &defaultRS,
 		CreatedAt:           time.Now(),
 	}
 
@@ -170,11 +178,18 @@ func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.U
 	}
 
 	now := time.Now()
+	// agent_proxies.resource_set_id is NOT NULL DEFAULT
+	// scope.DefaultResourceSetID — same reasoning as CreateController
+	// above: a Postgres column DEFAULT never applies to an explicit NULL,
+	// and AgentProxyRepo.Create always includes this column, so it must
+	// be resolved here.
+	defaultRS := scope.DefaultResourceSetID
 	proxy := &domain.AgentProxy{
 		ID:                uuid.New(),
 		TenantID:          tenantID,
 		AgentControllerID: &controllerID,
 		Status:            domain.AgentStatusRegistered,
+		ResourceSetID:     &defaultRS,
 		RegisteredAt:      &now,
 	}
 

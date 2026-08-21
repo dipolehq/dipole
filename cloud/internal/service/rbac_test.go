@@ -1,3 +1,4 @@
+// rbac_test.go tests permission checking, default role permission sets, and ResourceFromPath's path-to-resource matching.
 package service
 
 import (
@@ -100,8 +101,6 @@ func TestRBAC_CheckPermission_ReadWriteAllowsEverything(t *testing.T) {
 	}
 }
 
-// --- Default permission sets are registry-driven ---
-
 func TestSuperAdminPermissions_CoversEveryRegistryResourceWithReadWrite(t *testing.T) {
 	perms := SuperAdminPermissions()
 	if len(perms) != len(ResourceRegistry) {
@@ -127,12 +126,6 @@ func TestReadOnlyPermissions_CoversEveryRegistryResourceWithReadOnly(t *testing.
 }
 
 func TestAdminPermissions_ReadOnlyResourcesNeverGetReadWrite(t *testing.T) {
-	// AdminPermissions must never grant ReadWrite on a resource the
-	// registry marks ReadOnly (the events/compliance resources, which
-	// have no write endpoint at all) - even Super Admin logically can't
-	// "write" something with no write endpoint, but AdminPermissions
-	// specifically must reflect that in the stored value, not just rely
-	// on there being no endpoint to hit.
 	perms := AdminPermissions()
 	for _, res := range ResourceRegistry {
 		if res.ReadOnly && perms[res.ID] == ReadWrite {
@@ -150,8 +143,6 @@ func TestAdminPermissions_RolesAndIdentityProvidersAreReadOnly(t *testing.T) {
 		t.Errorf(`AdminPermissions["identity_providers"] = %q, want ReadOnly`, perms["identity_providers"])
 	}
 }
-
-// --- ResourceRegistry / new resources ---
 
 func TestResourceFromPath_NewEventAndComplianceResources(t *testing.T) {
 	cases := []struct {
@@ -196,24 +187,11 @@ func TestResourceRegistry_NoDuplicatePathSegments(t *testing.T) {
 func TestRBAC_CheckPermission_UnknownResource_Forbidden(t *testing.T) {
 	svc := NewRBACService()
 	perms := SuperAdminPermissions()
-
-	// A resource with no entry in the permissions map at all (e.g. a
-	// resource type added after this role was created) must fail closed,
-	// not be silently allowed.
 	err := svc.CheckPermission(perms, "some_future_resource", "GET")
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected ErrForbidden for a resource absent from the permissions map, got %v", err)
 	}
 }
-
-// --- ResourceFromPath tests ---
-//
-// These cover every resource path segment actually registered in
-// cloud/internal/transport/rest (cross-checked against api_handlers.go,
-// trust_providers.go, access_policies.go, access_conditions.go,
-// credential_providers.go, client_workloads.go, server_workloads.go),
-// plus adversarial inputs proving segment-exact matching isn't fooled by
-// a resource name appearing as a substring of an unrelated path segment.
 
 func TestResourceFromPath_AllRegisteredResources(t *testing.T) {
 	cases := []struct {
@@ -261,17 +239,14 @@ func TestResourceFromPath_NoResourceMatch_ReturnsEmpty(t *testing.T) {
 }
 
 func TestResourceFromPath_SubstringIsNotMistakenForResource(t *testing.T) {
-	// Regression coverage for the exact bug the segment-based rewrite
-	// fixes: a path segment that CONTAINS a resource name as a substring
-	// (but isn't equal to it) must not match that resource.
 	cases := []struct {
 		path     string
 		expected string
 	}{
-		{"/api/v1/user-roles", ""},            // contains "roles" as substring, not a segment match
-		{"/api/v1/super-users", ""},           // contains "users" as substring
-		{"/api/v1/trust-providers-old", ""},   // contains "trust-providers" as substring
-		{"/api/v1/non-agent-controllers", ""}, // contains "agent-controllers" as substring
+		{"/api/v1/user-roles", ""},
+		{"/api/v1/super-users", ""},
+		{"/api/v1/trust-providers-old", ""},
+		{"/api/v1/non-agent-controllers", ""},
 	}
 	for _, c := range cases {
 		if got := ResourceFromPath(c.path); got != c.expected {
@@ -281,10 +256,6 @@ func TestResourceFromPath_SubstringIsNotMistakenForResource(t *testing.T) {
 }
 
 func TestResourceFromPath_FirstMatchingSegmentWins_Deterministic(t *testing.T) {
-	// A path that legitimately contains two different resource segments
-	// (contrived, but proves determinism): the result must always be the
-	// first one encountered left-to-right, not vary across runs the way
-	// map iteration order could have caused with the old implementation.
 	path := "/api/v1/roles/123/users"
 	for i := 0; i < 20; i++ {
 		if got := ResourceFromPath(path); got != "roles" {

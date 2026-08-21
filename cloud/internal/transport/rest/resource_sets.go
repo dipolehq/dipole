@@ -6,6 +6,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -38,6 +39,12 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
+	if h.planLimiter != nil {
+		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceResourceSets); err != nil {
+			respondBadRequest(w, err.Error())
+			return
+		}
+	}
 	var req resourceSetRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())

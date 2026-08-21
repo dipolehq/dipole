@@ -13,6 +13,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 )
@@ -60,6 +61,8 @@ func (s *TrustProviderService) Create(ctx context.Context, tenantID uuid.UUID, t
 		}
 	}
 	normalizeTrustProvider(tp)
+	resolved := scope.ResolveResourceSetID(tp.ResourceSetID)
+	tp.ResourceSetID = &resolved
 	if err := validateTrustProvider(tp); err != nil {
 		return err
 	}
@@ -103,6 +106,9 @@ func (s *TrustProviderService) Update(ctx context.Context, tenantID uuid.UUID, t
 	}
 	tp.EdgeSDKClientID = existing.EdgeSDKClientID
 	tp.EdgeSDKAudience = existing.EdgeSDKAudience
+	if tp.ResourceSetID == nil {
+		tp.ResourceSetID = existing.ResourceSetID
+	}
 
 	if err := s.extractAndEncryptSymmetricKey(tp); err != nil {
 		return err

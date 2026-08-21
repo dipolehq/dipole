@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type fakeClientWorkloadRepoForTest struct {
@@ -192,5 +193,72 @@ func TestClientWorkloadService_Get_NotFound_ReturnsErrNotFound(t *testing.T) {
 
 	if err != domain.ErrNotFound {
 		t.Errorf("expected domain.ErrNotFound, got %v", err)
+	}
+}
+
+func TestClientWorkloadService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	repo := newFakeClientWorkloadRepoForTest()
+	svc := NewClientWorkloadService(repo)
+
+	cw := validClientWorkload("worker")
+	if err := svc.Create(context.Background(), uuid.New(), cw); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stored := repo.stored[cw.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestClientWorkloadService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	// Regression coverage for a real bug: the web client never sends
+	// resourceSetId on save (only on initial create), so Update must
+	// preserve whatever resource set the workload already had rather
+	// than silently resetting it to Default on every edit.
+	repo := newFakeClientWorkloadRepoForTest()
+	svc := NewClientWorkloadService(repo)
+
+	customRS := uuid.New()
+	cw := validClientWorkload("worker")
+	cw.ResourceSetID = &customRS
+	if err := svc.Create(context.Background(), uuid.New(), cw); err != nil {
+		t.Fatalf("unexpected error on create: %v", err)
+	}
+
+	update := validClientWorkload("worker-renamed")
+	update.ID = cw.ID
+	// deliberately not setting update.ResourceSetID, matching what the
+	// real web client sends on save today
+	if err := svc.Update(context.Background(), cw.TenantID, update); err != nil {
+		t.Fatalf("unexpected error on update: %v", err)
+	}
+
+	stored := repo.stored[cw.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
+	}
+}
+
+func TestClientWorkloadService_Update_ExplicitResourceSetID_Overrides(t *testing.T) {
+	repo := newFakeClientWorkloadRepoForTest()
+	svc := NewClientWorkloadService(repo)
+
+	cw := validClientWorkload("worker")
+	if err := svc.Create(context.Background(), uuid.New(), cw); err != nil {
+		t.Fatalf("unexpected error on create: %v", err)
+	}
+
+	newRS := uuid.New()
+	update := validClientWorkload("worker")
+	update.ID = cw.ID
+	update.ResourceSetID = &newRS
+	if err := svc.Update(context.Background(), cw.TenantID, update); err != nil {
+		t.Fatalf("unexpected error on update: %v", err)
+	}
+
+	stored := repo.stored[cw.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != newRS {
+		t.Errorf("expected an explicitly provided ResourceSetID to take effect, got %v", stored.ResourceSetID)
 	}
 }

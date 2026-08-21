@@ -11,6 +11,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 var testEncryptionKey = []byte("01234567890123456789012345678901")[:32]
@@ -236,4 +237,38 @@ func isValidationError(err error, target **domain.ValidationError) bool {
 		*target = ve
 	}
 	return ok
+}
+
+func TestTrustProviderService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	svc, repo := newTestTrustProviderService()
+	tp := &domain.TrustProvider{Name: "Test", Type: "oidc_id_token"}
+
+	if err := svc.Create(context.Background(), uuid.New(), tp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stored := repo.stored[tp.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestTrustProviderService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	svc, repo := newTestTrustProviderService()
+	tenantID := uuid.New()
+	customRS := uuid.New()
+
+	tp := &domain.TrustProvider{Name: "Test", Type: "oidc_id_token", ResourceSetID: &customRS}
+	if err := svc.Create(context.Background(), tenantID, tp); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	update := &domain.TrustProvider{ID: tp.ID, Name: "Test Renamed", Type: "oidc_id_token"}
+	if err := svc.Update(context.Background(), tenantID, update); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	stored := repo.stored[tp.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
+	}
 }

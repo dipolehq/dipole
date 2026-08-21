@@ -185,6 +185,9 @@ func (h *APIHandlers) UpdateAgentController(w http.ResponseWriter, r *http.Reque
 	ac := req.toDomain()
 	ac.ID = id
 	ac.TenantID = tenantID
+	if ac.ResourceSetID == nil {
+		ac.ResourceSetID = existing.ResourceSetID
+	}
 	if err := h.agentControllers.Update(r.Context(), tenantID, &ac); err != nil {
 		respondDomainError(w, err)
 		return

@@ -9,6 +9,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
@@ -45,6 +46,8 @@ func (s *ServerWorkloadService) Create(ctx context.Context, tenantID uuid.UUID, 
 		}
 	}
 	normalizeServerWorkload(sw)
+	resolved := scope.ResolveResourceSetID(sw.ResourceSetID)
+	sw.ResourceSetID = &resolved
 	if err := validateServerWorkload(sw); err != nil {
 		return err
 	}
@@ -63,6 +66,9 @@ func (s *ServerWorkloadService) Update(ctx context.Context, tenantID uuid.UUID, 
 	}
 	if existing == nil {
 		return domain.ErrNotFound
+	}
+	if sw.ResourceSetID == nil {
+		sw.ResourceSetID = existing.ResourceSetID
 	}
 	return s.repo.Update(ctx, tenantID, sw)
 }

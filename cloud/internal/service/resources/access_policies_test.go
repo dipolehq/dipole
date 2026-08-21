@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type fakeAccessPolicyRepo struct {
@@ -389,5 +390,45 @@ func TestAccessPolicyService_Update_RejectsCrossTenantReference(t *testing.T) {
 	err := f.svc.Update(context.Background(), tenantA, update)
 	if err == nil {
 		t.Fatal("expected Update to reject a cross-tenant Trust Provider reference")
+	}
+}
+
+func TestAccessPolicyService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	f := newAccessPolicyTestFixture()
+	tenantA := uuid.New()
+	cwID, swID := uuid.New(), uuid.New()
+	f.clientWorkloads.add(tenantA, cwID, &domain.ClientWorkload{ID: cwID, TenantID: tenantA})
+	f.serverWorkloads.add(tenantA, swID, &domain.ServerWorkload{ID: swID, TenantID: tenantA})
+
+	policy := &domain.AccessPolicy{Name: "test", ClientWorkloadID: cwID, ServerWorkloadID: swID}
+	if err := f.svc.Create(context.Background(), tenantA, policy); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stored := f.repo.stored[policy.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestAccessPolicyService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	f := newAccessPolicyTestFixture()
+	tenantA := uuid.New()
+	cwID, swID := uuid.New(), uuid.New()
+	f.clientWorkloads.add(tenantA, cwID, &domain.ClientWorkload{ID: cwID, TenantID: tenantA})
+	f.serverWorkloads.add(tenantA, swID, &domain.ServerWorkload{ID: swID, TenantID: tenantA})
+
+	customRS := uuid.New()
+	policy := &domain.AccessPolicy{Name: "test", ClientWorkloadID: cwID, ServerWorkloadID: swID, ResourceSetID: &customRS}
+	if err := f.svc.Create(context.Background(), tenantA, policy); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	update := &domain.AccessPolicy{ID: policy.ID, Name: "renamed", ClientWorkloadID: cwID, ServerWorkloadID: swID}
+	if err := f.svc.Update(context.Background(), tenantA, update); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	stored := f.repo.stored[policy.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
 	}
 }

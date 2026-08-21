@@ -10,6 +10,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
@@ -65,6 +66,8 @@ func (s *AccessPolicyService) Create(ctx context.Context, tenantID uuid.UUID, p 
 		}
 	}
 	normalizeAccessPolicy(p)
+	resolved := scope.ResolveResourceSetID(p.ResourceSetID)
+	p.ResourceSetID = &resolved
 	if err := validateAccessPolicy(p); err != nil {
 		return err
 	}
@@ -85,6 +88,9 @@ func (s *AccessPolicyService) Update(ctx context.Context, tenantID uuid.UUID, p 
 	}
 	if existing == nil {
 		return domain.ErrNotFound
+	}
+	if p.ResourceSetID == nil {
+		p.ResourceSetID = existing.ResourceSetID
 	}
 	if err := s.validateReferencesBelongToTenant(ctx, tenantID, p); err != nil {
 		return err

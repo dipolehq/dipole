@@ -9,6 +9,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
@@ -83,6 +84,8 @@ func (s *ClientWorkloadService) Create(ctx context.Context, tenantID uuid.UUID, 
 		}
 	}
 	normalizeClientWorkload(cw)
+	resolved := scope.ResolveResourceSetID(cw.ResourceSetID)
+	cw.ResourceSetID = &resolved
 	if err := validateClientWorkload(cw); err != nil {
 		return err
 	}
@@ -101,6 +104,15 @@ func (s *ClientWorkloadService) Update(ctx context.Context, tenantID uuid.UUID, 
 	}
 	if existing == nil {
 		return domain.ErrNotFound
+	}
+	// A caller that omits resourceSetId (the web client never sends it on
+	// save today, only on the initial create form) must NOT have this
+	// workload silently reassigned to the Default resource set — that
+	// would be silent data loss for anyone using non-default resource
+	// sets. Preserve the existing assignment unless the caller explicitly
+	// provided a different one.
+	if cw.ResourceSetID == nil {
+		cw.ResourceSetID = existing.ResourceSetID
 	}
 	return s.repo.Update(ctx, tenantID, cw)
 }

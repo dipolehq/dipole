@@ -88,15 +88,22 @@ func (r *RoleRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID)
 	return nil
 }
 
-func (r *RoleRepo) AssignResourceSets(ctx context.Context, _ uuid.UUID, roleID uuid.UUID, resourceSetIDs []uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM role_resource_set_assignments WHERE role_id = $1`, roleID)
+// AssignResourceSets replaces the full set of resource sets a role is
+// scoped to. Every write is scoped by tenantID (not just roleID) so a
+// caller can never assign — or, via the DELETE below, clear — resource
+// set assignments belonging to a role in a different tenant, even if
+// roleID collided with another tenant's role ID.
+func (r *RoleRepo) AssignResourceSets(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID, resourceSetIDs []uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM role_resource_set_assignments WHERE tenant_id = $1 AND role_id = $2`,
+		tenantID, roleID)
 	if err != nil {
 		return fmt.Errorf("clear role resource set assignments: %w", err)
 	}
 	for _, rsID := range resourceSetIDs {
 		_, err := r.pool.Exec(ctx,
-			`INSERT INTO role_resource_set_assignments (role_id, resource_set_id) VALUES ($1, $2)`,
-			roleID, rsID)
+			`INSERT INTO role_resource_set_assignments (tenant_id, role_id, resource_set_id) VALUES ($1, $2, $3)`,
+			tenantID, roleID, rsID)
 		if err != nil {
 			return fmt.Errorf("assign resource set to role: %w", err)
 		}
@@ -104,9 +111,14 @@ func (r *RoleRepo) AssignResourceSets(ctx context.Context, _ uuid.UUID, roleID u
 	return nil
 }
 
-func (r *RoleRepo) GetResourceSetIDs(ctx context.Context, _ uuid.UUID, roleID uuid.UUID) ([]uuid.UUID, error) {
+// GetResourceSetIDs is tenant-scoped for the same reason AssignResourceSets
+// is: role_resource_set_assignments carries its own tenant_id (rather than
+// relying solely on role_id/resource_set_id uniqueness) so a lookup can
+// never cross a tenant boundary.
+func (r *RoleRepo) GetResourceSetIDs(ctx context.Context, tenantID uuid.UUID, roleID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT resource_set_id FROM role_resource_set_assignments WHERE role_id = $1`, roleID)
+		`SELECT resource_set_id FROM role_resource_set_assignments WHERE tenant_id = $1 AND role_id = $2`,
+		tenantID, roleID)
 	if err != nil {
 		return nil, fmt.Errorf("get role resource set assignments: %w", err)
 	}

@@ -1,11 +1,4 @@
-/*
-email.go provides a generic email delivery interface and a Resend implementation.
-
-The EmailService interface can be used by any service that needs to send emails
-(password reset, signup verification, user invites, alerts). The Resend implementation
-calls Resend's REST API. If no API key is configured, the NoopEmailService is used
-which silently drops emails (useful for local development).
-*/
+// email.go provides a generic EmailService interface with a Resend-backed implementation, falling back to a no-op sender when no API key is configured.
 package service
 
 import (

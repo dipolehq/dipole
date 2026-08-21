@@ -9,6 +9,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
@@ -45,6 +46,8 @@ func (s *AccessConditionService) Create(ctx context.Context, tenantID uuid.UUID,
 		}
 	}
 	normalizeAccessCondition(ac)
+	resolved := scope.ResolveResourceSetID(ac.ResourceSetID)
+	ac.ResourceSetID = &resolved
 	if err := validateAccessCondition(ac); err != nil {
 		return err
 	}
@@ -62,6 +65,9 @@ func (s *AccessConditionService) Update(ctx context.Context, tenantID uuid.UUID,
 	}
 	if existing == nil {
 		return domain.ErrNotFound
+	}
+	if ac.ResourceSetID == nil {
+		ac.ResourceSetID = existing.ResourceSetID
 	}
 	return s.repo.Update(ctx, tenantID, ac)
 }

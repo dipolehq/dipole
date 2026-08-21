@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type fakeAccessConditionRepo struct {
@@ -174,5 +175,40 @@ func TestAccessConditionService_Get_NotFound_ReturnsErrNotFound(t *testing.T) {
 
 	if err != domain.ErrNotFound {
 		t.Errorf("expected domain.ErrNotFound, got %v", err)
+	}
+}
+
+func TestAccessConditionService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	repo := newFakeAccessConditionRepo()
+	svc := NewAccessConditionService(repo)
+	ac := &domain.AccessCondition{Name: "test", Type: "time_window"}
+
+	if err := svc.Create(context.Background(), uuid.New(), ac); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stored := repo.stored[ac.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestAccessConditionService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	repo := newFakeAccessConditionRepo()
+	svc := NewAccessConditionService(repo)
+	tenantID := uuid.New()
+	customRS := uuid.New()
+
+	ac := &domain.AccessCondition{Name: "original", Type: "time_window", ResourceSetID: &customRS}
+	if err := svc.Create(context.Background(), tenantID, ac); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	update := &domain.AccessCondition{ID: ac.ID, Name: "updated", Type: "time_window"}
+	if err := svc.Update(context.Background(), tenantID, update); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	stored := repo.stored[ac.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
 	}
 }

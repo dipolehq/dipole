@@ -224,6 +224,37 @@ func TestCreateAgentController_CrossTenantTrustProvider_Rejected(t *testing.T) {
 	}
 }
 
+func TestUpdateAgentController_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	// Regression coverage for a real bug: the web client never sends
+	// resourceSetId on save, so Update must preserve the controller's
+	// existing resource set assignment rather than silently resetting it
+	// to Default (agent_controllers.resource_set_id is NOT NULL, so an
+	// unpreserved nil would previously have 500'd here too).
+	tenantID := uuid.New()
+	controllerID := uuid.New()
+	customRS := uuid.New()
+
+	acRepo := newFakeAgentControllerRepo(&domain.AgentController{
+		ID: controllerID, TenantID: tenantID, Name: "controller-1", ResourceSetID: &customRS,
+	})
+	tpRepo := newFakeTrustProviderRepoForAgentController()
+	h := &APIHandlers{agentControllers: acRepo, trustProviders: tpRepo}
+
+	req := updateAgentControllerRequest(tenantID, controllerID, map[string]any{
+		"name": "controller-1-renamed",
+	})
+	w := httptest.NewRecorder()
+
+	h.UpdateAgentController(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(acRepo.updated) != 1 || acRepo.updated[0].ResourceSetID == nil || *acRepo.updated[0].ResourceSetID != customRS {
+		t.Errorf("expected the existing ResourceSetID %s to be preserved, got %v", customRS, acRepo.updated)
+	}
+}
+
 // fakeControllerCreatorForAgentController is a minimal ControllerCreator
 // fake that mints a bare AgentController without touching a database.
 type fakeControllerCreatorForAgentController struct{}

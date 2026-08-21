@@ -12,6 +12,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
@@ -61,6 +62,8 @@ func (s *CredentialProviderService) Create(ctx context.Context, tenantID uuid.UU
 		}
 	}
 	normalizeCredentialProvider(cp)
+	resolved := scope.ResolveResourceSetID(cp.ResourceSetID)
+	cp.ResourceSetID = &resolved
 	if err := validateCredentialProvider(cp); err != nil {
 		return err
 	}
@@ -86,6 +89,9 @@ func (s *CredentialProviderService) Update(ctx context.Context, tenantID uuid.UU
 	}
 	if existing == nil {
 		return domain.ErrNotFound
+	}
+	if cp.ResourceSetID == nil {
+		cp.ResourceSetID = existing.ResourceSetID
 	}
 
 	encrypted, err := crypto.Encrypt(configJSON, s.encryptionKey)

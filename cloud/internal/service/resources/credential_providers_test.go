@@ -9,6 +9,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type fakeCredentialProviderRepo struct {
@@ -122,5 +123,41 @@ func TestCredentialProviderService_Get_NotFound_ReturnsErrNotFound(t *testing.T)
 	_, _, err := svc.Get(context.Background(), uuid.New(), uuid.New())
 	if err != domain.ErrNotFound {
 		t.Errorf("expected domain.ErrNotFound, got %v", err)
+	}
+}
+
+func TestCredentialProviderService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	repo := newFakeCredentialProviderRepo()
+	svc := NewCredentialProviderService(repo, testEncryptionKey)
+	cp := &domain.CredentialProvider{Name: "Test", Type: "api_key"}
+
+	if err := svc.Create(context.Background(), uuid.New(), cp, json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stored := repo.stored[cp.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestCredentialProviderService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	repo := newFakeCredentialProviderRepo()
+	svc := NewCredentialProviderService(repo, testEncryptionKey)
+	tenantID := uuid.New()
+	customRS := uuid.New()
+
+	cp := &domain.CredentialProvider{Name: "Test", Type: "api_key", ResourceSetID: &customRS}
+	if err := svc.Create(context.Background(), tenantID, cp, json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	update := &domain.CredentialProvider{ID: cp.ID, Name: "Test Renamed", Type: "api_key"}
+	if err := svc.Update(context.Background(), tenantID, update, json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	stored := repo.stored[cp.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
 	}
 }

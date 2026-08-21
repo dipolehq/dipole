@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type fakeServerWorkloadRepoForTest struct {
@@ -222,5 +223,41 @@ func TestServerWorkloadService_Get_NotFound_ReturnsErrNotFound(t *testing.T) {
 
 	if err != domain.ErrNotFound {
 		t.Errorf("expected domain.ErrNotFound, got %v", err)
+	}
+}
+
+func TestServerWorkloadService_Create_NilResourceSetID_DefaultsToWellKnownID(t *testing.T) {
+	repo := newFakeServerWorkloadRepoForTest()
+	svc := NewServerWorkloadService(repo)
+
+	sw := validServerWorkload("api")
+	if err := svc.Create(context.Background(), uuid.New(), sw); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stored := repo.stored[sw.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != scope.DefaultResourceSetID {
+		t.Errorf("expected ResourceSetID to default to %s, got %v", scope.DefaultResourceSetID, stored.ResourceSetID)
+	}
+}
+
+func TestServerWorkloadService_Update_OmittingResourceSetID_PreservesExisting(t *testing.T) {
+	repo := newFakeServerWorkloadRepoForTest()
+	svc := NewServerWorkloadService(repo)
+
+	customRS := uuid.New()
+	sw := validServerWorkload("api")
+	sw.ResourceSetID = &customRS
+	if err := svc.Create(context.Background(), uuid.New(), sw); err != nil {
+		t.Fatalf("unexpected error on create: %v", err)
+	}
+
+	update := validServerWorkload("api-renamed")
+	update.ID = sw.ID
+	if err := svc.Update(context.Background(), sw.TenantID, update); err != nil {
+		t.Fatalf("unexpected error on update: %v", err)
+	}
+	stored := repo.stored[sw.ID]
+	if stored.ResourceSetID == nil || *stored.ResourceSetID != customRS {
+		t.Errorf("expected the existing custom ResourceSetID %s to be preserved, got %v", customRS, stored.ResourceSetID)
 	}
 }

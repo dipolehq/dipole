@@ -98,9 +98,13 @@ func (r *ResourceSetRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uui
 	return nil
 }
 
+// GetRoleIDs is tenant-scoped (matching RoleRepo.AssignResourceSets/
+// GetResourceSetIDs) so a lookup can never cross a tenant boundary even
+// if a resource_set_id collided with another tenant's.
 func (r *ResourceSetRepo) GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT role_id FROM role_resource_set_assignments WHERE resource_set_id = $1`, resourceSetID)
+		`SELECT role_id FROM role_resource_set_assignments WHERE tenant_id = $1 AND resource_set_id = $2`,
+		tenantID, resourceSetID)
 	if err != nil {
 		return nil, fmt.Errorf("get resource set role assignments: %w", err)
 	}
