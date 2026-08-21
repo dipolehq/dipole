@@ -311,6 +311,34 @@ func TestHandleCredentials_PolicyDenied(t *testing.T) {
 	}
 }
 
+func TestHandleCredentials_MalformedSubClaim_RejectedNotPanics(t *testing.T) {
+	tenant := &domain.Tenant{ID: uuid.New(), Subdomain: "acme"}
+	handler, issuer := newTestEdgeAPI(t, nil, nil, tenant)
+
+	token, err := issuer.IssueToken(identity.IssuanceRequest{
+		Subject:  "not-a-valid-dipole-client-id",
+		Audience: "edge-api",
+		Lifetime: 1 * time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"server":         map[string]any{"host": "api.stripe.com", "port": 443},
+		"credentialType": "ApiKey",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/edge/v1/credentials", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	handler.HandleCredentials(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for a malformed sub claim (not a panic), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleCredentials_ExpiredToken(t *testing.T) {
 	tenant := &domain.Tenant{ID: uuid.New(), Subdomain: "acme"}
 	handler, issuer := newTestEdgeAPI(t, nil, nil, tenant)

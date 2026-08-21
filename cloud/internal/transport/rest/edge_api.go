@@ -141,9 +141,12 @@ func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Extract tenant from token claims (sub contains clientId which has tenant)
 	clientID, _ := claims["sub"].(string)
-	parsed, _ := parseEdgeSDKClientID(clientID)
+	parsed, err := parseEdgeSDKClientID(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid token claims"})
+		return
+	}
 
 	tenant, err := h.tenantResolver.GetBySubdomain(r.Context(), parsed.TenantSubdomain)
 	if err != nil || tenant == nil {

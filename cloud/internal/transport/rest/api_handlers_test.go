@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -83,5 +84,38 @@ func TestRateLimiter_DeniesOverLimit(t *testing.T) {
 
 	if rl.allow(tenantID, 5) {
 		t.Error("request over limit should be denied")
+	}
+}
+
+func TestRateLimiter_EvictsStaleBuckets(t *testing.T) {
+	rl := NewRateLimiter(10, 5)
+	staleTenant := uuid.New()
+	activeTenant := uuid.New()
+
+	rl.allow(staleTenant, 10)
+	rl.buckets[staleTenant].lastCheck = time.Now().Add(-2 * rateLimiterBucketTTL)
+	rl.lastSweep = time.Now().Add(-2 * rateLimiterSweepInterval)
+
+	rl.allow(activeTenant, 10)
+
+	if _, stillPresent := rl.buckets[staleTenant]; stillPresent {
+		t.Error("expected the stale tenant's bucket to be evicted")
+	}
+	if _, stillPresent := rl.buckets[activeTenant]; !stillPresent {
+		t.Error("expected the active tenant's bucket to remain")
+	}
+}
+
+func TestRateLimiter_DoesNotEvictRecentBuckets(t *testing.T) {
+	rl := NewRateLimiter(10, 5)
+	tenantID := uuid.New()
+
+	rl.allow(tenantID, 10)
+	rl.lastSweep = time.Now().Add(-2 * rateLimiterSweepInterval)
+
+	rl.allow(tenantID, 10)
+
+	if _, stillPresent := rl.buckets[tenantID]; !stillPresent {
+		t.Error("a recently-used bucket must not be evicted just because a sweep ran")
 	}
 }

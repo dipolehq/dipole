@@ -3,6 +3,7 @@ package registration
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -35,6 +36,39 @@ func NewRegistrationService(controllerRepo repository.AgentControllerRepository,
 }
 
 func (s *RegistrationService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
+
+func (s *RegistrationService) VerifyControllerSignature(ctx context.Context, tenantID, controllerID uuid.UUID, body []byte, sig string) error {
+	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
+	if err != nil {
+		return fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return domain.NewRegistrationError("controller not found")
+	}
+	if len(controller.SharedSecretEncrypted) == 0 {
+		return domain.NewRegistrationError("controller has no shared secret configured")
+	}
+
+	sharedSecret, err := crypto.Decrypt(controller.SharedSecretEncrypted, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("decrypt shared secret: %w", err)
+	}
+
+	sigBytes, err := hex.DecodeString(sig)
+	if err != nil {
+		return domain.NewRegistrationError("invalid signature encoding")
+	}
+
+	mac := hmac.New(sha256.New, sharedSecret)
+	mac.Write(body)
+	expected := mac.Sum(nil)
+
+	if !hmac.Equal(sigBytes, expected) {
+		return domain.NewRegistrationError("signature mismatch")
+	}
+
+	return nil
+}
 
 func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (controller *domain.AgentController, sharedSecret string, err error) {
 	sharedSecret, err = generateSharedSecret()

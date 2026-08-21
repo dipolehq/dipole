@@ -171,11 +171,17 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	}
 }
 
+const (
+	rateLimiterBucketTTL     = 1 * time.Hour
+	rateLimiterSweepInterval = 10 * time.Minute
+)
+
 type RateLimiter struct {
 	mu        sync.Mutex
 	buckets   map[uuid.UUID]*tokenBucket
 	readRate  int
 	writeRate int
+	lastSweep time.Time
 }
 
 type tokenBucket struct {
@@ -189,6 +195,7 @@ func NewRateLimiter(readRate, writeRate int) *RateLimiter {
 		buckets:   make(map[uuid.UUID]*tokenBucket),
 		readRate:  readRate,
 		writeRate: writeRate,
+		lastSweep: time.Now(),
 	}
 }
 
@@ -218,13 +225,15 @@ func (rl *RateLimiter) allow(tenantID uuid.UUID, rate int) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	now := time.Now()
+	rl.evictStaleBucketsLocked(now)
+
 	bucket, ok := rl.buckets[tenantID]
 	if !ok {
-		bucket = &tokenBucket{tokens: float64(rate), lastCheck: time.Now(), rate: float64(rate)}
+		bucket = &tokenBucket{tokens: float64(rate), lastCheck: now, rate: float64(rate)}
 		rl.buckets[tenantID] = bucket
 	}
 
-	now := time.Now()
 	elapsed := now.Sub(bucket.lastCheck).Seconds()
 	bucket.tokens += elapsed * bucket.rate
 	if bucket.tokens > float64(rate) {
@@ -237,6 +246,18 @@ func (rl *RateLimiter) allow(tenantID uuid.UUID, rate int) bool {
 	}
 	bucket.tokens--
 	return true
+}
+
+func (rl *RateLimiter) evictStaleBucketsLocked(now time.Time) {
+	if now.Sub(rl.lastSweep) < rateLimiterSweepInterval {
+		return
+	}
+	rl.lastSweep = now
+	for tenantID, bucket := range rl.buckets {
+		if now.Sub(bucket.lastCheck) > rateLimiterBucketTTL {
+			delete(rl.buckets, tenantID)
+		}
+	}
 }
 
 func extractAPIToken(r *http.Request) string {

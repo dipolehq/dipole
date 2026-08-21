@@ -1,7 +1,8 @@
-/* HTTP handlers for health, token issuance, and Kerberos attestation. */
+// handlers.go implements HTTP handlers for health, token issuance, and Kerberos attestation, plus HMAC-signed outbound requests to Cloud's /internal/controllers/* endpoints.
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,9 +10,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
+
+const controllerSignatureHeader = "X-Dipole-Controller-Signature"
 
 func (c *AgentController) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	status := "Unregistered"
@@ -54,9 +56,9 @@ func (c *AgentController) handleGetToken(w http.ResponseWriter, _ *http.Request)
 
 func (c *AgentController) requestTokenFromCloud() (string, error) {
 	url := c.config.CloudEndpoint + "/internal/controllers/token"
-	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s"}`, c.config.TenantID, c.controllerID)
+	body := []byte(fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s"}`, c.config.TenantID, c.controllerID))
 
-	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(body))
+	resp, err := c.postSigned(url, body)
 	if err != nil {
 		return "", fmt.Errorf("cloud unreachable: %w", err)
 	}
@@ -73,6 +75,20 @@ func (c *AgentController) requestTokenFromCloud() (string, error) {
 		return "", err
 	}
 	return result.Token, nil
+}
+
+func (c *AgentController) postSigned(url string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if len(c.sharedSecret) > 0 {
+		mac := hmac.New(sha256.New, c.sharedSecret)
+		mac.Write(body)
+		req.Header.Set(controllerSignatureHeader, hex.EncodeToString(mac.Sum(nil)))
+	}
+	return c.cloudClient.Do(req)
 }
 
 func (c *AgentController) handleKerberosAttest(w http.ResponseWriter, r *http.Request) {

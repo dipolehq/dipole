@@ -165,9 +165,9 @@ func (c *AgentController) startHealthReporting(ctx context.Context) {
 
 func (c *AgentController) reportHealth() error {
 	url := c.config.CloudEndpoint + "/internal/controllers/health"
-	body := fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s","status":"Healthy"}`, c.config.TenantID, c.controllerID)
+	body := []byte(fmt.Sprintf(`{"tenant_id":"%s","controller_id":"%s","status":"Healthy"}`, c.config.TenantID, c.controllerID))
 
-	resp, err := c.cloudClient.Post(url, "application/json", strings.NewReader(body))
+	resp, err := c.postSigned(url, body)
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,10 @@
+// internal_handlers.go serves internal endpoints used by Edge Agent Controllers for registration, token exchange, and health reporting, authenticated via a per-controller HMAC signature (except /register, which uses a device code instead).
 package rest
 
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -12,8 +14,8 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
 )
 
-// InternalHandlers serves unauthenticated internal endpoints used by
-// Edge Agent Controllers for registration, token exchange, and health reporting.
+const controllerSignatureHeader = "X-Dipole-Controller-Signature"
+
 type InternalHandlers struct {
 	registrationSvc *registration.RegistrationService
 }
@@ -61,23 +63,17 @@ func (h *InternalHandlers) handleControllerRegister(w http.ResponseWriter, r *ht
 }
 
 func (h *InternalHandlers) handleControllerToken(w http.ResponseWriter, r *http.Request) {
+	body, tenantID, controllerID, ok := h.readAndVerifySignedRequest(w, r)
+	if !ok {
+		return
+	}
+
 	var req struct {
 		TenantID     string `json:"tenant_id"`
 		ControllerID string `json:"controller_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "bad_request", "invalid request body")
-		return
-	}
-
-	tenantID, err := uuid.Parse(req.TenantID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "bad_request", "invalid tenant_id")
-		return
-	}
-	controllerID, err := uuid.Parse(req.ControllerID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "bad_request", "invalid controller_id")
 		return
 	}
 
@@ -93,24 +89,18 @@ func (h *InternalHandlers) handleControllerToken(w http.ResponseWriter, r *http.
 }
 
 func (h *InternalHandlers) handleControllerHealth(w http.ResponseWriter, r *http.Request) {
+	body, tenantID, controllerID, ok := h.readAndVerifySignedRequest(w, r)
+	if !ok {
+		return
+	}
+
 	var req struct {
 		TenantID     string `json:"tenant_id"`
 		ControllerID string `json:"controller_id"`
 		Status       string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "bad_request", "invalid request body")
-		return
-	}
-
-	tenantID, err := uuid.Parse(req.TenantID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "bad_request", "invalid tenant_id")
-		return
-	}
-	controllerID, err := uuid.Parse(req.ControllerID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "bad_request", "invalid controller_id")
 		return
 	}
 
@@ -124,7 +114,53 @@ func (h *InternalHandlers) handleControllerHealth(w http.ResponseWriter, r *http
 	})
 }
 
-// respondRegistrationError never returns wrapped internal error detail to these unauthenticated endpoints' callers: only a domain.RegistrationError's safe message is returned verbatim (400), everything else is logged and reported generically (500).
+func (h *InternalHandlers) readAndVerifySignedRequest(w http.ResponseWriter, r *http.Request) (body []byte, tenantID, controllerID uuid.UUID, ok bool) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "bad_request", "failed to read request body")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+
+	var req struct {
+		TenantID     string `json:"tenant_id"`
+		ControllerID string `json:"controller_id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "bad_request", "invalid request body")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+
+	tenantID, err = uuid.Parse(req.TenantID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "bad_request", "invalid tenant_id")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+	controllerID, err = uuid.Parse(req.ControllerID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "bad_request", "invalid controller_id")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+
+	sig := r.Header.Get(controllerSignatureHeader)
+	if sig == "" {
+		respondError(w, http.StatusUnauthorized, "unauthenticated", "missing "+controllerSignatureHeader+" header")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+
+	if err := h.registrationSvc.VerifyControllerSignature(r.Context(), tenantID, controllerID, body, sig); err != nil {
+		var regErr *domain.RegistrationError
+		if errors.As(err, &regErr) {
+			respondError(w, http.StatusUnauthorized, "unauthenticated", "signature verification failed")
+			return nil, uuid.Nil, uuid.Nil, false
+		}
+		slog.Error("controller signature verification failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "an internal error occurred")
+		return nil, uuid.Nil, uuid.Nil, false
+	}
+
+	return body, tenantID, controllerID, true
+}
+
 func respondRegistrationError(w http.ResponseWriter, code string, err error) {
 	var regErr *domain.RegistrationError
 	if errors.As(err, &regErr) {
