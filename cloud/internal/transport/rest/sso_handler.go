@@ -1,15 +1,21 @@
 /*
-sso_handler.go serves SSO authentication endpoints:
-  - GET  /api/v1/auth/sso/providers        — public: list available IdPs for login page
-  - GET  /api/v1/auth/sso/authorize        — public: redirect to IdP (returns redirect URL)
-  - POST /api/v1/auth/sso/callback         — public: exchange code, issue JWT
+sso_handler.go handles admin SSO authentication:
+  - GET  /api/v1/auth/sso/providers
+  - GET  /api/v1/auth/sso/authorize
+  - POST /api/v1/auth/sso/callback
 */
 package rest
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +35,7 @@ type SSOHandler struct {
 	ssoSvc   *auth.AdminSSOService
 	issuer   *identity.IdentityIssuer
 	tenantID uuid.UUID
+	stateKey []byte
 }
 
 func NewSSOHandler(
@@ -36,12 +43,14 @@ func NewSSOHandler(
 	ssoSvc *auth.AdminSSOService,
 	issuer *identity.IdentityIssuer,
 	tenantID uuid.UUID,
+	stateKey []byte,
 ) *SSOHandler {
 	return &SSOHandler{
 		idpRepo:  idpRepo,
 		ssoSvc:   ssoSvc,
 		issuer:   issuer,
 		tenantID: tenantID,
+		stateKey: stateKey,
 	}
 }
 
@@ -111,7 +120,7 @@ func (h *SSOHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		Config:   idp.Config,
 	}
 
-	state := uuid.New().String()
+	state := h.signState(providerID)
 
 	callbackURL := r.URL.Query().Get("callback_url")
 	if callbackURL == "" {
@@ -158,6 +167,7 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		ProviderID  string `json:"providerId"`
 		Code        string `json:"code"`
 		CallbackURL string `json:"callbackUrl"`
+		State       string `json:"state"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -166,6 +176,11 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	if req.ProviderID == "" || req.Code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "providerId and code are required"})
+		return
+	}
+
+	if err := h.verifyState(req.State, req.ProviderID); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired state parameter"})
 		return
 	}
 
@@ -231,4 +246,48 @@ func (h *SSOHandler) Callback(w http.ResponseWriter, r *http.Request) {
 			"name":  result.Name,
 		},
 	})
+}
+
+const ssoStateMaxAge = 5 * time.Minute
+
+func (h *SSOHandler) signState(providerID string) string {
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	payload := providerID + "." + ts
+	mac := hmac.New(sha256.New, h.stateKey)
+	mac.Write([]byte(payload))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	return payload + "." + sig
+}
+
+func (h *SSOHandler) verifyState(state, providerID string) error {
+	parts := strings.SplitN(state, ".", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("malformed state")
+	}
+
+	claimedProvider := parts[0]
+	tsStr := parts[1]
+	sig := parts[2]
+
+	if claimedProvider != providerID {
+		return fmt.Errorf("provider mismatch")
+	}
+
+	payload := claimedProvider + "." + tsStr
+	mac := hmac.New(sha256.New, h.stateKey)
+	mac.Write([]byte(payload))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(sig), []byte(expected)) {
+		return fmt.Errorf("invalid signature")
+	}
+
+	ts, err := strconv.ParseInt(tsStr, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid timestamp")
+	}
+	if time.Since(time.Unix(ts, 0)) > ssoStateMaxAge {
+		return fmt.Errorf("state expired")
+	}
+
+	return nil
 }

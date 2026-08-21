@@ -1,6 +1,11 @@
 /*
-Package rest — access_conditions.go is the HTTP handler for the Access
-Conditions resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/access-conditions
+	POST   /api/v1/access-conditions
+	GET    /api/v1/access-conditions/{id}
+	PUT    /api/v1/access-conditions/{id}
+	DELETE /api/v1/access-conditions/{id}
 */
 package rest
 

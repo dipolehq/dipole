@@ -37,7 +37,7 @@ export function SSOCallbackPage() {
 
     apiClient.post<{ token: string; user: { id: string; email: string; name: string } }>(
       '/auth/sso/callback',
-      { providerId, code, callbackUrl },
+      { providerId, code, callbackUrl, state },
     ).then((res) => {
       sessionStorage.setItem('dipole_token', res.token)
       sessionStorage.setItem('dipole_user', JSON.stringify(res.user))

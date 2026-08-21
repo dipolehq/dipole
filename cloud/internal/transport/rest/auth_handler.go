@@ -1,4 +1,15 @@
-// auth_handler.go serves the login, signup, password reset, and MFA verification endpoints for admin users.
+/*
+Routes:
+
+	POST /api/v1/auth/login
+	POST /api/v1/auth/signup
+	POST /api/v1/auth/forgot-password
+	POST /api/v1/auth/reset-password
+	POST /api/v1/auth/mfa-verify
+	POST /api/v1/auth/switch-tenant
+	POST /api/v1/auth/refresh
+	GET  /api/v1/user/tenants
+*/
 package rest
 
 import (

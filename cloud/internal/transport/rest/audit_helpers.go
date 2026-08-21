@@ -1,11 +1,4 @@
-/*
-audit_helpers.go provides shared utilities for audit log emission from HTTP
-handlers via the centralized EventBus.
-
-emitAudit constructs a typed AuditEvent and emits it synchronously. The
-Created/Updated/Deleted convenience wrappers match the activity naming
-convention used across all REST handlers.
-*/
+// audit_helpers.go provides shared audit event emission helpers and client IP/user-agent extraction for HTTP handlers.
 package rest
 
 import (

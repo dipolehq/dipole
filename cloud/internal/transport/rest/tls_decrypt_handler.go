@@ -1,10 +1,9 @@
 /*
-tls_decrypt_handler.go serves the TLS Decrypt configuration and Root CA
-download endpoints.
+Routes:
 
-GET  /api/v1/tls-decrypt         — returns TLS Decrypt config (enabled, leaf lifetime)
-PUT  /api/v1/tls-decrypt         — update leaf certificate lifetime
-GET  /api/v1/tls-decrypt/root-ca — download the tenant's Root CA public certificate (PEM)
+	GET /api/v1/tls-decrypt
+	PUT /api/v1/tls-decrypt
+	GET /api/v1/tls-decrypt/root-ca
 */
 package rest
 
@@ -55,7 +54,7 @@ func (h *TlsDecryptHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	lifetime, err := h.svc.GetLeafLifetime(r.Context(), tenantID)
 	if err != nil {
 		slog.Error("get leaf lifetime failed", "error", err)
-		lifetime = 86400 // default 1 day
+		lifetime = 86400
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{

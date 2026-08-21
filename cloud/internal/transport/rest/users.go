@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/users
+	POST   /api/v1/users
+	GET    /api/v1/users/{id}
+	PUT    /api/v1/users/{id}
+	DELETE /api/v1/users/{id}
+*/
 package rest
 
 import (
@@ -8,7 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Users
 func (h *APIHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	opts := parseListOptions(r)
@@ -101,8 +109,6 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- User DTOs ---
 
 type userRequest struct {
 	FirstName string     `json:"firstName"`

@@ -1,7 +1,4 @@
-/*
-Package rest — response.go provides shared, type-safe helpers for REST
-responses: success/error envelopes, domain-error mapping, and list options.
-*/
+// response.go provides shared response helpers: JSON encoding, error mapping, list pagination, and request parsing.
 package rest
 
 import (

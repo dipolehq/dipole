@@ -1,9 +1,8 @@
 /*
-Package rest — edge_api.go implements the Edge API for proxyless credential retrieval.
+Routes:
 
-Used by CI/CD pipelines (GitHub Actions, GitLab CI) that don't have an Agent Proxy.
-POST /edge/v1/auth — proves identity via attestation (NO Authorization header).
-POST /edge/v1/credentials — retrieves credentials with Bearer token from /auth.
+	POST /edge/v1/auth
+	POST /edge/v1/credentials
 */
 package rest
 
@@ -54,8 +53,6 @@ func (h *EdgeAPIHandler) RegisterEdgeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /edge/v1/credentials", h.HandleCredentials)
 }
 
-// HandleAuth validates attestation evidence and issues an access token.
-// NO Authorization header accepted — identity is proven via body content.
 func (h *EdgeAPIHandler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
@@ -108,8 +105,6 @@ func (h *EdgeAPIHandler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleCredentials retrieves a credential for a specific server workload.
-// Requires Bearer token from /auth.
 func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Request) {
 	token := extractAPIToken(r)
 	if token == "" {
@@ -189,11 +184,6 @@ type edgeIdentityToken struct {
 	IdentityToken string `json:"identityToken"`
 }
 
-// edgeCertificateAttn carries a workload's X.509 certificate plus proof of
-// private-key possession for the certificate_signed_attestation Trust
-// Provider type. Signature is base64-encoded (JSON has no native binary
-// type); see certificate_validator.go's buildCertificateChallenge for the
-// exact bytes it covers.
 type edgeCertificateAttn struct {
 	CertificatePEM string `json:"certificatePem"`
 	Timestamp      int64  `json:"timestamp"`
@@ -214,7 +204,7 @@ type parsedClientID struct {
 }
 
 func parseEdgeSDKClientID(clientID string) (*parsedClientID, error) {
-	// Format: dipole:<region>:<tenant>:identity:<type>:<uuid>
+
 	parts := strings.Split(clientID, ":")
 	if len(parts) != 6 || parts[0] != "dipole" || parts[3] != "identity" {
 		return nil, errInvalidClientID
@@ -269,11 +259,7 @@ func buildEdgeEvidence(client edgeClientBlock, identityType string) *domain.Clie
 					Signature:      sig,
 				}
 			}
-			// A malformed (non-base64) signature is deliberately left as a
-			// nil CertificateAttestation rather than surfaced as a request
-			// error here — CertificateValidator.Validate already treats
-			// "no attestation present" as NoDataFound, which is the
-			// correct fail-closed outcome for malformed evidence too.
+
 		}
 	}
 

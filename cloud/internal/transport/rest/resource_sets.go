@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/resource-sets
+	POST   /api/v1/resource-sets
+	GET    /api/v1/resource-sets/{id}
+	PUT    /api/v1/resource-sets/{id}
+	DELETE /api/v1/resource-sets/{id}
+*/
 package rest
 
 import (
@@ -8,8 +17,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
-
-// --- Resource Set Handlers ---
 
 func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -28,7 +35,7 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 	counts, err := h.resourceSets.GetResourceCounts(r.Context(), tenantID, ids)
 	if err != nil {
 		slog.Error("get resource counts failed", "error", err)
-		// Non-fatal: return list without counts rather than failing entirely.
+
 		counts = nil
 	}
 
@@ -115,8 +122,6 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- Resource Set DTOs ---
 
 type resourceSetRequest struct {
 	Name        string `json:"name"`

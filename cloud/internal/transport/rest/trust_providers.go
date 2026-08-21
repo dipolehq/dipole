@@ -1,6 +1,11 @@
 /*
-Package rest — trust_providers.go is the HTTP handler for the Trust
-Providers resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/trust-providers
+	POST   /api/v1/trust-providers
+	GET    /api/v1/trust-providers/{id}
+	PUT    /api/v1/trust-providers/{id}
+	DELETE /api/v1/trust-providers/{id}
 */
 package rest
 
@@ -111,13 +116,6 @@ func (r trustProviderRequest) toDomain() domain.TrustProvider {
 	}
 }
 
-// toTrustProviderResponse renders a trust provider for API responses.
-// tp.Config never contains the symmetric_key attestation secret — that's
-// stripped out and stored separately, encrypted, by TrustProviderService —
-// but redactTrustProviderConfig defends against it anyway (e.g. a
-// not-yet-backfilled row) rather than relying solely on the write path
-// having already removed it, the same defense-in-depth posture as
-// credential providers' redactCredentialConfig.
 func toTrustProviderResponse(tp *domain.TrustProvider) trustProviderResponse {
 	matchRules := make([]matchRuleDTO, 0, len(tp.MatchRules))
 	for _, mr := range tp.MatchRules {
@@ -149,11 +147,6 @@ func toTrustProviderResponse(tp *domain.TrustProvider) trustProviderResponse {
 	}
 }
 
-// redactTrustProviderConfig removes the symmetric_key attestation secret
-// from a trust provider's config before it leaves the process, in case it
-// is still present (a row not yet migrated by the startup backfill).
-// Every other field (attestationMethod, oidcEndpoint, jwks, publicKey) is
-// non-secret and preserved as-is.
 func redactTrustProviderConfig(config json.RawMessage) json.RawMessage {
 	if len(config) == 0 {
 		return json.RawMessage("{}")

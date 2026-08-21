@@ -1,5 +1,7 @@
 /*
-dashboard_handler.go serves the admin dashboard summary statistics endpoint.
+Routes:
+
+	GET /api/v1/dashboard
 */
 package rest
 

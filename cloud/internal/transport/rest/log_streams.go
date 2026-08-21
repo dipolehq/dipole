@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/log-streams
+	POST   /api/v1/log-streams
+	GET    /api/v1/log-streams/{id}
+	PUT    /api/v1/log-streams/{id}
+	DELETE /api/v1/log-streams/{id}
+*/
 package rest
 
 import (
@@ -8,8 +17,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/google/uuid"
 )
-
-// --- Log Stream Handlers ---
 
 func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -104,8 +111,6 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Log Stream DTOs ---
-
 type logStreamRequest struct {
 	Name            string          `json:"name"`
 	Description     string          `json:"description"`
@@ -148,13 +153,6 @@ type logStreamResponse struct {
 	UpdatedAt       string          `json:"updatedAt"`
 }
 
-// toLogStreamResponse renders a log stream for API responses. Config is
-// encrypted at rest (LogStreamRepo) and decrypted back to plaintext JSON by
-// the time it reaches this function — it is redacted here before leaving
-// the process, the same principle applied to credential providers: secrets
-// (HEC token, client secret, AWS secret key, GCS service account JSON) are
-// never echoed back once stored, only non-sensitive fields (bucket name,
-// region, URLs) are.
 func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
 	config := redactLogStreamConfig(ls.Config)
 	var lastExportedAt *string
@@ -177,17 +175,12 @@ func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
 	}
 }
 
-// logStreamSensitiveConfigKeys lists the config keys, across all 4
-// destination types, that hold a secret and must never be echoed back in
-// an API response. Kept in sync with credential_providers.go's
-// redactCredentialConfig — both redact the same class of destination
-// secrets and should stay consistent.
 var logStreamSensitiveConfigKeys = map[string]bool{
-	"hec_token":            true, // Splunk
-	"client_secret":        true, // CrowdStrike
-	"access_key_id":        true, // S3 (identifies the credential; still redacted since it's part of a credential pair)
-	"secret_access_key":    true, // S3
-	"service_account_json": true, // GCS
+	"hec_token":            true,
+	"client_secret":        true,
+	"access_key_id":        true,
+	"secret_access_key":    true,
+	"service_account_json": true,
 }
 
 func redactLogStreamConfig(config json.RawMessage) json.RawMessage {

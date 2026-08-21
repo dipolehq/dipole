@@ -1,3 +1,11 @@
+/*
+Routes:
+
+	GET  /api/v1/profile
+	PUT  /api/v1/profile
+	POST /api/v1/profile/token
+	PUT  /api/v1/profile/password
+*/
 package rest
 
 import (
@@ -11,13 +19,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// --- Profile Handlers ---
-
 func (h *APIHandlers) GetProfile(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	p, err := h.tenantProfiles.Get(r.Context(), tenantID)
 	if err != nil || p == nil {
-		// No profile yet — return empty defaults
+
 		respondJSON(w, http.StatusOK, map[string]any{
 			"firstName": "",
 			"lastName":  "",
@@ -59,7 +65,6 @@ func (h *APIHandlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sync the display name to the users table so the sidebar reflects immediately.
 	email := UserEmailFromContext(r.Context())
 	if email != "" {
 		if user, err := h.users.GetByEmail(r.Context(), tenantID, email); err == nil && user != nil {
@@ -88,7 +93,7 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 		Name          string  `json:"name"`
 		ResourceSetID *string `json:"resourceSetId"`
 	}
-	// Body is optional for backward compatibility (existing UI sends empty body).
+
 	_ = decodeJSON(r, &req)
 
 	token, err := auth.GenerateAPIToken()
@@ -124,7 +129,6 @@ func (h *APIHandlers) GenerateAccessToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Also update the legacy tenant-level token for backward compatibility.
 	tenant, err := h.tenants.GetByID(r.Context(), tenantID)
 	if err == nil && tenant != nil {
 		tenant.APITokenHash = hash
@@ -218,13 +222,11 @@ func (h *APIHandlers) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify current password.
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
 		respondBadRequest(w, "current password is incorrect")
 		return
 	}
 
-	// Hash and update.
 	newHash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to hash password")

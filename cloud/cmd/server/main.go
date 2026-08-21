@@ -219,7 +219,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, userSvc, roleSvc, resourceSetSvc, identityProviderSvc, logStreamCRUDSvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, logger)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, userSvc, roleSvc, resourceSetSvc, identityProviderSvc, logStreamCRUDSvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, trustValidator, logger)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -330,6 +330,7 @@ func buildHTTPServer(
 	issuer *identity.IdentityIssuer,
 	eventBus *eventbus.EventBus,
 	caService *pki.TenantCAService,
+	trustValidator *trust.TrustValidationService,
 	logger *slog.Logger,
 ) *http.Server {
 	mux := http.NewServeMux()
@@ -409,7 +410,8 @@ func buildHTTPServer(
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
 		oidcClient := auth.NewHTTPOIDCClient()
 		ssoSvc := auth.NewAdminSSOService(repos.Users, oidcClient)
-		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID).RegisterRoutes(mux)
+		ssoSvc.SetJWKSCache(trustValidator.JWKSCache())
+		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID, encKey).RegisterRoutes(mux)
 	}
 
 	edgeAPI.RegisterEdgeRoutes(mux)

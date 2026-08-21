@@ -1,6 +1,23 @@
 /*
-Package rest — api_handlers.go holds the legacy CRUD handlers for resources
-not yet migrated to the per-resource handler + service pattern.
+Routes (RegisterAPIRoutes):
+
+	GET    /api/v1/health
+	GET/POST /api/v1/agent-controllers, GET/PUT/DELETE /api/v1/agent-controllers/{id}
+	GET    /api/v1/agent-proxies
+	POST   /api/v1/agent-controllers/{id}/device-code
+	GET/POST /api/v1/users, GET/PUT/DELETE /api/v1/users/{id}
+	GET/POST /api/v1/roles, GET/PUT/DELETE /api/v1/roles/{id}
+	GET/POST /api/v1/resource-sets, GET/PUT/DELETE /api/v1/resource-sets/{id}
+	GET/POST /api/v1/identity-providers, GET/PUT/DELETE /api/v1/identity-providers/{id}
+	GET/PUT  /api/v1/sign-on-policy
+	GET/PUT  /api/v1/global-policy-compliance
+	GET      /api/v1/global-policy-compliance/report
+	GET/PUT  /api/v1/profile
+	POST     /api/v1/profile/token
+	GET      /api/v1/profile/tokens
+	DELETE   /api/v1/profile/tokens/{id}
+	POST     /api/v1/profile/password
+	GET/POST /api/v1/log-streams, GET/PUT/DELETE /api/v1/log-streams/{id}
 */
 package rest
 
@@ -33,14 +50,11 @@ type tenantProfileStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
 }
 
-// ControllerCreator abstracts the registration service's controller creation
-// so the transport layer doesn't depend on the concrete type.
 type ControllerCreator interface {
 	CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error)
 	RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error)
 }
 
-// HealthPinger checks database connectivity for the health endpoint.
 type HealthPinger interface {
 	Ping(ctx context.Context) error
 }

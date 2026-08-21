@@ -1,10 +1,11 @@
 /*
-mfa_handler.go serves the MFA (multi-factor authentication) profile endpoints:
-  - GET    /api/v1/profile/mfa/status       — current MFA state
-  - POST   /api/v1/profile/mfa/setup        — generate TOTP secret + URI
-  - POST   /api/v1/profile/mfa/verify       — verify code and enable MFA
-  - POST   /api/v1/profile/mfa/backup-codes — generate backup codes
-  - DELETE /api/v1/profile/mfa              — reset (remove) MFA
+Routes:
+
+	GET    /api/v1/profile/mfa/status
+	POST   /api/v1/profile/mfa/setup
+	POST   /api/v1/profile/mfa/verify
+	POST   /api/v1/profile/mfa/backup-codes
+	DELETE /api/v1/profile/mfa
 */
 package rest
 

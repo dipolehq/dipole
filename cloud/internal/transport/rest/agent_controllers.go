@@ -1,3 +1,13 @@
+/*
+Routes:
+
+	GET    /api/v1/agent-controllers
+	POST   /api/v1/agent-controllers
+	GET    /api/v1/agent-controllers/{id}
+	PUT    /api/v1/agent-controllers/{id}
+	DELETE /api/v1/agent-controllers/{id}
+	POST   /api/v1/agent-controllers/{id}/regenerate-device-code
+*/
 package rest
 
 import (
@@ -10,7 +20,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Agent Controllers
 func (h *APIHandlers) ListAgentControllers(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	opts := parseListOptions(r)
@@ -75,14 +84,12 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Use RegistrationService to create with device code + expiry
 	ac, err := h.registrationSvc.CreateController(r.Context(), tenantID, req.Name)
 	if err != nil {
 		respondDomainError(w, err)
 		return
 	}
 
-	// Apply additional fields from request that CreateController doesn't handle
 	needsUpdate := false
 	if req.Description != "" {
 		ac.Description = req.Description
@@ -117,7 +124,6 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		needsUpdate = true
 	}
 
-	// If additional fields were set, update the record
 	if needsUpdate {
 		if err := h.agentControllers.Update(r.Context(), tenantID, ac); err != nil {
 			respondDomainError(w, err)
@@ -219,13 +225,6 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// validateTrustProviderBelongsToTenant confirms trustProviderID belongs to
-// tenantID before an Agent Controller is allowed to reference it. Without
-// this check, a tenant could attach another tenant's Trust Provider ID
-// (guessed, leaked, or otherwise obtained) to their own controller, which
-// would then be used for real attestation via the edge trust validator.
-// TrustProviderRepository.GetByID is already tenant-scoped, so a
-// cross-tenant ID resolves to nil exactly like a nonexistent one.
 func (h *APIHandlers) validateTrustProviderBelongsToTenant(ctx context.Context, tenantID, trustProviderID uuid.UUID) error {
 	tp, err := h.trustProviders.GetByID(ctx, tenantID, trustProviderID)
 	if err != nil {
@@ -251,8 +250,6 @@ func (h *APIHandlers) RegenerateDeviceCode(w http.ResponseWriter, r *http.Reques
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"deviceCode": code})
 }
-
-// --- Agent Controller DTOs ---
 
 type agentControllerRequest struct {
 	Name            string     `json:"name"`

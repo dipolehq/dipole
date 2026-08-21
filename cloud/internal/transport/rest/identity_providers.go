@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/identity-providers
+	POST   /api/v1/identity-providers
+	GET    /api/v1/identity-providers/{id}
+	PUT    /api/v1/identity-providers/{id}
+	DELETE /api/v1/identity-providers/{id}
+*/
 package rest
 
 import (
@@ -8,8 +17,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/google/uuid"
 )
-
-// --- Identity Provider Handlers ---
 
 func (h *APIHandlers) ListIdentityProviders(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -104,8 +111,6 @@ func (h *APIHandlers) DeleteIdentityProvider(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Identity Provider DTOs ---
-
 type idpRequest struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
@@ -143,8 +148,6 @@ type idpResponse struct {
 	UpdatedAt   string          `json:"updatedAt"`
 }
 
-// TODO: Encrypt IdP config at rest (contains clientSecret for OIDC providers).
-// For now, config is stored as plaintext JSONB — acceptable for MVP behind auth.
 func toIdpResponse(idp *domain.IdentityProvider) idpResponse {
 	config := idp.Config
 	if config == nil {

@@ -1,21 +1,10 @@
 /*
-Package rest — mcp_gateway.go implements the MCP Identity Gateway HTTP server.
+Routes:
 
-MCPGatewayServer handles MCP protocol traffic (JSON-RPC over HTTP) from AI agents.
-It validates Bearer tokens (left-side auth), parses MCP methods, routes to downstream
-MCP servers with per-user credentials (right-side auth), and aggregates results.
-Served at https://<tenant>-mcpgateway.<domain>/mcp in production.
-
-resolveScope fails closed: a request arriving on any hostname other than the
-tenant's Gateway host is rejected with 404. This matters because all routes share
-one mux, so POST /mcp is technically reachable on every hostname this process
-serves — including the MCP Auth Server host, whose BaseURL would otherwise be
-handed to left-side auth as the expected token audience.
-
-HandleProtectedResourceMetadata serves RFC 9728 Protected Resource Metadata.
-MCP clients discover which Authorization Server protects this Gateway by either
-following the resource_metadata URL in the 401 WWW-Authenticate header, or by
-probing /.well-known/oauth-protected-resource on the server's origin.
+	POST   /mcp
+	DELETE  /mcp
+	GET    /mcp/consent/callback
+	GET    /.well-known/oauth-protected-resource
 */
 package rest
 
@@ -65,8 +54,6 @@ type JSONRPCError struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-// ErrNotGatewayHost means the tenant resolved but the request arrived on a
-// different service's hostname.
 var ErrNotGatewayHost = errors.New("request hostname is not this tenant's MCP Identity Gateway host")
 
 type MCPGatewayServer struct {
@@ -124,7 +111,6 @@ func (s *MCPGatewayServer) RegisterGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.HandleProtectedResourceMetadata)
 }
 
-// HandleMCP processes all MCP protocol traffic.
 func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	scope, err := s.resolveScope(r)
 	if err != nil {
@@ -191,7 +177,6 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSONRPCResponse(w, rpcReq.ID, result)
 }
 
-// HandleSessionDelete terminates an MCP session.
 func (s *MCPGatewayServer) HandleSessionDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -228,10 +213,6 @@ func writeJSONRPCErrorWithData(w http.ResponseWriter, id any, code int, message 
 	})
 }
 
-// consentErrorData extracts the consent URL from a *gw.ConsentRequiredError,
-// if err is (or wraps) one, in the shape MCP clients/AI agents can surface to
-// their user in the JSON-RPC error's data field. Returns nil for any other
-// error, leaving the response's data field omitted as before.
 func consentErrorData(err error) any {
 	var consentErr *gw.ConsentRequiredError
 	if !errors.As(err, &consentErr) || consentErr.ConsentURL == "" {

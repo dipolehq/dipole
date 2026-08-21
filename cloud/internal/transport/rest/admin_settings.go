@@ -1,3 +1,11 @@
+/*
+admin_settings.go handles administration settings endpoints:
+  - GET  /api/v1/sign-on-policy
+  - PUT  /api/v1/sign-on-policy
+  - GET  /api/v1/global-policy-compliance
+  - PUT  /api/v1/global-policy-compliance
+  - GET  /api/v1/global-policy-compliance/report
+*/
 package rest
 
 import (
@@ -9,8 +17,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
-
-// --- Sign-On Policy Handlers ---
 
 func (h *APIHandlers) GetSignOnPolicy(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -52,8 +58,6 @@ func (h *APIHandlers) UpdateSignOnPolicy(w http.ResponseWriter, r *http.Request)
 		"requireMfa": req.RequireMFA,
 	})
 }
-
-// --- Global Policy Compliance Handlers ---
 
 func (h *APIHandlers) GetGlobalPolicyCompliance(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -108,15 +112,6 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 	})
 }
 
-// complianceAttributeStatus reports whether a policy actually satisfies an
-// enforced attribute (Trust Provider or Access Condition), given the
-// tenant's configured enforcement level for that attribute:
-//   - "optional": no enforcement — always reported as "optional" regardless
-//     of whether the policy has the attribute, matching what the Global
-//     Policy Compliance settings page promises ("no enforcement").
-//   - "required"/"recommended": if the policy has the attribute, it is
-//     compliant; if not, the configured level itself is returned so the
-//     frontend can render "Missing Required"/"Missing Recommended".
 func complianceAttributeStatus(level string, present bool) string {
 	if level == "" {
 		level = "optional"
@@ -148,9 +143,6 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 
 	resourceSetNames, err := h.resourceSetNames(r.Context(), tenantID)
 	if err != nil {
-		// Non-fatal: the report is still useful without resource set
-		// names — fall back to "Default" for every row rather than
-		// failing the whole report over a display-only lookup.
 		slog.Error("compliance report: list resource sets failed", "error", err)
 		resourceSetNames = map[uuid.UUID]string{}
 	}
@@ -197,11 +189,6 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
 }
 
-// resourceSetNames returns every resource set name for the tenant, keyed by
-// ID, so GetComplianceReport can render a human-readable name instead of a
-// raw UUID. A tenant's resource set count is small (teams/environments, not
-// a per-entity resource), so one unpaginated list is a single query and
-// safe to hold in memory.
 func (h *APIHandlers) resourceSetNames(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
 	sets, _, err := h.resourceSets.List(ctx, tenantID, domain.ListOptions{Page: 1, PerPage: 1000})
 	if err != nil {

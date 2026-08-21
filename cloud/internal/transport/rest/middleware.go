@@ -1,11 +1,4 @@
-/*
-Package rest — middleware.go provides HTTP middleware for the REST API.
-
-Implements: proxy secret verification, auth (Bearer token validation), tenant
-scoping, request ID generation, rate limiting (per-tenant token bucket), CORS,
-and Resource Set scoping. All middleware stores extracted values in request
-context for downstream handlers.
-*/
+// middleware.go provides HTTP middleware: proxy secret verification, auth, tenant scoping, request ID, rate limiting, CORS, and resource set scoping.
 package rest
 
 import (
@@ -51,12 +44,6 @@ func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
 	return nil
 }
 
-// PermissionsFromContext returns the effective RBAC permissions for the
-// current request, as loaded by RBACPermissionsMiddleware. Returns an
-// empty (nil) Permissions map if the middleware hasn't run or found no
-// permissions — since service.CheckPermission treats a resource absent
-// from the map as forbidden, an empty map is the fail-closed default,
-// not a special case callers need to check for separately.
 func PermissionsFromContext(ctx context.Context) service.Permissions {
 	if p, ok := ctx.Value(ctxPermissions).(service.Permissions); ok {
 		return p
@@ -109,7 +96,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 
 func ResourceSetMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip if scope was already set by AuthMiddleware (token-scoped).
+
 		if scope.FromContext(r.Context()) != nil {
 			next.ServeHTTP(w, r)
 			return
@@ -117,7 +104,6 @@ func ResourceSetMiddleware(next http.Handler) http.Handler {
 
 		tenantID := TenantIDFromContext(r.Context())
 
-		// Read resource set from header; fall back to Default if not provided.
 		rsID := scope.DefaultResourceSetID
 		if rsHeader := r.Header.Get("X-Dipole-ResourceSet"); rsHeader != "" {
 			if parsed, err := uuid.Parse(rsHeader); err == nil {
@@ -293,9 +279,6 @@ func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowed
 	return handler
 }
 
-// ProxySecretMiddleware rejects requests that don't carry a valid
-// X-Dipole-Proxy-Secret header. This prevents direct access to Cloud Run
-// bypassing Cloudflare, which would allow X-Forwarded-Host forgery.
 func ProxySecretMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

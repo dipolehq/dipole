@@ -30,6 +30,10 @@ func (s *TrustValidationService) RegisterValidator(providerType string, v TypeVa
 	s.validators[providerType] = v
 }
 
+func (s *TrustValidationService) JWKSCache() *JWKSCache {
+	return s.jwksCache
+}
+
 func (s *TrustValidationService) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence) (*domain.TrustProviderResult, error) {
 	v, ok := s.validators[provider.Type]
 	if !ok {

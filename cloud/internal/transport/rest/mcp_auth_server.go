@@ -1,16 +1,11 @@
 /*
-Package rest provides HTTP transport handlers for the Cloud service.
+Routes:
 
-MCPAuthServer implements the OAuth 2.1 Authorization Server endpoints for
-MCP client authorization. Served on the <tenant>-mcp.<domain> subdomain.
-Handles: DCR, authorization, token exchange, and IdP callbacks.
-
-Every request resolves its own tenant from the hostname (see tenant_host.go).
-There is no ambient/default tenant: one process serves all tenants, so a
-startup-bound tenant would silently serve every request as that one tenant.
-
-Discovery endpoints (/.well-known/*) are NOT owned here — they're shared with
-the identity issuer host and live in wellknown_handler.go.
+	POST /register
+	GET  /connect/authorize
+	POST /connect/token
+	GET  /callback/oidc
+	POST /callback/saml
 */
 package rest
 
@@ -50,14 +45,11 @@ func (s *MCPAuthServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /register", s.HandleRegister)
 	mux.HandleFunc("GET /connect/authorize", s.HandleAuthorize)
 	mux.HandleFunc("POST /connect/token", s.HandleToken)
-	// Registered from the same constants used to build the redirect_uri we send
-	// the IdP, so the route we serve and the URL we advertise can't drift apart.
+
 	mux.HandleFunc("GET "+platform.OIDCCallbackPath, s.HandleOIDCCallback)
 	mux.HandleFunc("POST "+platform.SAMLCallbackPath, s.HandleSAMLCallback)
 }
 
-// resolveMCPHost resolves the tenant and requires that the request arrived on
-// the MCP Authorization Server host. Fails closed on anything else.
 func (s *MCPAuthServer) resolveMCPHost(r *http.Request) (*ResolvedTenantHost, error) {
 	resolved, err := s.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -78,8 +70,6 @@ func (s *MCPAuthServer) respondUnresolvedTenant(w http.ResponseWriter, r *http.R
 		"this hostname does not identify a Dipole tenant")
 }
 
-// HandleRegister implements Dynamic Client Registration (RFC 7591).
-// MCP clients POST their metadata to receive a unique client_id.
 func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
@@ -114,9 +104,6 @@ func (s *MCPAuthServer) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// HandleAuthorize implements the OAuth 2.1 authorization endpoint with PKCE.
-// Validates the request, finds the matching Access Policy, evaluates conditions,
-// and redirects with an authorization code.
 func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
@@ -135,9 +122,7 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		Scope:               q.Get("scope"),
 		State:               q.Get("state"),
 		Resource:            q.Get("resource"),
-		// The IdP redirect_uri is built from this, so it must be the host this
-		// request actually arrived on — that's the value the customer registered
-		// with their IdP. A mismatch produces redirect_uri_mismatch.
+
 		ServerBaseURL: resolved.BaseURL,
 	}
 
@@ -170,8 +155,6 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
 }
 
-// HandleToken implements the OAuth 2.1 token endpoint.
-// Supports authorization_code (with PKCE) and refresh_token grant types.
 func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	resolved, err := s.resolveMCPHost(r)
 	if err != nil {
@@ -180,12 +163,6 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantID := resolved.TenantID()
 
-	// The token's `iss` claim must be the per-tenant identity host, not the
-	// shared platform issuer. External systems (customer MCP servers, AWS STS,
-	// Azure Entra, GCP) fetch our OIDC discovery from this URL and reject a
-	// token whose `iss` doesn't match the document's `issuer` field. Aembit's
-	// docs emphasize the same split: AS metadata issuer is the -mcp host, but
-	// the token issuer is the -id host.
 	issuerURL := s.resolver.BaseURLFor(resolved.Subdomain, platform.ServiceIdentity)
 	if issuerURL == "" {
 		writeJSONError(w, http.StatusInternalServerError, "server_error", "unable to determine token issuer for this tenant")
@@ -220,9 +197,6 @@ func (s *MCPAuthServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// HandleOIDCCallback processes the IdP redirect after OIDC user authentication.
-// Exchanges the IdP code for an id_token, validates via Trust Provider, and
-// issues an MCP authorization code back to the original MCP client.
 func (s *MCPAuthServer) HandleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
@@ -241,8 +215,6 @@ func (s *MCPAuthServer) HandleOIDCCallback(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, result.RedirectURL, http.StatusFound)
 }
 
-// HandleSAMLCallback processes the IdP POST after SAML user authentication.
-// Validates the SAML assertion via Trust Provider and issues an MCP authorization code.
 func (s *MCPAuthServer) HandleSAMLCallback(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_request", "malformed form body")

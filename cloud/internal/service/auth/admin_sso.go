@@ -12,6 +12,7 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 )
 
 type IdentityProviderConfig struct {
@@ -59,6 +60,7 @@ type OIDCTokenResponse struct {
 type AdminSSOService struct {
 	userRepo   repository.UserRepository
 	oidcClient OIDCClient
+	jwksCache  *trust.JWKSCache
 }
 
 func NewAdminSSOService(userRepo repository.UserRepository, oidcClient OIDCClient) *AdminSSOService {
@@ -66,6 +68,10 @@ func NewAdminSSOService(userRepo repository.UserRepository, oidcClient OIDCClien
 		userRepo:   userRepo,
 		oidcClient: oidcClient,
 	}
+}
+
+func (s *AdminSSOService) SetJWKSCache(cache *trust.JWKSCache) {
+	s.jwksCache = cache
 }
 
 func (s *AdminSSOService) BuildOIDCLoginURL(ctx context.Context, idp *IdentityProviderConfig, callbackURL, state string) (string, error) {
@@ -108,9 +114,9 @@ func (s *AdminSSOService) HandleOIDCCallback(ctx context.Context, idp *IdentityP
 		return nil, fmt.Errorf("OIDC code exchange failed: %w", err)
 	}
 
-	claims, err := decodeIDToken(tokenResp.IDToken)
+	claims, err := s.verifyIDToken(ctx, tokenResp.IDToken, cfg, discovery)
 	if err != nil {
-		return nil, fmt.Errorf("invalid id_token: %w", err)
+		return nil, fmt.Errorf("id_token verification failed: %w", err)
 	}
 
 	email, _ := claims["email"].(string)
@@ -140,14 +146,13 @@ func (s *AdminSSOService) HandleOIDCCallback(ctx context.Context, idp *IdentityP
 	return &SSOResult{UserID: user.ID, Email: user.Email, Name: user.Name, Created: false}, nil
 }
 
-func decodeIDToken(token string) (map[string]any, error) {
-	decoded, err := decodeJWTPayload(token)
-	if err != nil {
-		return nil, err
+func (s *AdminSSOService) verifyIDToken(ctx context.Context, idToken string, cfg OIDCConfig, discovery *OIDCDiscoveryDoc) (map[string]interface{}, error) {
+	if s.jwksCache == nil {
+		return nil, fmt.Errorf("JWKS cache not configured")
 	}
 
-	var claims map[string]any
-	if err := json.Unmarshal(decoded, &claims); err != nil {
+	claims, err := trust.VerifyIDToken(ctx, idToken, s.jwksCache, discovery.Issuer, cfg.ClientID)
+	if err != nil {
 		return nil, err
 	}
 	return claims, nil

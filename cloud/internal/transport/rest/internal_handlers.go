@@ -1,4 +1,10 @@
-// internal_handlers.go serves internal endpoints used by Edge Agent Controllers for registration, token exchange, and health reporting, authenticated via a per-controller HMAC signature (except /register, which uses a device code instead).
+/*
+Routes:
+
+	POST /internal/controllers/register
+	POST /internal/controllers/token
+	POST /internal/controllers/health
+*/
 package rest
 
 import (

@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/roles
+	POST   /api/v1/roles
+	GET    /api/v1/roles/{id}
+	PUT    /api/v1/roles/{id}
+	DELETE /api/v1/roles/{id}
+*/
 package rest
 
 import (
@@ -9,7 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Roles
 func (h *APIHandlers) ListRoles(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	opts := parseListOptions(r)
@@ -102,8 +110,6 @@ func (h *APIHandlers) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- Role DTOs ---
 
 type roleRequest struct {
 	Name        string          `json:"name"`
