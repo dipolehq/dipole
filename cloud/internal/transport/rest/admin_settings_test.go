@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/service/resources"
 )
 
 func withTestTenant(ctx context.Context, tenantID uuid.UUID) context.Context {
@@ -128,9 +129,9 @@ func TestGetComplianceReport_PerPolicyStatusReflectsActualRelations(t *testing.T
 				},
 			},
 		},
-		resourceSets: &fakeResourceSetRepoForCompliance{
+		resourceSets: resources.NewResourceSetService(&fakeResourceSetRepoForCompliance{
 			sets: []domain.ResourceSet{{ID: defaultRSID, Name: "Default"}},
-		},
+		}),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/global-policy-compliance/report", nil)
@@ -237,7 +238,7 @@ func TestGetComplianceReport_ResourceSetLookupFails_StillReturnsReport(t *testin
 				},
 			},
 		},
-		resourceSets: &erroringResourceSetRepo{},
+		resourceSets: resources.NewResourceSetService(&erroringResourceSetRepo{}),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/global-policy-compliance/report", nil)

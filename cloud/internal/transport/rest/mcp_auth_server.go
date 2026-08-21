@@ -146,10 +146,7 @@ func (s *MCPAuthServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	clientIP := r.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = r.RemoteAddr
-	}
+	clientIP := clientIP(r)
 
 	result, err := s.authorize.Authorize(r.Context(), tenantID, req, clientIP)
 	if err != nil {

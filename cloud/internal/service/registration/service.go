@@ -17,6 +17,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
 
 const sessionTokenLifetime = 1 * time.Hour
@@ -26,11 +27,14 @@ type RegistrationService struct {
 	proxyRepo      repository.AgentProxyRepository
 	tokenRepo      repository.RegistrationTokenRepository
 	encryptionKey  []byte
+	limiter        *service.PlanLimiter
 }
 
 func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository, encryptionKey []byte) *RegistrationService {
 	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo, encryptionKey: encryptionKey}
 }
+
+func (s *RegistrationService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
 
 func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (controller *domain.AgentController, sharedSecret string, err error) {
 	sharedSecret, err = generateSharedSecret()
@@ -55,6 +59,11 @@ func (s *RegistrationService) RegisterController(ctx context.Context, tenantID u
 }
 
 func (s *RegistrationService) CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error) {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceAgentControllers); err != nil {
+			return nil, err
+		}
+	}
 	code := generateDeviceCode()
 	expiresAt := time.Now().Add(1 * time.Hour)
 	// agent_controllers.resource_set_id is NOT NULL DEFAULT

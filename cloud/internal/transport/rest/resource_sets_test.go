@@ -13,6 +13,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/resources"
 )
 
 type fakeResourceSetRepoForDelete struct {
@@ -60,15 +61,15 @@ func deleteResourceSetRequest(id uuid.UUID) *http.Request {
 func TestDeleteResourceSet_DefaultResourceSet_Rejected(t *testing.T) {
 	defaultRS := &domain.ResourceSet{ID: scope.DefaultResourceSetID, Name: "Default"}
 	repo := newFakeResourceSetRepoForDelete(defaultRS)
-	h := &APIHandlers{resourceSets: repo}
+	h := &APIHandlers{resourceSets: resources.NewResourceSetService(repo)}
 
 	req := deleteResourceSetRequest(scope.DefaultResourceSetID)
 	w := httptest.NewRecorder()
 
 	h.DeleteResourceSet(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 when deleting the Default Resource Set, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 when deleting the Default Resource Set, got %d: %s", w.Code, w.Body.String())
 	}
 	if len(repo.deleted) != 0 {
 		t.Error("expected the Default Resource Set to NOT be deleted")
@@ -79,7 +80,7 @@ func TestDeleteResourceSet_NonDefaultResourceSet_Allowed(t *testing.T) {
 	customID := uuid.New()
 	customRS := &domain.ResourceSet{ID: customID, Name: "Staging"}
 	repo := newFakeResourceSetRepoForDelete(customRS)
-	h := &APIHandlers{resourceSets: repo}
+	h := &APIHandlers{resourceSets: resources.NewResourceSetService(repo)}
 
 	req := deleteResourceSetRequest(customID)
 	w := httptest.NewRecorder()
@@ -164,18 +165,17 @@ func TestCreateResourceSet_AtStarterPlanLimit_Rejected(t *testing.T) {
 		&fakeTenantRepoForResourceSetLimit{plan: "starter"},
 		&fakeResourceCounterForResourceSetLimit{count: 1},
 	)
-	h := &APIHandlers{
-		resourceSets: newFakeResourceSetRepoForDelete(),
-		planLimiter:  limiter,
-	}
+	svc := resources.NewResourceSetService(newFakeResourceSetRepoForDelete())
+	svc.SetLimiter(limiter)
+	h := &APIHandlers{resourceSets: svc}
 
 	req := createResourceSetRequest(tenantID, "Staging")
 	w := httptest.NewRecorder()
 
 	h.CreateResourceSet(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 when at the starter plan's resource set limit, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when at the starter plan's resource set limit, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -187,10 +187,9 @@ func TestCreateResourceSet_UnderPlanLimit_Allowed(t *testing.T) {
 		&fakeTenantRepoForResourceSetLimit{plan: "starter"},
 		&fakeResourceCounterForResourceSetLimit{count: 0},
 	)
-	h := &APIHandlers{
-		resourceSets: newFakeResourceSetRepoForDelete(),
-		planLimiter:  limiter,
-	}
+	svc := resources.NewResourceSetService(newFakeResourceSetRepoForDelete())
+	svc.SetLimiter(limiter)
+	h := &APIHandlers{resourceSets: svc}
 
 	req := createResourceSetRequest(tenantID, "Staging")
 	w := httptest.NewRecorder()

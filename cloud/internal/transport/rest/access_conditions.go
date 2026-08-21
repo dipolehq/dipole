@@ -158,6 +158,10 @@ func (h *AccessConditionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if ac == nil {
+		respondError(w, http.StatusNotFound, "not_found", "access condition not found")
+		return
+	}
 	respondJSON(w, http.StatusOK, toAccessConditionResponse(ac))
 }
 

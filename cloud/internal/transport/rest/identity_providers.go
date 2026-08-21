@@ -30,25 +30,13 @@ func (h *APIHandlers) CreateIdentityProvider(w http.ResponseWriter, r *http.Requ
 		respondBadRequest(w, err.Error())
 		return
 	}
-	if req.Name == "" {
-		respondBadRequest(w, "name is required")
-		return
-	}
-	if req.Type == "" {
-		respondBadRequest(w, "type is required")
-		return
-	}
-	if req.Type != "saml_2.0" && req.Type != "oidc_1.0" {
-		respondBadRequest(w, "type must be saml_2.0 or oidc_1.0")
-		return
-	}
 	idp := req.toDomain()
 	if err := h.identityProviders.Create(r.Context(), tenantID, &idp); err != nil {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, idp.ID)
-	if err != nil || saved == nil {
+	saved, err := h.identityProviders.Get(r.Context(), tenantID, idp.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toIdpResponse(&idp))
 		return
@@ -64,13 +52,9 @@ func (h *APIHandlers) GetIdentityProvider(w http.ResponseWriter, r *http.Request
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	idp, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
+	idp, err := h.identityProviders.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if idp == nil {
-		respondError(w, http.StatusNotFound, "not_found", "identity provider not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toIdpResponse(idp))
@@ -83,15 +67,6 @@ func (h *APIHandlers) UpdateIdentityProvider(w http.ResponseWriter, r *http.Requ
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	existing, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "identity provider not found")
-		return
-	}
 	var req idpRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
@@ -100,13 +75,12 @@ func (h *APIHandlers) UpdateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	idp := req.toDomain()
 	idp.ID = id
 	idp.TenantID = tenantID
-	idp.Config = preserveSecrets(existing.Config, idp.Config)
 	if err := h.identityProviders.Update(r.Context(), tenantID, &idp); err != nil {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.identityProviders.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "IdentityProviders", "identity_provider", idp.ID, idp.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toIdpResponse(&idp))
 		return
@@ -120,15 +94,6 @@ func (h *APIHandlers) DeleteIdentityProvider(w http.ResponseWriter, r *http.Requ
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.identityProviders.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "identity provider not found")
 		return
 	}
 	if err := h.identityProviders.Delete(r.Context(), tenantID, id); err != nil {
@@ -203,37 +168,4 @@ func toIdpResponses(idps []domain.IdentityProvider) []idpResponse {
 		resp = append(resp, toIdpResponse(&idps[i]))
 	}
 	return resp
-}
-
-// preserveSecrets merges incoming config with the existing config, preserving
-// secret fields (clientSecret) when the incoming value is empty. This prevents
-// the frontend from accidentally wiping secrets it can't read back (redacted on
-// GET responses).
-func preserveSecrets(existingRaw, incomingRaw json.RawMessage) json.RawMessage {
-	secretFields := []string{"clientSecret"}
-
-	var existing, incoming map[string]json.RawMessage
-	if json.Unmarshal(existingRaw, &existing) != nil {
-		return incomingRaw
-	}
-	if json.Unmarshal(incomingRaw, &incoming) != nil {
-		return incomingRaw
-	}
-
-	for _, field := range secretFields {
-		inVal, inOK := incoming[field]
-		exVal, exOK := existing[field]
-		if !exOK {
-			continue
-		}
-		if !inOK || string(inVal) == `""` || string(inVal) == `null` || string(inVal) == "" {
-			incoming[field] = exVal
-		}
-	}
-
-	merged, err := json.Marshal(incoming)
-	if err != nil {
-		return incomingRaw
-	}
-	return merged
 }

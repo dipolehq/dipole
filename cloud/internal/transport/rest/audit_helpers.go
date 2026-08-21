@@ -49,6 +49,9 @@ func emitAuditDeleted(bus *events.EventBus, ctx context.Context, tenantID uuid.U
 }
 
 func clientIP(r *http.Request) string {
+	if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+		return cfIP
+	}
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		parts := strings.SplitN(forwarded, ",", 2)
 		return strings.TrimSpace(parts[0])

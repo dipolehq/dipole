@@ -6,7 +6,6 @@ import (
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +21,6 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch resource counts for all listed resource sets in one query.
 	ids := make([]uuid.UUID, len(items))
 	for i := range items {
 		ids[i] = items[i].ID
@@ -39,19 +37,9 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceResourceSets); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req resourceSetRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
-		return
-	}
-	if req.Name == "" {
-		respondBadRequest(w, "name is required")
 		return
 	}
 	rs := req.toDomain()
@@ -59,8 +47,8 @@ func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, rs.ID)
-	if err != nil || saved == nil {
+	saved, err := h.resourceSets.Get(r.Context(), tenantID, rs.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toResourceSetResponse(&rs))
 		return
@@ -76,13 +64,9 @@ func (h *APIHandlers) GetResourceSet(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	rs, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
+	rs, err := h.resourceSets.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if rs == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toResourceSetResponse(rs))
@@ -93,15 +77,6 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
 		return
 	}
 	var req resourceSetRequest
@@ -116,8 +91,8 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.resourceSets.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toResourceSetResponse(&rs))
 		return
@@ -131,24 +106,6 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
-		return
-	}
-	// The Default Resource Set is where every resource without an explicit
-	// assignment lives (enforced at the database column-default level, not
-	// just convention) — deleting it would orphan any such resource, so it
-	// can never be deleted, mirroring the equivalent guard other resources
-	// with a protected default already have in this codebase.
-	if existing.ID == scope.DefaultResourceSetID {
-		respondError(w, http.StatusBadRequest, "cannot_delete_default", "the Default Resource Set cannot be deleted")
 		return
 	}
 	if err := h.resourceSets.Delete(r.Context(), tenantID, id); err != nil {

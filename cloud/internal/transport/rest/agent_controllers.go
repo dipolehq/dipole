@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -70,12 +69,6 @@ func (h *APIHandlers) ListAgentProxies(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceAgentControllers); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req agentControllerRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())

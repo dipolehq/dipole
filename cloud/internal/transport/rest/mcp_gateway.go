@@ -132,10 +132,7 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientIP := r.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = r.RemoteAddr
-	}
+	clientIP := clientIP(r)
 
 	token := extractBearerToken(r)
 	if token == "" {

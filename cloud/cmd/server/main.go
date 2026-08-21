@@ -140,6 +140,11 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	accessConditionSvc := resources.NewAccessConditionService(repos.AccessConditions)
 	credentialProviderSvc := resources.NewCredentialProviderService(repos.CredentialProviders, encKey)
 	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies, repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders, repos.CredentialProviders, repos.AccessConditions)
+	userSvc := resources.NewUserService(repos.Users)
+	roleSvc := resources.NewRoleService(repos.Roles)
+	resourceSetSvc := resources.NewResourceSetService(repos.ResourceSets)
+	identityProviderSvc := resources.NewIdentityProviderService(repos.IdentityProviders)
+	logStreamCRUDSvc := resources.NewLogStreamService(repos.LogStreams)
 	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
@@ -158,6 +163,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	accessConditionSvc.SetLimiter(planLimiter)
 	credentialProviderSvc.SetLimiter(planLimiter)
 	accessPolicySvc.SetLimiter(planLimiter)
+	userSvc.SetLimiter(planLimiter)
+	resourceSetSvc.SetLimiter(planLimiter)
+	logStreamCRUDSvc.SetLimiter(planLimiter)
+	registrationSvc.SetLimiter(planLimiter)
 
 	edgeTrustValidator := trust.NewEdgeTrustValidator(repos.TrustProviders, trustValidator)
 	edgePolicyAdapter := policy.NewEdgePolicyAdapter(policyService)
@@ -210,7 +219,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, logger)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, userSvc, roleSvc, resourceSetSvc, identityProviderSvc, logStreamCRUDSvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, logger)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -307,6 +316,11 @@ func buildHTTPServer(
 	accessConditionSvc *resources.AccessConditionService,
 	credentialProviderSvc *resources.CredentialProviderService,
 	accessPolicySvc *resources.AccessPolicyService,
+	userSvc *resources.UserService,
+	roleSvc *resources.RoleService,
+	resourceSetSvc *resources.ResourceSetService,
+	identityProviderSvc *resources.IdentityProviderService,
+	logStreamCRUDSvc *resources.LogStreamService,
 	authenticator rest.APIAuthenticator,
 	registrationSvc *registration.RegistrationService,
 	edgeAPI *rest.EdgeAPIHandler,
@@ -325,12 +339,12 @@ func buildHTTPServer(
 		repos.AgentProxies,
 		repos.APITokens,
 		repos.TrustProviders,
-		repos.Users,
-		repos.Roles,
-		repos.ResourceSets,
-		repos.IdentityProviders,
+		userSvc,
+		roleSvc,
+		resourceSetSvc,
+		identityProviderSvc,
 		repos.SignOnPolicies,
-		repos.LogStreams,
+		logStreamCRUDSvc,
 		repos.GlobalPolicyCompliance,
 		repos.AccessPolicies,
 		repos.TenantProfiles,
@@ -338,7 +352,6 @@ func buildHTTPServer(
 		repos.Tenants,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
-	apiHandlers.SetPlanLimiter(planLimiter)
 	apiHandlers.SetHealthPinger(repos)
 
 	apiHandlers.SetAudit(eventBus)

@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -26,37 +25,9 @@ func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceLogStreams); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req logStreamRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
-		return
-	}
-	if req.Name == "" {
-		respondBadRequest(w, "name is required")
-		return
-	}
-	if req.EventType == "" {
-		respondBadRequest(w, "eventType is required")
-		return
-	}
-	if req.DestinationType == "" {
-		respondBadRequest(w, "destinationType is required")
-		return
-	}
-	validEventTypes := map[string]bool{"access_authorization": true, "audit_logs": true, "workload_events": true}
-	if !validEventTypes[req.EventType] {
-		respondBadRequest(w, "eventType must be access_authorization, audit_logs, or workload_events")
-		return
-	}
-	validDestTypes := map[string]bool{"aws_s3": true, "gcs_bucket": true, "crowdstrike_siem": true, "splunk_siem": true}
-	if !validDestTypes[req.DestinationType] {
-		respondBadRequest(w, "destinationType must be aws_s3, gcs_bucket, crowdstrike_siem, or splunk_siem")
 		return
 	}
 	ls := req.toDomain()
@@ -64,8 +35,8 @@ func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.logStreams.GetByID(r.Context(), tenantID, ls.ID)
-	if err != nil || saved == nil {
+	saved, err := h.logStreams.Get(r.Context(), tenantID, ls.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toLogStreamResponse(&ls))
 		return
@@ -81,13 +52,9 @@ func (h *APIHandlers) GetLogStream(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	ls, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	ls, err := h.logStreams.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if ls == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toLogStreamResponse(ls))
@@ -98,15 +65,6 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
 		return
 	}
 	var req logStreamRequest
@@ -121,8 +79,8 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.logStreams.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toLogStreamResponse(&ls))
 		return
@@ -136,15 +94,6 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
 		return
 	}
 	if err := h.logStreams.Delete(r.Context(), tenantID, id); err != nil {

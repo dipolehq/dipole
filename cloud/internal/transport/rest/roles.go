@@ -34,8 +34,8 @@ func (h *APIHandlers) CreateRole(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.roles.GetByID(r.Context(), tenantID, role.ID)
-	if err != nil || saved == nil {
+	saved, err := h.roles.Get(r.Context(), tenantID, role.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", role.ID, role.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toRoleResponse(&role))
 		return
@@ -51,13 +51,9 @@ func (h *APIHandlers) GetRole(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	role, err := h.roles.GetByID(r.Context(), tenantID, id)
+	role, err := h.roles.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if role == nil {
-		respondError(w, http.StatusNotFound, "not_found", "role not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toRoleResponse(role))
@@ -68,15 +64,6 @@ func (h *APIHandlers) UpdateRole(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.roles.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "role not found")
 		return
 	}
 	var req roleRequest
@@ -91,8 +78,8 @@ func (h *APIHandlers) UpdateRole(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.roles.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.roles.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Roles", "role", role.ID, role.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toRoleResponse(&role))
 		return
@@ -106,15 +93,6 @@ func (h *APIHandlers) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.roles.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "role not found")
 		return
 	}
 	if err := h.roles.Delete(r.Context(), tenantID, id); err != nil {

@@ -227,6 +227,10 @@ func (h *AccessPolicyHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
+	if p == nil {
+		respondError(w, http.StatusNotFound, "not_found", "access policy not found")
+		return
+	}
 	respondJSON(w, http.StatusOK, toAccessPolicyResponse(p))
 }
 
