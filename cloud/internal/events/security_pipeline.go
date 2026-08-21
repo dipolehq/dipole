@@ -1,11 +1,4 @@
-/*
-security_pipeline.go implements synchronous persistence for security events.
-
-Security events represent access decisions with compliance implications — a
-lost event means a gap in the customer's audit trail. Writes happen inline in
-the request path. If the DB write fails the error is returned to the caller and
-a metric is incremented; access is never blocked by a logging failure.
-*/
+// Package events implements synchronous persistence for security events.
 package events
 
 import (
@@ -42,11 +35,6 @@ func (p *SecurityPipeline) Emit(ctx context.Context, event SecurityEvent) error 
 		event.ContextID = uuid.New()
 	}
 	if event.ResourceSetID == nil {
-		// Every producer is expected to set ResourceSetID explicitly (see
-		// evaluation.go, method_handler.go, mcp_gateway.go). This default is a
-		// last-resort safety net, not the intended path — a producer reaching
-		// here means it forgot to attribute the event to a resource set, so
-		// it is logged loudly rather than silently defaulted.
 		if p.logger != nil {
 			p.logger.Warn("security event missing ResourceSetID, defaulting to DefaultResourceSetID",
 				"event_type", event.EventType,

@@ -1,4 +1,4 @@
-// pipeline.go is the single entry point for all event emission in the Dipole cloud service: EventBus composes the Security, Workload, and Audit pipelines behind a unified API.
+// Package events is the centralized entry point for all event emission in the cloud service.
 package events
 
 import (
@@ -83,11 +83,6 @@ func (b *EventBus) Metrics() *Metrics {
 	return b.metrics
 }
 
-// Shutdown signals the workload pipeline to stop accepting new events and
-// flush whatever it's already buffered, then blocks until that drain
-// completes or timeout elapses — whichever comes first. A timeout that
-// elapses first is logged (rather than silently discarding buffered
-// events) so an operator can tell shutdown didn't fully drain.
 func (b *EventBus) Shutdown(timeout time.Duration) {
 	b.cancel()
 	select {

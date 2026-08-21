@@ -1,13 +1,4 @@
-/*
-redact.go strips sensitive HTTP headers from workload event payloads before
-database persistence.
-
-Edge proxies stream raw request/response metadata including Authorization,
-Cookie, Set-Cookie, and X-API-Key headers. These must never be stored in
-cleartext. This redaction runs inside IngestFromProxy before the batch is
-written, ensuring no credential material reaches the workload_events table
-regardless of what the proxy sends.
-*/
+// Package events strips sensitive HTTP headers from workload event payloads before persistence.
 package events
 
 import (

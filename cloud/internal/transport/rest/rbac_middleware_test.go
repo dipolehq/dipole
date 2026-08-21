@@ -99,7 +99,7 @@ func TestResolvePermissions_ActiveUserWithActiveRole_ReturnsParsedPermissions(t 
 	roles := newFakeRoleRepoForRBAC()
 	roles.put(tenantID, &domain.Role{ID: roleID, IsActive: true, Permissions: permsJSON})
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 
 	if err := service.NewRBACService().CheckPermission(got, "access_policies", http.MethodPost); err != nil {
 		t.Errorf("expected AdminPermissions to allow POST access_policies, got %v", err)
@@ -113,7 +113,7 @@ func TestResolvePermissions_NoTenantID_ReturnsNil(t *testing.T) {
 	users := newFakeUserRepoForRBAC()
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, uuid.Nil, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, uuid.Nil, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -121,7 +121,7 @@ func TestResolvePermissions_NoEmail_ReturnsNil(t *testing.T) {
 	users := newFakeUserRepoForRBAC()
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, uuid.New(), "", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, uuid.New(), "", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -130,7 +130,7 @@ func TestResolvePermissions_UserNotFound_ReturnsNil(t *testing.T) {
 	users := newFakeUserRepoForRBAC() // empty - no matching user
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "ghost@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "ghost@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -140,7 +140,7 @@ func TestResolvePermissions_UserRepoError_ReturnsNil(t *testing.T) {
 	users.err = fmt.Errorf("db unavailable")
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -152,7 +152,7 @@ func TestResolvePermissions_InactiveUser_ReturnsNil(t *testing.T) {
 	roles := newFakeRoleRepoForRBAC()
 	roles.put(tenantID, &domain.Role{ID: roleID, IsActive: true, Permissions: mustMarshal(service.SuperAdminPermissions())})
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -162,7 +162,7 @@ func TestResolvePermissions_UserHasNoRoleAssigned_ReturnsNil(t *testing.T) {
 	users.put(tenantID, &domain.User{Email: "alice@example.com", IsActive: true, RoleID: nil})
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -173,7 +173,7 @@ func TestResolvePermissions_RoleNotFound_ReturnsNil(t *testing.T) {
 	users.put(tenantID, &domain.User{Email: "alice@example.com", IsActive: true, RoleID: &roleID})
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -185,7 +185,7 @@ func TestResolvePermissions_RoleRepoError_ReturnsNil(t *testing.T) {
 	roles := newFakeRoleRepoForRBAC()
 	roles.err = fmt.Errorf("db unavailable")
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -197,7 +197,7 @@ func TestResolvePermissions_InactiveRole_ReturnsNil(t *testing.T) {
 	roles := newFakeRoleRepoForRBAC()
 	roles.put(tenantID, &domain.Role{ID: roleID, IsActive: false, Permissions: mustMarshal(service.SuperAdminPermissions())})
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -214,7 +214,7 @@ func TestResolvePermissions_EmptyRolePermissions_ReturnsNil(t *testing.T) {
 	roles := newFakeRoleRepoForRBAC()
 	roles.put(tenantID, &domain.Role{ID: roleID, IsActive: true, Permissions: nil})
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -226,7 +226,7 @@ func TestResolvePermissions_MalformedRolePermissions_ReturnsNil(t *testing.T) {
 	roles := newFakeRoleRepoForRBAC()
 	roles.put(tenantID, &domain.Role{ID: roleID, IsActive: true, Permissions: json.RawMessage(`not valid json`)})
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "alice@example.com", testLoggerForRBAC())
 	assertDeniesEverything(t, got)
 }
 
@@ -238,7 +238,7 @@ func TestResolvePermissions_ScopedAPIToken_GetsTenantWideAccess(t *testing.T) {
 	users := newFakeUserRepoForRBAC() // deliberately empty
 	roles := newFakeRoleRepoForRBAC() // deliberately empty
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "apitoken@scoped", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "apitoken@scoped", testLoggerForRBAC())
 
 	if err := service.NewRBACService().CheckPermission(got, "roles", http.MethodDelete); err != nil {
 		t.Errorf("expected tenant-wide (Super Admin) access for a scoped API token identity, got %v", err)
@@ -252,7 +252,7 @@ func TestResolvePermissions_LegacyTenantToken_GetsTenantWideAccess(t *testing.T)
 	users := newFakeUserRepoForRBAC()
 	roles := newFakeRoleRepoForRBAC()
 
-	got := resolvePermissions(context.Background(), users, roles, tenantID, "apitoken@acme-corp", testLoggerForRBAC())
+	got, _ := resolvePermissions(context.Background(), users, roles, tenantID, "apitoken@acme-corp", testLoggerForRBAC())
 
 	if err := service.NewRBACService().CheckPermission(got, "identity_providers", http.MethodPost); err != nil {
 		t.Errorf("expected tenant-wide (Super Admin) access for a legacy tenant token identity, got %v", err)
@@ -278,8 +278,8 @@ func TestResolvePermissions_TenantIsolation_UserFromOtherTenantNotFound(t *testi
 	roles.put(tenantA, &domain.Role{ID: roleA, IsActive: true, Permissions: mustMarshal(service.SuperAdminPermissions())})
 	roles.put(tenantB, &domain.Role{ID: roleB, IsActive: true, Permissions: mustMarshal(service.ReadOnlyPermissions())})
 
-	gotA := resolvePermissions(context.Background(), users, roles, tenantA, "shared@example.com", testLoggerForRBAC())
-	gotB := resolvePermissions(context.Background(), users, roles, tenantB, "shared@example.com", testLoggerForRBAC())
+	gotA, _ := resolvePermissions(context.Background(), users, roles, tenantA, "shared@example.com", testLoggerForRBAC())
+	gotB, _ := resolvePermissions(context.Background(), users, roles, tenantB, "shared@example.com", testLoggerForRBAC())
 
 	if err := service.NewRBACService().CheckPermission(gotA, "roles", http.MethodDelete); err != nil {
 		t.Errorf("tenant A's role should allow DELETE roles (Super Admin), got %v", err)

@@ -20,6 +20,7 @@ type contextKey string
 const (
 	ctxTenantID    contextKey = "tenant_id"
 	ctxUserEmail   contextKey = "user_email"
+	ctxUserID      contextKey = "user_id"
 	ctxRequestID   contextKey = "request_id"
 	ctxPermissions contextKey = "permissions"
 )
@@ -36,6 +37,18 @@ func UserEmailFromContext(ctx context.Context) string {
 		return email
 	}
 	return ""
+}
+
+// UserIDFromContext returns the acting admin user's ID for audit
+// attribution, as resolved by RBACPermissionsMiddleware. Returns nil when
+// the caller isn't a real user row (API tokens, which authenticate via a
+// synthetic email with no backing user, per resolvePermissions) or when
+// RBAC permission resolution hasn't run for this request.
+func UserIDFromContext(ctx context.Context) *uuid.UUID {
+	if id, ok := ctx.Value(ctxUserID).(uuid.UUID); ok {
+		return &id
+	}
+	return nil
 }
 func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
 	if s := scope.FromContext(ctx); s != nil {

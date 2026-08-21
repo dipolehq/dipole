@@ -36,21 +36,22 @@ type WorkloadEvent struct {
 }
 
 type AuditLog struct {
-	ID         uuid.UUID  `json:"id"`
-	TenantID   uuid.UUID  `json:"tenantId"`
-	ActorID    *uuid.UUID `json:"actorId"`
-	ActorEmail string     `json:"actorEmail"`
-	Category   string     `json:"category"`
-	Activity   string     `json:"activity"`
-	TargetType string     `json:"targetType"`
-	TargetID   *uuid.UUID `json:"targetId"`
-	TargetName string     `json:"targetName"`
-	Result     string     `json:"result"`
-	Severity   string     `json:"severity"`
-	ClientIP   string     `json:"clientIp"`
-	Browser    string     `json:"browser"`
-	OS         string     `json:"os"`
-	Timestamp  time.Time  `json:"timestamp"`
+	ID            uuid.UUID  `json:"id"`
+	TenantID      uuid.UUID  `json:"tenantId"`
+	ActorID       *uuid.UUID `json:"actorId"`
+	ActorEmail    string     `json:"actorEmail"`
+	Category      string     `json:"category"`
+	Activity      string     `json:"activity"`
+	TargetType    string     `json:"targetType"`
+	TargetID      *uuid.UUID `json:"targetId"`
+	TargetName    string     `json:"targetName"`
+	Result        string     `json:"result"`
+	Severity      string     `json:"severity"`
+	ClientIP      string     `json:"clientIp"`
+	Browser       string     `json:"browser"`
+	OS            string     `json:"os"`
+	ResourceSetID uuid.UUID  `json:"resourceSetId"`
+	Timestamp     time.Time  `json:"timestamp"`
 }
 
 type EventQueryOptions struct {

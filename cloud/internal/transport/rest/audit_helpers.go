@@ -7,38 +7,58 @@ import (
 	"strings"
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
 
-func emitAudit(bus *events.EventBus, ctx context.Context, tenantID uuid.UUID, actorEmail string, category string, activity string, targetType string, targetID uuid.UUID, targetName string, ip string, ua string) {
+const (
+	auditSeverityInfo  = "Info"
+	auditSeverityWarn  = "Warn"
+	auditSeverityAlert = "Alert"
+)
+
+// emitAudit builds and emits an AuditEvent, attributing it to the
+// resource set active in ctx (see scope.FromContext) and, when the caller
+// is a real admin user rather than an API token identity, to that user's
+// ID (see UserIDFromContext) in addition to their email.
+func emitAudit(bus *events.EventBus, ctx context.Context, tenantID uuid.UUID, actorEmail string, category string, activity string, severity string, targetType string, targetID uuid.UUID, targetName string, ip string, ua string) {
 	if bus == nil {
 		return
 	}
 	browser, os := parseUA(ua)
+
+	var resourceSetID *uuid.UUID
+	if s := scope.FromContext(ctx); s != nil {
+		resourceSetID = &s.ResourceSetID
+	}
+
 	bus.EmitAudit(ctx, events.AuditEvent{
-		TenantID:   tenantID,
-		ActorEmail: actorEmail,
-		ActorIP:    ip,
-		Browser:    browser,
-		OS:         os,
-		Category:   category,
-		Activity:   activity,
-		TargetType: targetType,
-		TargetID:   &targetID,
-		TargetName: targetName,
+		TenantID:      tenantID,
+		ActorID:       UserIDFromContext(ctx),
+		ActorEmail:    actorEmail,
+		ActorIP:       ip,
+		Browser:       browser,
+		OS:            os,
+		Category:      category,
+		Activity:      activity,
+		Severity:      severity,
+		TargetType:    targetType,
+		TargetID:      &targetID,
+		TargetName:    targetName,
+		ResourceSetID: resourceSetID,
 	})
 }
 
 func emitAuditCreated(bus *events.EventBus, ctx context.Context, tenantID uuid.UUID, actorEmail string, category string, targetType string, targetID uuid.UUID, targetName string, ip string, ua string) {
-	emitAudit(bus, ctx, tenantID, actorEmail, category, "Created", targetType, targetID, targetName, ip, ua)
+	emitAudit(bus, ctx, tenantID, actorEmail, category, "Created", auditSeverityInfo, targetType, targetID, targetName, ip, ua)
 }
 
 func emitAuditUpdated(bus *events.EventBus, ctx context.Context, tenantID uuid.UUID, actorEmail string, category string, targetType string, targetID uuid.UUID, targetName string, ip string, ua string) {
-	emitAudit(bus, ctx, tenantID, actorEmail, category, "Updated", targetType, targetID, targetName, ip, ua)
+	emitAudit(bus, ctx, tenantID, actorEmail, category, "Updated", auditSeverityInfo, targetType, targetID, targetName, ip, ua)
 }
 
 func emitAuditDeleted(bus *events.EventBus, ctx context.Context, tenantID uuid.UUID, actorEmail string, category string, targetType string, targetID uuid.UUID, targetName string, ip string, ua string) {
-	emitAudit(bus, ctx, tenantID, actorEmail, category, "Deleted", targetType, targetID, targetName, ip, ua)
+	emitAudit(bus, ctx, tenantID, actorEmail, category, "Deleted", auditSeverityWarn, targetType, targetID, targetName, ip, ua)
 }
 
 func clientIP(r *http.Request) string {
