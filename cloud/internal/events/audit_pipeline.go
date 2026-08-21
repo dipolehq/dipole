@@ -1,10 +1,4 @@
-/*
-audit_pipeline.go implements synchronous persistence for audit events.
-
-Audit events record administrative mutations (entity CRUD). They are
-compliance-critical but low-volume (admin actions, not per-request). Writes
-happen inline and errors are returned to the caller with a metric increment.
-*/
+// Package events implements synchronous persistence for audit events.
 package events
 
 import (

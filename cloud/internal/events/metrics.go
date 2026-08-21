@@ -1,4 +1,4 @@
-// metrics.go provides lightweight atomic observability counters for emit success, failure, and drop rates across the Security, Workload, and Audit pipelines.
+// Package events provides lightweight atomic counters for event emission observability.
 package events
 
 import "sync/atomic"

@@ -1,3 +1,4 @@
+// Package domain defines core business entities and value objects.
 package domain
 
 import "github.com/google/uuid"

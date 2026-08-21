@@ -67,7 +67,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.Outcome == auth.LoginOutcomeSuccess && h.audit != nil {
-		emitAudit(h.audit, r.Context(), TenantIDFromContext(r.Context()), req.Email, "Authentication", "Login", "user", uuid.Nil, req.Email, clientIP(r), userAgent(r))
+		emitAudit(h.audit, r.Context(), TenantIDFromContext(r.Context()), req.Email, "Authentication", "Login", auditSeverityInfo, "user", uuid.Nil, req.Email, clientIP(r), userAgent(r))
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -221,6 +221,6 @@ func (h *AuthHandler) HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emitAudit(h.audit, r.Context(), uuid.Nil, req.Email, "Tenant", "Signup", "tenant", uuid.Nil, req.CompanyName, clientIP(r), userAgent(r))
+	emitAudit(h.audit, r.Context(), uuid.Nil, req.Email, "Tenant", "Signup", auditSeverityInfo, "tenant", uuid.Nil, req.CompanyName, clientIP(r), userAgent(r))
 	writeJSON(w, http.StatusCreated, resp)
 }

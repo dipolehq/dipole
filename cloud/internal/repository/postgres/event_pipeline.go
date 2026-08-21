@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type EventPipelineRepo struct {
@@ -94,12 +95,17 @@ func (r *EventPipelineRepo) InsertWorkloadEventBatch(ctx context.Context, batch 
 func (r *EventPipelineRepo) InsertAuditEvent(ctx context.Context, event *events.AuditEvent) error {
 	id := uuid.New()
 
-	severity := "Info"
+	severity := event.Severity
+	if severity == "" {
+		severity = "Info"
+	}
+
+	resourceSetID := scope.ResolveResourceSetID(event.ResourceSetID)
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO audit_logs (id, tenant_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		id, event.TenantID, event.ActorEmail, event.Category, event.Activity, event.TargetType, event.TargetID, event.TargetName, severity, event.ActorIP, event.Timestamp)
+		`INSERT INTO audit_logs (id, tenant_id, actor_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, browser, os, resource_set_id, timestamp)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		id, event.TenantID, event.ActorID, event.ActorEmail, event.Category, event.Activity, event.TargetType, event.TargetID, event.TargetName, severity, event.ActorIP, event.Browser, event.OS, resourceSetID, event.Timestamp)
 	if err != nil {
 		return fmt.Errorf("insert audit event: %w", err)
 	}

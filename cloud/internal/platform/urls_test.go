@@ -39,11 +39,14 @@ func TestNewHosts_EmptyDomainFallsBackToDefault(t *testing.T) {
 	}
 }
 
-func TestURLForService_UnknownServiceReturnsEmpty(t *testing.T) {
+func TestURLForService_UnknownServicePanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when URLForService called with unknown service")
+		}
+	}()
 	h := NewHosts("dipolehq.com", "")
-	if got := h.URLForService("647251", Service("console")); got != "" {
-		t.Errorf("URLForService(unknown) = %q, want empty", got)
-	}
+	h.URLForService("647251", Service("console"))
 }
 
 func TestParseHost_RoundTripsBuiltURLs(t *testing.T) {

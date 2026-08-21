@@ -1,8 +1,4 @@
-/*
-mfa.go defines the UserMFA domain type representing a user's multi-factor
-authentication configuration (TOTP secret + backup codes). Secrets and codes
-are stored encrypted (AES-256-GCM) at rest.
-*/
+// Package domain defines core business entities and value objects.
 package domain
 
 import (

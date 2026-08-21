@@ -1,4 +1,4 @@
-// repository.go defines the write-only persistence interface consumed by the event pipelines and implemented by the postgres package; all reads go through postgres.EventRepo directly (see cloud/internal/repository/postgres/event.go), not through this interface.
+// Package events defines the write-only persistence interface for event pipelines.
 package events
 
 import "context"

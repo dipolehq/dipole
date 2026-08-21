@@ -1,7 +1,4 @@
-/*
-Command server is the Dipole Cloud control-plane entry point. Assembles the
-database pool, repositories, services, and both the REST and gRPC transports.
-*/
+// Package main is the Dipole Cloud control-plane server.
 package main
 
 import (
@@ -16,8 +13,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/config"
 	eventbus "github.com/dipolehq/dipole/cloud/internal/events"
@@ -40,6 +35,16 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/transport/rest"
 )
 
+const (
+	migrationMaxAttempts = 5
+
+	logStreamExportInterval = 60 * time.Second
+	mcpSweeperInterval      = 5 * time.Minute
+
+	httpShutdownTimeout     = 15 * time.Second
+	eventBusShutdownTimeout = 15 * time.Second
+)
+
 func main() {
 	logger := setupLogger()
 
@@ -53,6 +58,12 @@ func main() {
 	if err != nil || len(encKey) != 32 {
 		logger.Error("DIPOLE_ENCRYPTION_KEY must be valid 64-char hex (32 bytes)")
 		os.Exit(1)
+	}
+
+	if cfg.DevBootstrap {
+		logger.Warn("⚠️  DEV BOOTSTRAP ENABLED — NEVER USE IN PRODUCTION",
+			"header", "X-Dipole-Dev-Tenant",
+			"risk", "allows tenant selection via HTTP header, bypasses subdomain routing")
 	}
 
 	logger.Info("starting dipole cloud",
@@ -72,7 +83,7 @@ func main() {
 
 func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Logger) error {
 	var migrationDone bool
-	for attempt := 1; attempt <= 5; attempt++ {
+	for attempt := 1; attempt <= migrationMaxAttempts; attempt++ {
 		migrator, merr := postgres.NewMigrator(cfg.DatabaseURL)
 		if merr != nil {
 			logger.Warn("migration connection failed, retrying", "attempt", attempt, "error", merr)
@@ -81,7 +92,9 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		}
 		if merr = migrator.Up(); merr != nil {
 			_ = migrator.Close()
-			return fmt.Errorf("migration failed: %w", merr)
+			logger.Warn("migration execution failed, retrying", "attempt", attempt, "error", merr)
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
 		}
 		_ = migrator.Close()
 		logger.Info("schema up to date")
@@ -89,7 +102,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		break
 	}
 	if !migrationDone {
-		return fmt.Errorf("database migrations failed after 5 connection attempts")
+		return fmt.Errorf("database migrations failed after %d attempts", migrationMaxAttempts)
 	}
 
 	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
@@ -145,6 +158,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	resourceSetSvc := resources.NewResourceSetService(repos.ResourceSets)
 	identityProviderSvc := resources.NewIdentityProviderService(repos.IdentityProviders)
 	logStreamCRUDSvc := resources.NewLogStreamService(repos.LogStreams)
+
 	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
@@ -174,15 +188,14 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	edgeAPI := rest.NewEdgeAPIHandler(issuer, edgeTrustValidator, edgePolicyAdapter, edgeTenantResolver)
 
 	tenantHostResolver := rest.NewTenantHostResolver(repos.Tenants, platformHosts, cfg.DevBootstrap)
-	if cfg.DevBootstrap {
-		logger.Warn("dev bootstrap enabled: tenant may be selected via header — never enable this in a deployed environment",
-			"header", rest.DevTenantHeader)
-	}
 
 	mcpCodeStore := mcpsvc.NewAuthCodeStore()
 	mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 	mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
-	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: auth.NewHTTPOIDCClient()})
+	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(
+		repos.IdentityProviders,
+		mcpsvc.NewHTTPOIDCDiscoveryAdapter(auth.NewHTTPOIDCClient()),
+	)
 	mcpIdPService := mcpsvc.NewIdPService(mcpIdPResolver)
 	mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
 	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, repos.ClientWorkloads, encKey)
@@ -220,6 +233,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	)
 
 	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, userSvc, roleSvc, resourceSetSvc, identityProviderSvc, logStreamCRUDSvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, trustValidator, logger)
+
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
@@ -228,7 +242,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	defer cancel()
 
 	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 7)
 
 	wg.Add(1)
 	go func() {
@@ -259,33 +273,28 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		runLogStreamScheduler(runCtx, logStreamSvc, logger)
 	}()
 
-	// MCP authorization codes, SSO sessions, and refresh tokens are held in
-	// memory and are only ever marked used/expired on the request path, never
-	// deleted. Without this, quiet tenants and abandoned flows accumulate
-	// entries forever.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runExpirySweeper(runCtx, "mcp auth code", 5*time.Minute, mcpCodeStore.SweepExpired, logger)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runExpirySweeper(runCtx, "mcp idp session", 5*time.Minute, mcpIdPService.SweepExpired, logger)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runExpirySweeper(runCtx, "mcp refresh token", 5*time.Minute, mcpTokenService.SweepExpired, logger)
+		runExpirySweeper(runCtx, "mcp auth code", mcpSweeperInterval, mcpCodeStore.SweepExpired, logger)
 	}()
 
-	// Cached downstream MCP HTTP clients (and the sessions they hold) are
-	// evicted after mcpClientIdleTimeout of disuse, so tenants/servers that
-	// have gone quiet don't hold an open session forever.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runExpirySweeper(runCtx, "mcp gateway client cache", 5*time.Minute, gwClientFactory.SweepIdleClients, logger)
+		runExpirySweeper(runCtx, "mcp idp session", mcpSweeperInterval, mcpIdPService.SweepExpired, logger)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp refresh token", mcpSweeperInterval, mcpTokenService.SweepExpired, logger)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp gateway client cache", mcpSweeperInterval, gwClientFactory.SweepIdleClients, logger)
 	}()
 
 	var runErr error
@@ -298,7 +307,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	cancel()
 	shutdownHTTP(httpServer, logger)
-	eventBus.Shutdown(15 * time.Second)
+	eventBus.Shutdown(eventBusShutdownTimeout)
 	wg.Wait()
 
 	logger.Info("shutdown complete")
@@ -380,13 +389,22 @@ func buildHTTPServer(
 	apHandler := rest.NewAccessPolicyHandler(accessPolicySvc)
 	apHandler.SetAudit(eventBus)
 	apHandler.RegisterRoutes(mux)
-	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
-	rest.NewDashboardHandler(reporting.NewDashboardService(
+
+	eventHandlers := rest.NewEventHandlers(repos.Events)
+	eventHandlers.RegisterEventRoutes(mux)
+
+	dashboardSvc := reporting.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
-	)).RegisterRoutes(mux)
-	rest.NewTlsDecryptHandler(caService).RegisterRoutes(mux)
-	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
+	)
+	dashboardHandler := rest.NewDashboardHandler(dashboardSvc)
+	dashboardHandler.RegisterRoutes(mux)
+
+	tlsDecryptHandler := rest.NewTlsDecryptHandler(caService)
+	tlsDecryptHandler.RegisterRoutes(mux)
+
+	internalHandlers := rest.NewInternalHandlers(registrationSvc)
+	internalHandlers.RegisterRoutes(mux)
 
 	mfaSvc := auth.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
@@ -407,13 +425,6 @@ func buildHTTPServer(
 	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
 
-	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
-		oidcClient := auth.NewHTTPOIDCClient()
-		ssoSvc := auth.NewAdminSSOService(repos.Users, oidcClient)
-		ssoSvc.SetJWKSCache(trustValidator.JWKSCache())
-		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID, encKey).RegisterRoutes(mux)
-	}
-
 	edgeAPI.RegisterEdgeRoutes(mux)
 
 	wellKnown.RegisterRoutes(mux)
@@ -427,14 +438,17 @@ func buildHTTPServer(
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 }
 
 func runLogStreamScheduler(ctx context.Context, svc *reporting.LogStreamService, logger *slog.Logger) {
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(logStreamExportInterval)
 	defer ticker.Stop()
 
-	logger.Info("log stream export scheduler started", "interval", "60s")
+	logger.Info("log stream export scheduler started", "interval", logStreamExportInterval.String())
 
 	for {
 		select {
@@ -447,10 +461,6 @@ func runLogStreamScheduler(ctx context.Context, svc *reporting.LogStreamService,
 	}
 }
 
-// runExpirySweeper periodically invokes sweep with the current time until ctx
-// is cancelled. Shared by the MCP in-memory stores (auth codes, IdP sessions,
-// refresh tokens), which all need the same ticker/shutdown plumbing around a
-// store-specific sweep call.
 func runExpirySweeper(ctx context.Context, name string, interval time.Duration, sweep func(time.Time), logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -469,28 +479,11 @@ func runExpirySweeper(ctx context.Context, name string, interval time.Duration, 
 }
 
 func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Warn("http graceful shutdown failed", "error", err)
 	}
-}
-
-type oidcDiscoveryAdapter struct {
-	client *auth.HTTPOIDCClient
-}
-
-func (a *oidcDiscoveryAdapter) FetchDiscovery(ctx context.Context, discoveryURL string) (*mcpsvc.OIDCDiscovery, error) {
-	doc, err := a.client.FetchDiscovery(ctx, discoveryURL)
-	if err != nil {
-		return nil, err
-	}
-	return &mcpsvc.OIDCDiscovery{
-		AuthorizationEndpoint: doc.AuthorizationEndpoint,
-		TokenEndpoint:         doc.TokenEndpoint,
-		JWKSURI:               doc.JWKSURI,
-		Issuer:                doc.Issuer,
-	}, nil
 }
 
 func setupLogger() *slog.Logger {
@@ -504,7 +497,12 @@ func setupLogger() *slog.Logger {
 		level = slog.LevelError
 	}
 
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
-	}))
+	})
+	logger := slog.New(handler)
+
+	slog.SetDefault(logger)
+
+	return logger
 }

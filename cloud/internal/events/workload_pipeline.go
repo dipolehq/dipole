@@ -1,12 +1,4 @@
-/*
-workload_pipeline.go implements async buffered persistence for workload events.
-
-Workload events are high-volume connection-level telemetry (MCP requests,
-proxy connections). They are batched in memory and flushed periodically or
-when a batch-size threshold is reached. If the channel is full under extreme
-load, events are dropped and a counter is incremented — workload events are
-best-effort, never blocking the request path.
-*/
+// Package events implements async buffered persistence for workload events.
 package events
 
 import (
@@ -52,8 +44,6 @@ func (p *WorkloadPipeline) Emit(event WorkloadEvent) {
 		event.ConnectionID = uuid.New()
 	}
 	if event.ResourceSetID == nil {
-		// Safety net, not the intended path — see security_pipeline.go for why
-		// this is logged rather than silently defaulted.
 		if p.logger != nil {
 			p.logger.Warn("workload event missing ResourceSetID, defaulting to DefaultResourceSetID",
 				"event_type", event.EventType,
@@ -72,6 +62,7 @@ func (p *WorkloadPipeline) Emit(event WorkloadEvent) {
 		p.logger.Warn("workload event channel full, dropping event",
 			"event_type", event.EventType,
 			"tenant_id", event.TenantID,
+			"connection_id", event.ConnectionID,
 		)
 	}
 }
@@ -102,15 +93,6 @@ func (p *WorkloadPipeline) Run(ctx context.Context) {
 			}
 			p.metrics.WorkloadChannelSize.Store(int64(len(p.ch)))
 		case <-ctx.Done():
-			// Drain whatever is already buffered via non-blocking
-			// receives rather than closing p.ch: Emit's send is a
-			// non-blocking select (case p.ch <- event: / default:),
-			// and a send on a closed channel panics unconditionally
-			// in Go — select does not route it to default. A caller
-			// that's still mid-flight past this point (e.g. a request
-			// handler that outlived shutdownHTTP's drain window) would
-			// otherwise crash the process instead of simply losing an
-			// event it's too late to process anyway.
 			for {
 				select {
 				case event := <-p.ch:

@@ -110,7 +110,7 @@ func (h *MFAHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Enabled", "user", user.ID, email, clientIP(r), userAgent(r))
+	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Enabled", auditSeverityInfo, "user", user.ID, email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]string{"message": "MFA enabled successfully."})
 }
 
@@ -148,6 +148,6 @@ func (h *MFAHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Disabled", "user", user.ID, email, clientIP(r), userAgent(r))
+	emitAudit(h.audit, r.Context(), tenantID, email, "Authentication", "MFA Disabled", auditSeverityWarn, "user", user.ID, email, clientIP(r), userAgent(r))
 	respondJSON(w, http.StatusOK, map[string]string{"message": "MFA has been reset."})
 }

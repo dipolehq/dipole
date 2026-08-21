@@ -1,8 +1,4 @@
-/*
-registration.go defines the RegistrationToken domain type for single-use
-proxy registration tokens. Tokens are hashed (SHA-256) on issuance and
-stored with an expiry. Consumed tokens cannot be replayed.
-*/
+// Package domain defines core business entities and value objects.
 package domain
 
 import (

@@ -95,9 +95,6 @@ type AgentControllerRepository interface {
 }
 
 type EventRepository interface {
-	InsertAuthEvent(ctx context.Context, tenantID uuid.UUID, event *domain.AuthEvent) error
-	InsertWorkloadEvent(ctx context.Context, tenantID uuid.UUID, event *domain.WorkloadEvent) error
-	InsertAuditLog(ctx context.Context, tenantID uuid.UUID, log *domain.AuditLog) error
 	QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error)
 	QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.WorkloadEvent, int, error)
 	QueryAuditLogs(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuditLog, int, error)

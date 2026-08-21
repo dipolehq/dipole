@@ -16,53 +16,6 @@ type EventRepo struct {
 	pool Pool
 }
 
-func (r *EventRepo) InsertAuthEvent(ctx context.Context, tenantID uuid.UUID, e *domain.AuthEvent) error {
-	e.ID = uuid.New()
-	e.TenantID = tenantID
-
-	source := e.Source
-	if source == "" {
-		source = "edge_proxy"
-	}
-
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO access_authorization_events (id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		e.ID, tenantID, e.EventType, e.ContextID, e.Severity, e.ClientIP, e.Timestamp, e.Payload, e.ResourceSetID, source)
-	if err != nil {
-		return fmt.Errorf("insert auth event: %w", err)
-	}
-	return nil
-}
-
-func (r *EventRepo) InsertWorkloadEvent(ctx context.Context, tenantID uuid.UUID, e *domain.WorkloadEvent) error {
-	e.ID = uuid.New()
-	e.TenantID = tenantID
-
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO workload_events (id, tenant_id, connection_id, event_type, policy_id, client_workload_id, server_workload_id, outcome, severity, timestamp, payload, resource_set_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		e.ID, tenantID, e.ConnectionID, e.EventType, e.PolicyID, e.ClientWorkloadID, e.ServerWorkloadID, e.Outcome, e.Severity, e.Timestamp, e.Payload, e.ResourceSetID)
-	if err != nil {
-		return fmt.Errorf("insert workload event: %w", err)
-	}
-	return nil
-}
-
-func (r *EventRepo) InsertAuditLog(ctx context.Context, tenantID uuid.UUID, l *domain.AuditLog) error {
-	l.ID = uuid.New()
-	l.TenantID = tenantID
-
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO audit_logs (id, tenant_id, actor_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		l.ID, tenantID, l.ActorID, l.ActorEmail, l.Category, l.Activity, l.TargetType, l.TargetID, l.TargetName, l.Severity, l.ClientIP, l.Timestamp)
-	if err != nil {
-		return fmt.Errorf("insert audit log: %w", err)
-	}
-	return nil
-}
-
 func (r *EventRepo) QueryAuthEvents(ctx context.Context, tenantID uuid.UUID, opts domain.EventQueryOptions) ([]domain.AuthEvent, int, error) {
 	where, args := buildAuthEventFilters(ctx, tenantID, opts)
 
@@ -253,6 +206,11 @@ func buildWorkloadEventFilters(ctx context.Context, tenantID uuid.UUID, opts dom
 		n++
 		clauses = append(clauses, fmt.Sprintf("server_workload_id::text = ANY($%d)", n))
 		args = append(args, opts.ServerWorkloadIDs)
+	}
+	if opts.UserID != "" {
+		n++
+		clauses = append(clauses, fmt.Sprintf("payload->'mcp'->>'userId' = $%d", n))
+		args = append(args, opts.UserID)
 	}
 
 	appendResourceSetFilter(ctx, &clauses, &args, &n)
