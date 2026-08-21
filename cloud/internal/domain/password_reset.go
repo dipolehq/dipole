@@ -1,9 +1,4 @@
-/*
-password_reset.go defines the PasswordResetToken domain type for the
-"forgot password" flow. Tokens are SHA-256 hashed on creation and stored
-with a 1-hour expiry. Once used, the token is marked consumed and cannot
-be replayed.
-*/
+// Package domain defines core business entities and value objects.
 package domain
 
 import (

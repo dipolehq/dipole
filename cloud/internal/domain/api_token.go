@@ -1,8 +1,4 @@
-/*
-api_token.go defines the APIToken domain type for scoped API tokens.
-Each token belongs to a tenant and optionally scopes access to a specific
-Resource Set. Tokens with nil ResourceSetID have full tenant-wide access.
-*/
+// Package domain defines core business entities and value objects.
 package domain
 
 import (
