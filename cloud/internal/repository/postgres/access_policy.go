@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -47,9 +46,13 @@ func (r *AccessPolicyRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id u
 	p := &domain.AccessPolicy{}
 	var tags []byte
 
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, name, description, is_active, client_workload_id, server_workload_id, tags, resource_set_id, created_at, updated_at
-		 FROM access_policies WHERE tenant_id = $1 AND id = $2`, tenantID, id).
+		 FROM access_policies WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
 		Scan(&p.ID, &p.TenantID, &p.Name, &p.Description, &p.IsActive, &p.ClientWorkloadID, &p.ServerWorkloadID, &tags, &p.ResourceSetID, &p.CreatedAt, &p.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -66,36 +69,27 @@ func (r *AccessPolicyRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id u
 }
 
 func (r *AccessPolicyRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessPolicy, int, error) {
-	search := escapeILIKE(opts.Search)
-	countArgs := []interface{}{tenantID, search}
-	n := 2
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM access_policies
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM access_policies WHERE `+where+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count access policies: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, search}
-	n = 2
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, client_workload_id, server_workload_id, tags, resource_set_id, created_at, updated_at
 		 FROM access_policies
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+where+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list access policies: %w", err)
@@ -130,11 +124,15 @@ func (r *AccessPolicyRepo) Update(ctx context.Context, tenantID uuid.UUID, p *do
 	}
 	defer tx.Rollback(ctx)
 
+	args := []interface{}{p.Name, p.Description, p.IsActive, p.ClientWorkloadID, p.ServerWorkloadID, tags, p.ResourceSetID, tenantID, p.ID}
+	n := 9
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err = tx.QueryRow(ctx,
 		`UPDATE access_policies SET name=$1, description=$2, is_active=$3, client_workload_id=$4, server_workload_id=$5, tags=$6, resource_set_id=$7, updated_at=NOW()
-		 WHERE tenant_id = $8 AND id = $9
+		 WHERE tenant_id = $8 AND id = $9`+rsFilter+`
 		 RETURNING created_at, updated_at`,
-		p.Name, p.Description, p.IsActive, p.ClientWorkloadID, p.ServerWorkloadID, tags, p.ResourceSetID, tenantID, p.ID).
+		args...).
 		Scan(&p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update access policy: %w", err)
@@ -147,7 +145,11 @@ func (r *AccessPolicyRepo) Update(ctx context.Context, tenantID uuid.UUID, p *do
 }
 
 func (r *AccessPolicyRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM access_policies WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM access_policies WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete access policy: %w", err)
 	}
@@ -311,229 +313,6 @@ func (r *AccessPolicyRepo) ListActiveWithRelations(ctx context.Context, tenantID
 	}
 
 	return results, nil
-}
-
-// loadRelationsForPolicies batch-loads TrustProviders, AccessConditions, and
-// CredentialProviders for all matched policies via junction table JOINs.
-func (r *AccessPolicyRepo) loadRelationsForPolicies(ctx context.Context, tenantID uuid.UUID, policies []domain.AccessPolicyWithRelations) error {
-	ids := make([]uuid.UUID, len(policies))
-	idxMap := make(map[uuid.UUID]int, len(policies))
-	for i := range policies {
-		ids[i] = policies[i].Policy.ID
-		idxMap[policies[i].Policy.ID] = i
-	}
-
-	// Load Trust Providers (full entity rows via JOIN).
-	tpRows, err := r.pool.Query(ctx,
-		`SELECT ptp.policy_id, tp.id, tp.name, tp.description, tp.is_active, tp.type, tp.config, tp.match_rules, tp.edge_sdk_client_id, tp.edge_sdk_audience
-		 FROM policy_trust_providers ptp
-		 JOIN trust_providers tp ON tp.id = ptp.trust_provider_id AND tp.tenant_id = $1
-		 WHERE ptp.policy_id = ANY($2)`,
-		tenantID, ids)
-	if err != nil {
-		return fmt.Errorf("load trust providers for policies: %w", err)
-	}
-	defer tpRows.Close()
-	for tpRows.Next() {
-		var policyID uuid.UUID
-		var tp domain.TrustProvider
-		var matchRules []byte
-		if err := tpRows.Scan(&policyID, &tp.ID, &tp.Name, &tp.Description, &tp.IsActive, &tp.Type, &tp.Config, &matchRules, &tp.EdgeSDKClientID, &tp.EdgeSDKAudience); err != nil {
-			return fmt.Errorf("scan trust provider: %w", err)
-		}
-		json.Unmarshal(matchRules, &tp.MatchRules)
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].TrustProviders = append(policies[idx].TrustProviders, tp)
-		}
-	}
-	tpRows.Close()
-
-	// Load Access Conditions (full entity rows via JOIN).
-	acRows, err := r.pool.Query(ctx,
-		`SELECT pac.policy_id, ac.id, ac.name, ac.description, ac.is_active, ac.type, ac.config
-		 FROM policy_access_conditions pac
-		 JOIN access_conditions ac ON ac.id = pac.access_condition_id AND ac.tenant_id = $1
-		 WHERE pac.policy_id = ANY($2)`,
-		tenantID, ids)
-	if err != nil {
-		return fmt.Errorf("load access conditions for policies: %w", err)
-	}
-	defer acRows.Close()
-	for acRows.Next() {
-		var policyID uuid.UUID
-		var ac domain.AccessCondition
-		if err := acRows.Scan(&policyID, &ac.ID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Type, &ac.Config); err != nil {
-			return fmt.Errorf("scan access condition: %w", err)
-		}
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].AccessConditions = append(policies[idx].AccessConditions, ac)
-		}
-	}
-	acRows.Close()
-
-	// Load Credential Providers (full entity rows via JOIN).
-	cpRows, err := r.pool.Query(ctx,
-		`SELECT pcp.policy_id, cp.id, cp.name, cp.description, cp.is_active, cp.type, cp.config_encrypted, cp.integration_id
-		 FROM policy_credential_providers pcp
-		 JOIN credential_providers cp ON cp.id = pcp.credential_provider_id AND cp.tenant_id = $1
-		 WHERE pcp.policy_id = ANY($2)`,
-		tenantID, ids)
-	if err != nil {
-		return fmt.Errorf("load credential providers for policies: %w", err)
-	}
-	defer cpRows.Close()
-	for cpRows.Next() {
-		var policyID uuid.UUID
-		var cp domain.CredentialProvider
-		if err := cpRows.Scan(&policyID, &cp.ID, &cp.Name, &cp.Description, &cp.IsActive, &cp.Type, &cp.ConfigEncrypted, &cp.IntegrationID); err != nil {
-			return fmt.Errorf("scan credential provider: %w", err)
-		}
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].CredentialProviders = append(policies[idx].CredentialProviders, cp)
-		}
-	}
-
-	return nil
-}
-
-func (r *AccessPolicyRepo) syncJunctionsWithTx(ctx context.Context, tx Pool, p *domain.AccessPolicy) error {
-	tx.Exec(ctx, `DELETE FROM policy_trust_providers WHERE policy_id = $1`, p.ID)
-	tx.Exec(ctx, `DELETE FROM policy_credential_providers WHERE policy_id = $1`, p.ID)
-	tx.Exec(ctx, `DELETE FROM policy_access_conditions WHERE policy_id = $1`, p.ID)
-
-	for _, tpID := range p.TrustProviderIDs {
-		_, err := tx.Exec(ctx, `INSERT INTO policy_trust_providers (policy_id, trust_provider_id) VALUES ($1, $2)`, p.ID, tpID)
-		if err != nil {
-			return fmt.Errorf("insert policy trust provider: %w", err)
-		}
-	}
-
-	for _, pcp := range p.CredentialProviderIDs {
-		_, err := tx.Exec(ctx, `INSERT INTO policy_credential_providers (policy_id, credential_provider_id, mapping_type, mapping_value) VALUES ($1, $2, $3, $4)`,
-			p.ID, pcp.CredentialProviderID, pcp.MappingType, pcp.MappingValue)
-		if err != nil {
-			return fmt.Errorf("insert policy credential provider: %w", err)
-		}
-	}
-
-	for _, acID := range p.AccessConditionIDs {
-		_, err := tx.Exec(ctx, `INSERT INTO policy_access_conditions (policy_id, access_condition_id) VALUES ($1, $2)`, p.ID, acID)
-		if err != nil {
-			return fmt.Errorf("insert policy access condition: %w", err)
-		}
-	}
-	return nil
-}
-
-func (r *AccessPolicyRepo) loadJunctions(ctx context.Context, p *domain.AccessPolicy) error {
-	tpRows, err := r.pool.Query(ctx, `SELECT trust_provider_id FROM policy_trust_providers WHERE policy_id = $1`, p.ID)
-	if err != nil {
-		return fmt.Errorf("load trust providers: %w", err)
-	}
-	defer tpRows.Close()
-	for tpRows.Next() {
-		var id uuid.UUID
-		tpRows.Scan(&id)
-		p.TrustProviderIDs = append(p.TrustProviderIDs, id)
-	}
-
-	cpRows, err := r.pool.Query(ctx, `SELECT credential_provider_id, mapping_type, mapping_value FROM policy_credential_providers WHERE policy_id = $1`, p.ID)
-	if err != nil {
-		return fmt.Errorf("load credential providers: %w", err)
-	}
-	defer cpRows.Close()
-	for cpRows.Next() {
-		var pcp domain.PolicyCredentialProvider
-		cpRows.Scan(&pcp.CredentialProviderID, &pcp.MappingType, &pcp.MappingValue)
-		p.CredentialProviderIDs = append(p.CredentialProviderIDs, pcp)
-	}
-
-	acRows, err := r.pool.Query(ctx, `SELECT access_condition_id FROM policy_access_conditions WHERE policy_id = $1`, p.ID)
-	if err != nil {
-		return fmt.Errorf("load access conditions: %w", err)
-	}
-	defer acRows.Close()
-	for acRows.Next() {
-		var id uuid.UUID
-		acRows.Scan(&id)
-		p.AccessConditionIDs = append(p.AccessConditionIDs, id)
-	}
-
-	return nil
-}
-
-func (r *AccessPolicyRepo) batchLoadJunctions(ctx context.Context, policies []domain.AccessPolicy) error {
-	ids := make([]uuid.UUID, len(policies))
-	idxMap := make(map[uuid.UUID]int, len(policies))
-	for i := range policies {
-		ids[i] = policies[i].ID
-		idxMap[policies[i].ID] = i
-	}
-
-	// Trust Providers
-	tpRows, err := r.pool.Query(ctx, `SELECT policy_id, trust_provider_id FROM policy_trust_providers WHERE policy_id = ANY($1)`, ids)
-	if err != nil {
-		return fmt.Errorf("batch load trust providers: %w", err)
-	}
-	defer tpRows.Close()
-	for tpRows.Next() {
-		var policyID, tpID uuid.UUID
-		tpRows.Scan(&policyID, &tpID)
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].TrustProviderIDs = append(policies[idx].TrustProviderIDs, tpID)
-		}
-	}
-
-	// Credential Providers
-	cpRows, err := r.pool.Query(ctx, `SELECT policy_id, credential_provider_id, mapping_type, mapping_value FROM policy_credential_providers WHERE policy_id = ANY($1)`, ids)
-	if err != nil {
-		return fmt.Errorf("batch load credential providers: %w", err)
-	}
-	defer cpRows.Close()
-	for cpRows.Next() {
-		var policyID uuid.UUID
-		var pcp domain.PolicyCredentialProvider
-		cpRows.Scan(&policyID, &pcp.CredentialProviderID, &pcp.MappingType, &pcp.MappingValue)
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].CredentialProviderIDs = append(policies[idx].CredentialProviderIDs, pcp)
-		}
-	}
-
-	// Access Conditions
-	acRows, err := r.pool.Query(ctx, `SELECT policy_id, access_condition_id FROM policy_access_conditions WHERE policy_id = ANY($1)`, ids)
-	if err != nil {
-		return fmt.Errorf("batch load access conditions: %w", err)
-	}
-	defer acRows.Close()
-	for acRows.Next() {
-		var policyID, acID uuid.UUID
-		acRows.Scan(&policyID, &acID)
-		if idx, ok := idxMap[policyID]; ok {
-			policies[idx].AccessConditionIDs = append(policies[idx].AccessConditionIDs, acID)
-		}
-	}
-
-	return nil
-}
-
-// wildcard matching helper (unused in SQL but kept for application-level fallback)
-func matchHost(pattern, target string) bool {
-	if pattern == target {
-		return true
-	}
-	if strings.HasPrefix(pattern, "*.") {
-		suffix := pattern[1:]
-		return strings.HasSuffix(target, suffix)
-	}
-	return false
-}
-
-// escapeILIKE escapes special ILIKE characters (%, _, \) in a search term.
-func escapeILIKE(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
 }
 
 func (r *AccessPolicyRepo) CountInactive(ctx context.Context, tenantID uuid.UUID) int {

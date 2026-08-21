@@ -3,6 +3,9 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -55,6 +58,12 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+
+	config.MaxConns = int32(envInt("DIPOLE_DB_MAX_CONNS", 25))
+	config.MinConns = int32(envInt("DIPOLE_DB_MIN_CONNS", 5))
+	config.MaxConnLifetime = time.Duration(envInt("DIPOLE_DB_MAX_CONN_LIFETIME_SECS", 3600)) * time.Second
+	config.MaxConnIdleTime = time.Duration(envInt("DIPOLE_DB_MAX_CONN_IDLE_SECS", 300)) * time.Second
+	config.HealthCheckPeriod = time.Duration(envInt("DIPOLE_DB_HEALTH_CHECK_SECS", 30)) * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -123,4 +132,16 @@ func (r *Repositories) Ping(ctx context.Context) error {
 		return p.Ping(ctx)
 	}
 	return nil
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }

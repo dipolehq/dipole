@@ -36,9 +36,13 @@ func (r *AccessConditionRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 	ac := &domain.AccessCondition{}
 	var tags []byte
 
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config, tags, resource_set_id, created_at, updated_at
-		 FROM access_conditions WHERE tenant_id = $1 AND id = $2`, tenantID, id).
+		 FROM access_conditions WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
 		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Type, &ac.Config, &tags, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -52,36 +56,28 @@ func (r *AccessConditionRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 }
 
 func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AccessCondition, int, error) {
-	countArgs := []interface{}{tenantID, opts.Search}
-	n := 2
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM access_conditions
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM access_conditions WHERE `+where+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count access conditions: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, opts.Search}
-	n = 2
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM policy_access_conditions pac WHERE pac.access_condition_id = access_conditions.id) AS policy_count
 		 FROM access_conditions
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+where+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list access conditions: %w", err)
@@ -104,11 +100,15 @@ func (r *AccessConditionRepo) List(ctx context.Context, tenantID uuid.UUID, opts
 func (r *AccessConditionRepo) Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AccessCondition) error {
 	tags, _ := json.Marshal(ac.Tags)
 
+	args := []interface{}{ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID, tenantID, ac.ID}
+	n := 9
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`UPDATE access_conditions SET name=$1, description=$2, is_active=$3, type=$4, config=$5, tags=$6, resource_set_id=$7, updated_at=NOW()
-		 WHERE tenant_id = $8 AND id = $9
+		 WHERE tenant_id = $8 AND id = $9`+rsFilter+`
 		 RETURNING created_at, updated_at`,
-		ac.Name, ac.Description, ac.IsActive, ac.Type, ac.Config, tags, ac.ResourceSetID, tenantID, ac.ID).
+		args...).
 		Scan(&ac.CreatedAt, &ac.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update access condition: %w", err)
@@ -117,7 +117,11 @@ func (r *AccessConditionRepo) Update(ctx context.Context, tenantID uuid.UUID, ac
 }
 
 func (r *AccessConditionRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM access_conditions WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM access_conditions WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete access condition: %w", err)
 	}
