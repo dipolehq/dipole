@@ -1,17 +1,14 @@
-/*
-registration_token.go implements the RegistrationTokenRepository for PostgreSQL.
-
-Stores SHA-256 hashes of proxy registration tokens with expiry and consumption
-tracking. Tokens are marked consumed (not deleted) to maintain an audit trail.
-*/
+// registration_token.go implements the RegistrationTokenRepository for PostgreSQL, storing SHA-256 hashes of proxy registration tokens with expiry; consumed tokens are marked consumed (not deleted) to maintain an audit trail.
 package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -43,6 +40,9 @@ func (r *RegistrationTokenRepo) Consume(ctx context.Context, tenantID uuid.UUID,
 
 	t := &domain.RegistrationToken{}
 	err := row.Scan(&t.ID, &t.TenantID, &t.TokenHash, &t.ControllerID, &t.Consumed, &t.ExpiresAt, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("consume registration token: %w", err)
 	}

@@ -1,31 +1,19 @@
-/*
-consent_config_resolver.go implements ConsentConfigResolver using the
-AccessPolicyRepository and CredentialProviderRepository.
-
-CPConsentConfigResolver finds the credential provider config for a given
-MCP server workload by looking up the right-side policy, loading the
-credential provider, decrypting its config, and extracting the OAuth fields.
-*/
+// consent_config_resolver.go implements CPConsentConfigResolver, which resolves OAuth configuration for the consent flow from a Credential Provider's encrypted config.
 package mcp_gateway
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
 
-// CPConsentConfigResolver holds no Gateway URL. The callback URL it produces must
-// belong to the tenant handling the request, so the URL is supplied per call from
-// that request's TenantScope — a captured URL sent every tenant's users to one
-// tenant's callback.
 type CPConsentConfigResolver struct {
 	policyRepo repository.AccessPolicyRepository
 	cpRepo     repository.CredentialProviderRepository
@@ -69,7 +57,7 @@ func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID
 
 	var plaintext []byte
 	if len(r.encKey) > 0 && len(cp.ConfigEncrypted) > 0 {
-		plaintext, err = decryptAESGCM(cp.ConfigEncrypted, r.encKey)
+		plaintext, err = crypto.Decrypt(cp.ConfigEncrypted, r.encKey)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt credential provider config: %w", err)
 		}
@@ -88,9 +76,6 @@ func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID
 		return nil, fmt.Errorf("parse credential provider config: %w", err)
 	}
 
-	// Tolerates either form of the supplied URL: this value is also what the
-	// customer registers as the redirect URI with the downstream provider, and
-	// the token exchange must send back a byte-identical string.
 	callbackURL := strings.TrimSuffix(gatewayURL, "/") + ConsentCallbackPath
 
 	return &ConsentConfig{
@@ -100,22 +85,6 @@ func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID
 		ClientSecret:          oauthCfg.ClientSecret,
 		Scopes:                oauthCfg.Scopes,
 		GatewayCallbackURL:    callbackURL,
+		CredentialProviderID:  cpID,
 	}, nil
-}
-
-func decryptAESGCM(ciphertext, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-	nonce, ct := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	return gcm.Open(nil, nonce, ct, nil)
 }

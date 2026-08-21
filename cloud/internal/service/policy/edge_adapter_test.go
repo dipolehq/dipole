@@ -1,7 +1,4 @@
-/*
-edge_adapter_test.go verifies EdgePolicyAdapter correctly delegates to
-PolicyEvaluationService and passes results through unchanged.
-*/
+// edge_adapter_test.go verifies EdgePolicyAdapter correctly delegates to PolicyEvaluationService and passes results through unchanged.
 package policy
 
 import (
@@ -13,57 +10,8 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// mockPolicyRepo implements repository.AccessPolicyRepository for adapter tests.
-type mockPolicyRepo struct {
-	policies []domain.AccessPolicyWithRelations
-	err      error
-}
-
-func (m *mockPolicyRepo) Create(_ context.Context, _ uuid.UUID, _ *domain.AccessPolicy) error {
-	return nil
-}
-func (m *mockPolicyRepo) GetByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.AccessPolicy, error) {
-	return nil, nil
-}
-func (m *mockPolicyRepo) List(_ context.Context, _ uuid.UUID, _ domain.ListOptions) ([]domain.AccessPolicy, int, error) {
-	return nil, 0, nil
-}
-func (m *mockPolicyRepo) Update(_ context.Context, _ uuid.UUID, _ *domain.AccessPolicy) error {
-	return nil
-}
-func (m *mockPolicyRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error { return nil }
-func (m *mockPolicyRepo) FindByServerTarget(_ context.Context, _ uuid.UUID, _ string, _ int, _ *uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
-	return m.policies, m.err
-}
-func (m *mockPolicyRepo) FindByAppProtocol(_ context.Context, _ uuid.UUID, _ string) ([]domain.AccessPolicyWithRelations, error) {
-	return m.policies, m.err
-}
-func (m *mockPolicyRepo) ListActiveWithRelations(_ context.Context, _ uuid.UUID) ([]domain.AccessPolicyWithRelations, error) {
-	return m.policies, m.err
-}
-
-// mockTrustForAdapter satisfies the TrustValidator interface.
-type mockTrustForAdapter struct {
-	result *domain.TrustProviderResult
-	err    error
-}
-
-func (m *mockTrustForAdapter) Validate(_ context.Context, _ *domain.TrustProvider, _ *domain.ClientEvidence) (*domain.TrustProviderResult, error) {
-	return m.result, m.err
-}
-
-// mockBrokerForAdapter satisfies the CredentialBroker interface.
-type mockBrokerForAdapter struct {
-	cred *domain.Credential
-	err  error
-}
-
-func (m *mockBrokerForAdapter) Retrieve(_ context.Context, _ uuid.UUID, _ *domain.CredentialProvider, _ *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
-	return m.cred, m.err
-}
-
 func TestEdgePolicyAdapter_NoMatchingPolicy_ReturnsDeny(t *testing.T) {
-	repo := &mockPolicyRepo{policies: nil, err: nil}
+	repo := &mockRepo{policies: nil, err: nil}
 	svc := NewPolicyEvaluationService(repo, nil, nil, nil, nil, nil)
 	adapter := NewEdgePolicyAdapter(svc)
 
@@ -71,7 +19,7 @@ func TestEdgePolicyAdapter_NoMatchingPolicy_ReturnsDeny(t *testing.T) {
 	evidence := &domain.ClientEvidence{}
 	target := &domain.ServerTarget{Host: "api.stripe.com", Port: 443}
 
-	result, err := adapter.Evaluate(tenantID, evidence, target)
+	result, err := adapter.Evaluate(context.Background(), tenantID, evidence, target)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,11 +32,11 @@ func TestEdgePolicyAdapter_NoMatchingPolicy_ReturnsDeny(t *testing.T) {
 }
 
 func TestEdgePolicyAdapter_RepoError_ReturnsError(t *testing.T) {
-	repo := &mockPolicyRepo{policies: nil, err: context.DeadlineExceeded}
+	repo := &mockRepo{policies: nil, err: context.DeadlineExceeded}
 	svc := NewPolicyEvaluationService(repo, nil, nil, nil, nil, nil)
 	adapter := NewEdgePolicyAdapter(svc)
 
-	_, err := adapter.Evaluate(uuid.New(), &domain.ClientEvidence{}, &domain.ServerTarget{Host: "db.local", Port: 5432})
+	_, err := adapter.Evaluate(context.Background(), uuid.New(), &domain.ClientEvidence{}, &domain.ServerTarget{Host: "db.local", Port: 5432})
 	if err == nil {
 		t.Fatal("expected error from repo failure")
 	}
@@ -105,7 +53,7 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 	tpID := uuid.New()
 	cpID := uuid.New()
 
-	repo := &mockPolicyRepo{
+	repo := &mockRepo{
 		policies: []domain.AccessPolicyWithRelations{
 			{
 				Policy: domain.AccessPolicy{
@@ -133,15 +81,15 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 		},
 	}
 
-	mockTrust := &mockTrustForAdapter{result: &domain.TrustProviderResult{Attested: true, ProviderID: tpID}}
-	mockBroker := &mockBrokerForAdapter{cred: &domain.Credential{Type: "api_key", Value: "sk_live_test"}}
-	svc := NewPolicyEvaluationService(repo, mockTrust, nil, mockBroker, nil, nil)
+	trust := &mockTrust{attested: true}
+	broker := &mockBroker{cred: &domain.Credential{Type: "api_key", Value: "sk_live_test"}}
+	svc := NewPolicyEvaluationService(repo, trust, nil, broker, nil, nil)
 	adapter := NewEdgePolicyAdapter(svc)
 
 	evidence := &domain.ClientEvidence{Hostname: "ci-runner"}
 	target := &domain.ServerTarget{Host: "api.stripe.com", Port: 443}
 
-	result, err := adapter.Evaluate(tenantID, evidence, target)
+	result, err := adapter.Evaluate(context.Background(), tenantID, evidence, target)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,10 +102,4 @@ func TestEdgePolicyAdapter_MatchingPolicy_ReturnsCredential(t *testing.T) {
 	if result.PolicyID != policyID {
 		t.Errorf("expected policyID %s, got %s", policyID, result.PolicyID)
 	}
-}
-
-func (m *mockPolicyRepo) CountInactive(_ context.Context, _ uuid.UUID) int { return 0 }
-
-func (m *mockPolicyRepo) IsHostnameAuthorizedForTLS(_ context.Context, _ uuid.UUID, _ string) (bool, error) {
-	return false, nil
 }

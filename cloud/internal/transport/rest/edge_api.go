@@ -1,9 +1,8 @@
 /*
-Package rest — edge_api.go implements the Edge API for proxyless credential retrieval.
+Routes:
 
-Used by CI/CD pipelines (GitHub Actions, GitLab CI) that don't have an Agent Proxy.
-POST /edge/v1/auth — proves identity via attestation (NO Authorization header).
-POST /edge/v1/credentials — retrieves credentials with Bearer token from /auth.
+	POST /edge/v1/auth
+	POST /edge/v1/credentials
 */
 package rest
 
@@ -22,7 +21,7 @@ import (
 )
 
 type EdgePolicyEvaluator interface {
-	Evaluate(tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
+	Evaluate(ctx context.Context, tenantID uuid.UUID, evidence *domain.ClientEvidence, target *domain.ServerTarget) (*domain.EvaluationResult, error)
 }
 
 type EdgeTrustValidator interface {
@@ -54,8 +53,6 @@ func (h *EdgeAPIHandler) RegisterEdgeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /edge/v1/credentials", h.HandleCredentials)
 }
 
-// HandleAuth validates attestation evidence and issues an access token.
-// NO Authorization header accepted — identity is proven via body content.
 func (h *EdgeAPIHandler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
@@ -108,8 +105,6 @@ func (h *EdgeAPIHandler) HandleAuth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleCredentials retrieves a credential for a specific server workload.
-// Requires Bearer token from /auth.
 func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Request) {
 	token := extractAPIToken(r)
 	if token == "" {
@@ -141,9 +136,12 @@ func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Extract tenant from token claims (sub contains clientId which has tenant)
 	clientID, _ := claims["sub"].(string)
-	parsed, _ := parseEdgeSDKClientID(clientID)
+	parsed, err := parseEdgeSDKClientID(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid token claims"})
+		return
+	}
 
 	tenant, err := h.tenantResolver.GetBySubdomain(r.Context(), parsed.TenantSubdomain)
 	if err != nil || tenant == nil {
@@ -154,7 +152,7 @@ func (h *EdgeAPIHandler) HandleCredentials(w http.ResponseWriter, r *http.Reques
 	evidence := buildEdgeEvidence(req.Client, parsed.IdentityType)
 	target := &domain.ServerTarget{Host: req.Server.Host, Port: req.Server.Port}
 
-	result, err := h.policyEval.Evaluate(tenant.ID, evidence, target)
+	result, err := h.policyEval.Evaluate(r.Context(), tenant.ID, evidence, target)
 	if err != nil || result == nil || !result.Allowed {
 		writeJSON(w, http.StatusOK, map[string]any{"credentialType": "Unknown", "data": map[string]any{}})
 		return
@@ -175,14 +173,21 @@ type edgeCredentialRequest struct {
 }
 
 type edgeClientBlock struct {
-	GitHub    *edgeIdentityToken `json:"github,omitempty"`
-	GitLab    *edgeIdentityToken `json:"gitlab,omitempty"`
-	Terraform *edgeIdentityToken `json:"terraform,omitempty"`
-	OIDC      *edgeIdentityToken `json:"oidc,omitempty"`
+	GitHub      *edgeIdentityToken   `json:"github,omitempty"`
+	GitLab      *edgeIdentityToken   `json:"gitlab,omitempty"`
+	Terraform   *edgeIdentityToken   `json:"terraform,omitempty"`
+	OIDC        *edgeIdentityToken   `json:"oidc,omitempty"`
+	Certificate *edgeCertificateAttn `json:"certificate,omitempty"`
 }
 
 type edgeIdentityToken struct {
 	IdentityToken string `json:"identityToken"`
+}
+
+type edgeCertificateAttn struct {
+	CertificatePEM string `json:"certificatePem"`
+	Timestamp      int64  `json:"timestamp"`
+	Signature      string `json:"signature"`
 }
 
 type edgeServerBlock struct {
@@ -199,7 +204,7 @@ type parsedClientID struct {
 }
 
 func parseEdgeSDKClientID(clientID string) (*parsedClientID, error) {
-	// Format: dipole:<region>:<tenant>:identity:<type>:<uuid>
+
 	parts := strings.Split(clientID, ":")
 	if len(parts) != 6 || parts[0] != "dipole" || parts[3] != "identity" {
 		return nil, errInvalidClientID
@@ -243,6 +248,18 @@ func buildEdgeEvidence(client edgeClientBlock, identityType string) *domain.Clie
 	case "oidc_id_token":
 		if client.OIDC != nil {
 			evidence.Environment = map[string]string{"OIDC_ID_TOKEN": client.OIDC.IdentityToken}
+		}
+	case "certificate":
+		if client.Certificate != nil {
+			sig, err := base64.StdEncoding.DecodeString(client.Certificate.Signature)
+			if err == nil {
+				evidence.CertificateAttestation = &domain.CertificateAttestation{
+					CertificatePEM: client.Certificate.CertificatePEM,
+					Timestamp:      client.Certificate.Timestamp,
+					Signature:      sig,
+				}
+			}
+
 		}
 	}
 

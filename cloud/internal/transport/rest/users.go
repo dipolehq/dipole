@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/users
+	POST   /api/v1/users
+	GET    /api/v1/users/{id}
+	PUT    /api/v1/users/{id}
+	DELETE /api/v1/users/{id}
+*/
 package rest
 
 import (
@@ -5,11 +14,9 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
-// Users
 func (h *APIHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	opts := parseListOptions(r)
@@ -24,23 +31,9 @@ func (h *APIHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceUsers); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req userRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
-		return
-	}
-	if req.Email == "" {
-		respondBadRequest(w, "email is required")
-		return
-	}
-	if req.FirstName == "" {
-		respondBadRequest(w, "firstName is required")
 		return
 	}
 	u := req.toDomain()
@@ -48,8 +41,8 @@ func (h *APIHandlers) CreateUser(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.users.GetByID(r.Context(), tenantID, u.ID)
-	if err != nil || saved == nil {
+	saved, err := h.users.Get(r.Context(), tenantID, u.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toUserResponse(&u))
 		return
@@ -65,13 +58,9 @@ func (h *APIHandlers) GetUser(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	u, err := h.users.GetByID(r.Context(), tenantID, id)
+	u, err := h.users.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if u == nil {
-		respondError(w, http.StatusNotFound, "not_found", "user not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toUserResponse(u))
@@ -82,15 +71,6 @@ func (h *APIHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.users.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "user not found")
 		return
 	}
 	var req userRequest
@@ -105,8 +85,8 @@ func (h *APIHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.users.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.users.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", u.ID, u.Email, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toUserResponse(&u))
 		return
@@ -122,15 +102,6 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	existing, err := h.users.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "user not found")
-		return
-	}
 	if err := h.users.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
@@ -138,8 +109,6 @@ func (h *APIHandlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "Users", "user", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- User DTOs ---
 
 type userRequest struct {
 	FirstName string     `json:"firstName"`

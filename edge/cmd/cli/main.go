@@ -36,7 +36,8 @@ func main() {
 	outputFormat := fs.String("output-format", "sh-export", "Output format: sh-export, sh-env, powershell-env, json")
 	credType := fs.String("credential-type", "ApiKey", "Expected credential type: ApiKey, UsernamePassword, OAuthToken, AwsStsFederation")
 	deploymentModel := fs.String("deployment-model", "", "Environment type: vm, kubernetes, ecs_fargate, lambda_container")
-	clientTLSKey := fs.String("client-tls-private-key", "", "Path to PEM private key for X.509-SVID retrieval")
+	clientTLSKey := fs.String("client-tls-private-key", "", "Path to PEM private key, paired with --client-tls-certificate, for certificate_signed_attestation")
+	clientTLSCert := fs.String("client-tls-certificate", "", "Path to PEM certificate, paired with --client-tls-private-key, for certificate_signed_attestation")
 	resourceSetID := fs.String("resource-set-id", "", "Scope to Resource Set")
 	logLevel := fs.String("log-level", "warn", "Log level: off/trace/debug/info/warn/error")
 	clientWorkloadID := fs.String("client-workload-id", "", "Explicit Client Workload UUID for disambiguation")
@@ -45,6 +46,16 @@ func main() {
 
 	_ = logLevel
 	_ = resourceSetID
+	_ = clientWorkloadID
+
+	// Cheap, universally-required flags checked first, before any file
+	// I/O or signing work (deployment-model discovery, certificate
+	// loading) that would otherwise run needlessly on a request that's
+	// going to fail regardless.
+	if *clientID == "" || *serverHost == "" {
+		fmt.Fprintf(os.Stderr, "Error: --client-id and --server-workload-host are required\n")
+		os.Exit(1)
+	}
 
 	if *deploymentModel != "" && *idToken == "" {
 		discovered := discoverPlatformToken(*deploymentModel)
@@ -54,15 +65,18 @@ func main() {
 		}
 		idToken = &discovered
 	}
-	if *clientTLSKey != "" {
-		fmt.Fprintf(os.Stderr, "Error: --client-tls-private-key is not yet supported\n")
-		os.Exit(1)
-	}
-	_ = clientWorkloadID
-
-	if *clientID == "" || *serverHost == "" {
-		fmt.Fprintf(os.Stderr, "Error: --client-id and --server-workload-host are required\n")
-		os.Exit(1)
+	var certAttest *certificateAttestation
+	if *clientTLSKey != "" || *clientTLSCert != "" {
+		if *clientTLSKey == "" || *clientTLSCert == "" {
+			fmt.Fprintf(os.Stderr, "Error: --client-tls-private-key and --client-tls-certificate must be provided together\n")
+			os.Exit(1)
+		}
+		attest, err := buildCertificateAttestation(*clientTLSCert, *clientTLSKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
+		certAttest = attest
 	}
 
 	endpoint, identityType, err := deriveEndpoint(*clientID)
@@ -70,16 +84,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
+	if certAttest != nil && identityType != "certificate" {
+		fmt.Fprintf(os.Stderr, "Warning: --client-tls-certificate/--client-tls-private-key were provided, but --client-id's identity type is %q, not certificate — the certificate attestation will not be sent\n", identityType)
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	accessToken, err := callAuth(client, endpoint, *clientID, *idToken, identityType)
+	accessToken, err := callAuth(client, endpoint, *clientID, *idToken, identityType, certAttest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: authentication failed — %s\n", err)
 		os.Exit(1)
 	}
 
-	cred, err := callCredentials(client, endpoint, accessToken, *idToken, identityType, *serverHost, *serverPort, *credType)
+	cred, err := callCredentials(client, endpoint, accessToken, *idToken, identityType, *serverHost, *serverPort, *credType, certAttest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: credential retrieval failed — %s\n", err)
 		os.Exit(1)
@@ -101,10 +118,10 @@ func deriveEndpoint(clientID string) (endpoint, identityType string, err error) 
 	return endpoint, identityType, nil
 }
 
-func callAuth(client *http.Client, endpoint, clientID, idToken, identityType string) (string, error) {
+func callAuth(client *http.Client, endpoint, clientID, idToken, identityType string, certAttest *certificateAttestation) (string, error) {
 	body := map[string]any{
 		"clientId": clientID,
-		"client":   buildClientBlock(idToken, identityType),
+		"client":   buildClientBlock(idToken, identityType, certAttest),
 	}
 	data, _ := json.Marshal(body)
 
@@ -134,9 +151,9 @@ func callAuth(client *http.Client, endpoint, clientID, idToken, identityType str
 	return result.AccessToken, nil
 }
 
-func callCredentials(client *http.Client, endpoint, accessToken, idToken, identityType, host string, port int, credentialType string) (map[string]any, error) {
+func callCredentials(client *http.Client, endpoint, accessToken, idToken, identityType, host string, port int, credentialType string, certAttest *certificateAttestation) (map[string]any, error) {
 	body := map[string]any{
-		"client":         buildClientBlock(idToken, identityType),
+		"client":         buildClientBlock(idToken, identityType, certAttest),
 		"server":         map[string]any{"host": host, "port": port, "transportProtocol": "TCP"},
 		"credentialType": credentialType,
 	}
@@ -172,7 +189,7 @@ func callCredentials(client *http.Client, endpoint, accessToken, idToken, identi
 	return result, nil
 }
 
-func buildClientBlock(idToken, identityType string) map[string]any {
+func buildClientBlock(idToken, identityType string, certAttest *certificateAttestation) map[string]any {
 	switch identityType {
 	case "github_idtoken":
 		return map[string]any{"github": map[string]any{"identityToken": idToken}}
@@ -180,6 +197,15 @@ func buildClientBlock(idToken, identityType string) map[string]any {
 		return map[string]any{"gitlab": map[string]any{"identityToken": idToken}}
 	case "terraform_cloud_idtoken":
 		return map[string]any{"terraform": map[string]any{"identityToken": idToken}}
+	case "certificate":
+		if certAttest == nil {
+			return map[string]any{}
+		}
+		return map[string]any{"certificate": map[string]any{
+			"certificatePem": certAttest.CertificatePEM,
+			"timestamp":      certAttest.Timestamp,
+			"signature":      certAttest.SignatureBase64,
+		}}
 	default:
 		return map[string]any{"oidc": map[string]any{"identityToken": idToken}}
 	}

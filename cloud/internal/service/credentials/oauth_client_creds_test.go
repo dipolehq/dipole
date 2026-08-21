@@ -1,3 +1,4 @@
+// oauth_client_creds_test.go tests the OAuth Client Credentials handler's token fetch, credential styles, and error handling.
 package credentials
 
 import (
@@ -109,13 +110,11 @@ func TestOAuthClientCreds_CachingBehavior(t *testing.T) {
 	handler := &OAuthClientCredsHandler{httpClient: server.Client()}
 	cfg, _ := json.Marshal(oauthClientCredsConfig{TokenURL: server.URL, ClientID: "x", ClientSecret: "y"})
 
-	// First call fetches
 	cred1, err := handler.Retrieve(context.Background(), cfg, &domain.ClientEvidence{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Second call also fetches (handler itself doesn't cache — broker does)
 	cred2, err := handler.Retrieve(context.Background(), cfg, &domain.ClientEvidence{}, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -1,19 +1,11 @@
-/*
-gcp_validator.go verifies GCP identity tokens from the Google metadata server.
-
-GCPValidator validates Google-signed identity tokens using standard OIDC
-verification (Google's JWKS endpoint). This is effectively OIDC validation
-with Google as the issuer. Evaluates match rules against token claims (email).
-*/
+// gcp_validator.go verifies GCP identity tokens from the Google metadata server via standard OIDC verification.
 package trust
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
-
-	"github.com/go-jose/go-jose/v4"
+	"strings"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -39,15 +31,23 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		endpoint = "https://accounts.google.com"
 	}
 
-	claims, err := verifyOIDCToken(ctx, evidence.GCP.IdentityToken, endpoint, jwksCache)
-	if err != nil {
+	claims, verr := verifyJWS(ctx, evidence.GCP.IdentityToken, cachedKeySetResolver{cache: jwksCache, endpoint: endpoint})
+	if verr != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	if exp, ok := claims["exp"].(float64); ok {
-		if int64(exp) < time.Now().Unix() {
-			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
-		}
+	iss, _ := claims["iss"].(string)
+	expectedIssuer := strings.TrimRight(endpoint, "/")
+	if expectedIssuer == "" || strings.TrimRight(iss, "/") != expectedIssuer {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidIssuer"}, nil
+	}
+
+	if expIsExpired(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
+	}
+
+	if nbfNotYetValid(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
@@ -61,34 +61,5 @@ func (v *GCPValidator) Validate(ctx context.Context, provider *domain.TrustProvi
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
-}
-
-func verifyOIDCToken(ctx context.Context, token, oidcEndpoint string, jwksCache *JWKSCache) (map[string]interface{}, error) {
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-	if err != nil {
-		return nil, err
-	}
-
-	keySet, err := jwksCache.Get(ctx, oidcEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("key not found: %s", kid)
-	}
-
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-	return claims, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }

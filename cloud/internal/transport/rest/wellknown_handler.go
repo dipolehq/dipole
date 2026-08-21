@@ -1,27 +1,9 @@
 /*
-Package rest — wellknown_handler.go serves the /.well-known/* discovery
-endpoints for every tenant.
+Routes:
 
-These endpoints are shared between TWO different services on TWO different
-hostnames, which is why they live here rather than inside either one:
-
-	https://<tenant>-mcp.<domain>/.well-known/oauth-authorization-server
-	https://<tenant>-mcp.<domain>/.well-known/openid-configuration
-	    → OAuth 2.1 Authorization Server metadata (RFC 8414), issuer = the -mcp host.
-	      MCP clients (Claude Desktop) fetch this to discover our OAuth endpoints.
-
-	https://<tenant>-id.<domain>/.well-known/openid-configuration
-	    → OIDC discovery for the token issuer, issuer = the -id host.
-	      AWS STS / Azure Entra / GCP WIF fetch this to verify tokens we sign.
-
-Serving the wrong document on either host breaks the corresponding integration:
-OIDC requires the `issuer` in the document to equal the URL it was fetched
-from, and all three cloud federation providers enforce that. Previously one
-handler answered both hostnames with the -mcp issuer, so cloud federation
-could never verify a token.
-
-The `.mcp.` vs `.id.` split mirrors Aembit's documented model, where the
-authorization server and the token issuer are deliberately different hosts.
+	GET /.well-known/oauth-authorization-server
+	GET /.well-known/openid-configuration
+	GET /.well-known/openid-configuration/jwks
 */
 package rest
 
@@ -49,7 +31,6 @@ func (h *WellKnownHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration/jwks", h.HandleJWKS)
 }
 
-// HandleOAuthMetadata serves OAuth 2.1 Authorization Server metadata.
 func (h *WellKnownHandler) HandleOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	resolved, err := h.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -65,7 +46,6 @@ func (h *WellKnownHandler) HandleOAuthMetadata(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, OAuthAuthorizationServerMetadata(resolved.BaseURL))
 }
 
-// HandleOpenIDConfiguration serves the discovery document matching the host.
 func (h *WellKnownHandler) HandleOpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
 	resolved, err := h.resolver.Resolve(r.Context(), r)
 	if err != nil {
@@ -83,7 +63,6 @@ func (h *WellKnownHandler) HandleOpenIDConfiguration(w http.ResponseWriter, r *h
 	}
 }
 
-// HandleJWKS returns the public signing keys.
 func (h *WellKnownHandler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.issuer.JWKS())
 }
@@ -96,7 +75,6 @@ func (h *WellKnownHandler) respondUnresolved(w http.ResponseWriter, r *http.Requ
 	writeJSONError(w, http.StatusNotFound, "not_found", "unknown tenant for this hostname")
 }
 
-// OAuthAuthorizationServerMetadata builds the RFC 8414 metadata document.
 func OAuthAuthorizationServerMetadata(serverURL string) map[string]any {
 	return map[string]any{
 		"issuer":                                serverURL,

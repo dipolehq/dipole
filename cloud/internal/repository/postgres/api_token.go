@@ -1,7 +1,4 @@
-/*
-api_token.go implements the APITokenRepository for PostgreSQL.
-Supports multiple tokens per tenant, each optionally scoped to a Resource Set.
-*/
+// api_token.go implements the APITokenRepository for PostgreSQL, supporting multiple tokens per tenant, each optionally scoped to a Resource Set.
 package postgres
 
 import (

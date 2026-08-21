@@ -1,8 +1,4 @@
-/*
-claude_wif.go exchanges our OIDC token for a Claude API access token via
-Anthropic's Workload Identity Federation endpoint. Issues an OIDC token
-and exchanges it with Claude's token service.
-*/
+// claude_wif.go exchanges our OIDC token for a Claude API access token via Anthropic's Workload Identity Federation endpoint.
 package credentials
 
 import (
@@ -38,8 +34,6 @@ type claudeWIFConfig struct {
 	Scope            string `json:"scope"`
 }
 
-// issuerURL is the requesting tenant's identity host, presented to Anthropic as
-// the assertion issuer.
 func (h *ClaudeWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg claudeWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

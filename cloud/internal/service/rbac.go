@@ -1,28 +1,37 @@
-/*
-rbac.go implements Role-Based Access Control for the admin API.
-
-RBACService checks if a user's role permits a specific action (read/write)
-on a specific resource type. Permissions are per-resource-type with read/write
-granularity. Roles can be scoped to Resource Sets.
-*/
+// rbac.go implements Role-Based Access Control for the admin API: role permission storage, default role definitions, and the resource registry.
 package service
 
 import (
 	"encoding/json"
 	"errors"
 	"net/http"
-
-	"github.com/google/uuid"
+	"strings"
 )
 
 var ErrForbidden = errors.New("forbidden: insufficient permissions")
 
-type Permissions map[string]ResourcePermission
-
-type ResourcePermission struct {
-	Read  bool `json:"read"`
-	Write bool `json:"write"`
+type ForbiddenError struct {
+	Resource           string
+	RequiredPermission string
 }
+
+func (e *ForbiddenError) Error() string {
+	return "forbidden: " + e.RequiredPermission + " access to " + e.Resource + " is not permitted for this role"
+}
+
+func (e *ForbiddenError) Unwrap() error {
+	return ErrForbidden
+}
+
+type PermissionLevel string
+
+const (
+	NoAccess  PermissionLevel = "no_access"
+	ReadOnly  PermissionLevel = "read_only"
+	ReadWrite PermissionLevel = "read_write"
+)
+
+type Permissions map[string]PermissionLevel
 
 type RBACService struct{}
 
@@ -31,25 +40,28 @@ func NewRBACService() *RBACService {
 }
 
 func (s *RBACService) CheckPermission(permissions Permissions, resource string, method string) error {
-	perm, ok := permissions[resource]
-	if !ok {
-		return ErrForbidden
+	requiredPermission := "read"
+	if IsWriteMethod(method) {
+		requiredPermission = "write"
 	}
 
-	if isWriteMethod(method) {
-		if !perm.Write {
-			return ErrForbidden
+	level := permissions[resource]
+
+	switch requiredPermission {
+	case "write":
+		if level != ReadWrite {
+			return &ForbiddenError{Resource: resource, RequiredPermission: requiredPermission}
 		}
-	} else {
-		if !perm.Read {
-			return ErrForbidden
+	default:
+		if level != ReadOnly && level != ReadWrite {
+			return &ForbiddenError{Resource: resource, RequiredPermission: requiredPermission}
 		}
 	}
 
 	return nil
 }
 
-func isWriteMethod(method string) bool {
+func IsWriteMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPut || method == http.MethodDelete
 }
 
@@ -62,54 +74,34 @@ func ParsePermissions(raw json.RawMessage) (Permissions, error) {
 }
 
 func SuperAdminPermissions() Permissions {
-	return Permissions{
-		"client_workloads":     {Read: true, Write: true},
-		"server_workloads":     {Read: true, Write: true},
-		"trust_providers":      {Read: true, Write: true},
-		"credential_providers": {Read: true, Write: true},
-		"access_policies":      {Read: true, Write: true},
-		"access_conditions":    {Read: true, Write: true},
-		"agent_controllers":    {Read: true, Write: true},
-		"users":                {Read: true, Write: true},
-		"roles":                {Read: true, Write: true},
-		"resource_sets":        {Read: true, Write: true},
-		"log_streams":          {Read: true, Write: true},
-		"identity_providers":   {Read: true, Write: true},
+	perms := make(Permissions, len(ResourceRegistry))
+	for _, res := range ResourceRegistry {
+		perms[res.ID] = ReadWrite
 	}
+	return perms
 }
 
 func AdminPermissions() Permissions {
-	return Permissions{
-		"client_workloads":     {Read: true, Write: true},
-		"server_workloads":     {Read: true, Write: true},
-		"trust_providers":      {Read: true, Write: true},
-		"credential_providers": {Read: true, Write: true},
-		"access_policies":      {Read: true, Write: true},
-		"access_conditions":    {Read: true, Write: true},
-		"agent_controllers":    {Read: true, Write: true},
-		"users":                {Read: true, Write: true},
-		"roles":                {Read: true, Write: false},
-		"resource_sets":        {Read: true, Write: true},
-		"log_streams":          {Read: true, Write: true},
-		"identity_providers":   {Read: true, Write: false},
+	perms := make(Permissions, len(ResourceRegistry))
+	for _, res := range ResourceRegistry {
+		switch {
+		case res.ReadOnly:
+			perms[res.ID] = ReadOnly
+		case res.ID == "roles" || res.ID == "identity_providers":
+			perms[res.ID] = ReadOnly
+		default:
+			perms[res.ID] = ReadWrite
+		}
 	}
+	return perms
 }
 
 func ReadOnlyPermissions() Permissions {
-	return Permissions{
-		"client_workloads":     {Read: true, Write: false},
-		"server_workloads":     {Read: true, Write: false},
-		"trust_providers":      {Read: true, Write: false},
-		"credential_providers": {Read: true, Write: false},
-		"access_policies":      {Read: true, Write: false},
-		"access_conditions":    {Read: true, Write: false},
-		"agent_controllers":    {Read: true, Write: false},
-		"users":                {Read: true, Write: false},
-		"roles":                {Read: true, Write: false},
-		"resource_sets":        {Read: true, Write: false},
-		"log_streams":          {Read: true, Write: false},
-		"identity_providers":   {Read: true, Write: false},
+	perms := make(Permissions, len(ResourceRegistry))
+	for _, res := range ResourceRegistry {
+		perms[res.ID] = ReadOnly
 	}
+	return perms
 }
 
 type DefaultRole struct {
@@ -125,46 +117,51 @@ func DefaultRoles() []DefaultRole {
 	}
 }
 
-func ResourceFromPath(path string) string {
-	resources := map[string]string{
-		"client-workloads":     "client_workloads",
-		"server-workloads":     "server_workloads",
-		"trust-providers":      "trust_providers",
-		"credential-providers": "credential_providers",
-		"access-policies":      "access_policies",
-		"access-conditions":    "access_conditions",
-		"agent-controllers":    "agent_controllers",
-		"users":                "users",
-		"roles":                "roles",
-		"resource-sets":        "resource_sets",
-		"log-streams":          "log_streams",
-		"identity-providers":   "identity_providers",
-	}
+type Resource struct {
+	ID           string
+	Label        string
+	PathSegments []string
+	ReadOnly     bool
+}
 
-	for pathSegment, resource := range resources {
-		if containsSegment(path, pathSegment) {
+var ResourceRegistry = []Resource{
+	{ID: "client_workloads", Label: "Client Workloads", PathSegments: []string{"client-workloads"}},
+	{ID: "server_workloads", Label: "Server Workloads", PathSegments: []string{"server-workloads"}},
+	{ID: "trust_providers", Label: "Trust Providers", PathSegments: []string{"trust-providers"}},
+	{ID: "credential_providers", Label: "Credential Providers", PathSegments: []string{"credential-providers"}},
+	{ID: "access_policies", Label: "Access Policies", PathSegments: []string{"access-policies"}},
+	{ID: "access_conditions", Label: "Access Conditions", PathSegments: []string{"access-conditions"}},
+	{ID: "agent_controllers", Label: "Agent Controllers", PathSegments: []string{"agent-controllers", "agent-proxies"}},
+	{ID: "users", Label: "Users", PathSegments: []string{"users"}},
+	{ID: "roles", Label: "Roles", PathSegments: []string{"roles"}},
+	{ID: "resource_sets", Label: "Resource Sets", PathSegments: []string{"resource-sets"}},
+	{ID: "log_streams", Label: "Log Streams", PathSegments: []string{"log-streams"}},
+	{ID: "identity_providers", Label: "Identity Providers", PathSegments: []string{"identity-providers"}},
+	{ID: "access_authorization_events", Label: "Access Authorization Events", PathSegments: []string{"authorization"}, ReadOnly: true},
+	{ID: "audit_logs", Label: "Audit Logs", PathSegments: []string{"audit"}, ReadOnly: true},
+	{ID: "workload_events", Label: "Workload Events", PathSegments: []string{"workload"}, ReadOnly: true},
+	{ID: "global_policy_compliance", Label: "Global Policy Compliance", PathSegments: []string{"global-policy-compliance"}},
+	{ID: "sign_on_policy", Label: "Sign-On Policy", PathSegments: []string{"sign-on-policy"}},
+	{ID: "tls_decrypt", Label: "TLS Decrypt", PathSegments: []string{"tls-decrypt"}},
+}
+
+var resourcePathIndex = buildResourcePathIndex(ResourceRegistry)
+
+func buildResourcePathIndex(registry []Resource) map[string]string {
+	index := make(map[string]string, len(registry))
+	for _, res := range registry {
+		for _, segment := range res.PathSegments {
+			index[segment] = res.ID
+		}
+	}
+	return index
+}
+
+func ResourceFromPath(path string) string {
+	for _, segment := range strings.Split(path, "/") {
+		if resource, ok := resourcePathIndex[segment]; ok {
 			return resource
 		}
 	}
 	return ""
-}
-
-func containsSegment(path, segment string) bool {
-	return len(path) >= len(segment) && findSubstring(path, segment)
-}
-
-func findSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
-
-// UserResourceSetRole represents a user's role scoped to a specific Resource Set.
-type UserResourceSetRole struct {
-	UserID        uuid.UUID
-	ResourceSetID uuid.UUID
-	RoleID        uuid.UUID
 }

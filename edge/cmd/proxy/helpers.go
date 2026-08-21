@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -11,35 +12,48 @@ import (
 
 	"github.com/dipolehq/dipole/edge/internal/cloudclient"
 	"github.com/dipolehq/dipole/edge/internal/config"
+	"github.com/dipolehq/dipole/edge/internal/metrics"
 	"github.com/dipolehq/dipole/edge/internal/proxy"
 	dipoletls "github.com/dipolehq/dipole/edge/internal/tls"
 )
 
-func buildCertificateAuthority(regResult *cloudclient.RegistrationResult, logger *slog.Logger) (*dipoletls.CertificateAuthority, error) {
-	if regResult != nil && regResult.CACertPEM != "" && regResult.CAKeyPEM != "" {
-		ca, err := dipoletls.LoadCertificateAuthority([]byte(regResult.CACertPEM), []byte(regResult.CAKeyPEM))
-		if err != nil {
-			logger.Error("failed to load tenant CA from cloud, falling back to local CA", "error", err)
-			return dipoletls.NewCertificateAuthority()
-		}
-		logger.Info("using tenant CA from cloud")
-		return ca, nil
+// buildTrustAnchor parses the tenant's Root CA public certificate returned
+// by Cloud's Register RPC. The private key never leaves Cloud: leaf
+// certificates are signed remotely per-hostname via the SignLeafCertificate
+// RPC (see dipoletls.LeafSigner). There is no local/dev fallback CA — if
+// registration did not succeed or Cloud did not return a CA certificate,
+// TLS Decrypt is unavailable and this fails closed, exactly like every
+// other proxy capability that requires a live Cloud connection (policy
+// evaluation, credential injection).
+func buildTrustAnchor(regResult *cloudclient.RegistrationResult) (*dipoletls.TrustAnchor, error) {
+	if regResult == nil || !regResult.Success || regResult.CACertPEM == "" {
+		return nil, fmt.Errorf("no tenant CA certificate available: cloud registration did not succeed")
 	}
-
-	logger.Info("generating local CA (no tenant CA from cloud)")
-	return dipoletls.NewCertificateAuthority()
+	return dipoletls.NewTrustAnchor([]byte(regResult.CACertPEM))
 }
 
-func writeCAToSharedVolume(ca *dipoletls.CertificateAuthority, logger *slog.Logger) {
+// writeCAToSharedVolume writes the tenant Root CA's public certificate to a
+// path other containers/processes on the host can mount and trust (e.g. a
+// sidecar's system trust store). If this fails, TLS Decrypt still signs
+// leaf certs server-side, but clients on this host were never given the CA
+// to trust them, so every intercepted connection will fail certificate
+// validation. That failure mode is silent from the proxy's own perspective
+// (it doesn't touch any connection path), so it is escalated to Error and
+// counted in a metric rather than only logged at Warn — otherwise an
+// operator has no signal to distinguish "TLS Decrypt disabled" from
+// "TLS Decrypt enabled but broken for every client."
+func writeCAToSharedVolume(anchor *dipoletls.TrustAnchor, logger *slog.Logger) {
 	const caPath = "/dipole/ca/ca.pem"
 
 	if err := os.MkdirAll("/dipole/ca", 0755); err != nil {
-		logger.Warn("cannot create CA directory for trust injection", "path", caPath, "error", err)
+		logger.Error("cannot create CA directory for trust injection: TLS Decrypt clients will fail certificate validation", "path", caPath, "error", err)
+		metrics.TLSCATrustInjectionFailures.Inc()
 		return
 	}
 
-	if err := os.WriteFile(caPath, ca.CACertPEM(), 0644); err != nil {
-		logger.Warn("cannot write CA cert for trust injection", "path", caPath, "error", err)
+	if err := os.WriteFile(caPath, anchor.CACertPEM(), 0644); err != nil {
+		logger.Error("cannot write CA cert for trust injection: TLS Decrypt clients will fail certificate validation", "path", caPath, "error", err)
+		metrics.TLSCATrustInjectionFailures.Inc()
 		return
 	}
 

@@ -1,6 +1,11 @@
 /*
-Package rest — server_workloads.go is the HTTP handler for the Server
-Workloads resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/server-workloads
+	POST   /api/v1/server-workloads
+	GET    /api/v1/server-workloads/{id}
+	PUT    /api/v1/server-workloads/{id}
+	DELETE /api/v1/server-workloads/{id}
 */
 package rest
 

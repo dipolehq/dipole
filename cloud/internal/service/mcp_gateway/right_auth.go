@@ -1,17 +1,4 @@
-/*
-right_auth.go implements Gateway-to-Server authorization (right-side auth).
-
-RightSideAuth evaluates whether the Gateway can access a specific MCP server
-on behalf of a user. It finds the matching right-side Access Policy (where
-Client Workload = Gateway, Server Workload = MCP server), then retrieves
-per-user credentials. Supports MCP User-Based Access Token (per-user OAuth)
-and OAuth 2.0 Authorization Code (shared admin token).
-
-The tenant arrives per call as a TenantScope, never held on the struct: one
-process serves every tenant's Gateway, and a captured tenant would scope every
-tenant's policy lookups to whichever one was configured at startup. Calls with
-an invalid scope are refused before the policy finder is consulted.
-*/
+// right_auth.go implements RightSideAuth, which evaluates Gateway-to-Server authorization and resolves the credential for a downstream MCP server.
 package mcp_gateway
 
 import (
@@ -24,17 +11,23 @@ import (
 )
 
 var (
-	ErrNoPolicyForServer = errors.New("no access policy found for this MCP server")
-	ErrConsentRequired   = errors.New("user authorization required for this MCP server")
-	ErrCredentialExpired = errors.New("credential expired and refresh failed")
-	// ErrInvalidTenantScope means the request was not attributed to a tenant.
-	// Fail closed: continuing would query policies across no tenant, or match a
-	// Client Workload whose audience identifier happens to be empty.
-	ErrInvalidTenantScope = errors.New("request has no valid tenant scope")
+	ErrNoPolicyForServer               = errors.New("no access policy found for this MCP server")
+	ErrConsentRequired                 = errors.New("user authorization required for this MCP server")
+	ErrCredentialExpired               = errors.New("credential expired and refresh failed")
+	ErrInvalidTenantScope              = errors.New("request has no valid tenant scope")
+	ErrCredentialProviderNotConfigured = errors.New("credential provider not configured for this Gateway")
 )
 
+type ConsentRequiredError struct {
+	ServerWorkloadID uuid.UUID
+	ConsentURL       string
+}
+
+func (e *ConsentRequiredError) Error() string { return ErrConsentRequired.Error() }
+func (e *ConsentRequiredError) Unwrap() error { return ErrConsentRequired }
+
 type ServerCredential struct {
-	AccessToken          string
+	Authorization        string
 	ServerWorkload       ServerInfo
 	ResourceSetID        uuid.UUID
 	PolicyID             uuid.UUID
@@ -44,12 +37,6 @@ type ServerCredential struct {
 	CredentialProviderID uuid.UUID
 }
 
-// ServerInfo describes a downstream MCP server, carrying everything needed both
-// to identify it in a policy and to open a connection to it. The connection
-// details travel with the policy result on purpose: the Gateway must only ever
-// talk to a server that an Access Policy authorised for this tenant, so deriving
-// the endpoint from the policy makes reaching an unauthorised server impossible
-// by construction.
 type ServerInfo struct {
 	ID   uuid.UUID
 	Name string
@@ -67,7 +54,14 @@ type UserTokenEntry struct {
 
 type UserTokenStore interface {
 	Get(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
-	Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, token *UserTokenEntry) error
+	// Store saves a user's per-server OAuth token. credentialProviderID
+	// records which Credential Provider issued this token (for
+	// auditability); it is not part of the row's identity — a token is
+	// looked up by tenant + user + server alone, matching Get above, so
+	// re-consenting under a different Credential Provider for the same
+	// tenant/user/server still updates the existing row rather than
+	// creating a duplicate.
+	Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, credentialProviderID uuid.UUID, token *UserTokenEntry) error
 }
 
 type RightSidePolicyFinder interface {
@@ -84,36 +78,32 @@ type RightSidePolicy struct {
 	CredentialType            string
 	CredentialName            string
 	CredentialConfigEncrypted []byte
-	SharedAccessToken         string
 }
 
 type TokenRefresher interface {
-	Refresh(ctx context.Context, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
+	Refresh(ctx context.Context, scope TenantScope, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
 }
 
-// CredentialDecrypter decrypts a credential provider's encrypted config and
-// extracts the usable token/key. Injected so right_auth.go has no dependency
-// on the crypto package or encryption key directly.
 type CredentialDecrypter interface {
 	DecryptCredential(configEncrypted []byte, credType string) (accessToken string, err error)
 }
 
-// RightSideAuth holds no tenant state. The tenant and its Gateway URL arrive
-// with each call as a TenantScope, resolved from the request hostname.
 type RightSideAuth struct {
 	policyFinder RightSidePolicyFinder
 	tokenStore   UserTokenStore
 	refresher    TokenRefresher
 	decrypter    CredentialDecrypter
+	sharedOAuth  SharedOAuthTokenResolver
 	logger       *slog.Logger
 }
 
-func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, decrypter CredentialDecrypter) *RightSideAuth {
+func NewRightSideAuth(policyFinder RightSidePolicyFinder, tokenStore UserTokenStore, refresher TokenRefresher, decrypter CredentialDecrypter, sharedOAuth SharedOAuthTokenResolver) *RightSideAuth {
 	return &RightSideAuth{
 		policyFinder: policyFinder,
 		tokenStore:   tokenStore,
 		refresher:    refresher,
 		decrypter:    decrypter,
+		sharedOAuth:  sharedOAuth,
 	}
 }
 
@@ -129,13 +119,13 @@ func (a *RightSideAuth) GetCredential(ctx context.Context, userID string, scope 
 		return nil, ErrNoPolicyForServer
 	}
 
-	token, err := a.resolveCredential(ctx, userID, scope.TenantID, policy)
+	token, err := a.resolveCredential(ctx, userID, scope, policy)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ServerCredential{
-		AccessToken:          token,
+		Authorization:        token,
 		ServerWorkload:       policy.ServerWorkload,
 		ResourceSetID:        policy.ResourceSetID,
 		PolicyID:             policy.PolicyID,
@@ -166,7 +156,7 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 
 	var creds []ServerCredential
 	for _, policy := range policies {
-		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
+		token, err := a.resolveCredential(ctx, userID, scope, &policy)
 		if err != nil {
 			if a.logger != nil {
 				a.logger.Warn("credential resolution failed for server",
@@ -180,7 +170,7 @@ func (a *RightSideAuth) GetAllServerCredentials(ctx context.Context, userID stri
 			continue
 		}
 		creds = append(creds, ServerCredential{
-			AccessToken:          token,
+			Authorization:        token,
 			ServerWorkload:       policy.ServerWorkload,
 			ResourceSetID:        policy.ResourceSetID,
 			PolicyID:             policy.PolicyID,
@@ -207,12 +197,12 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 		if toolPrefix(policy.ServerWorkload) != serverName {
 			continue
 		}
-		token, err := a.resolveCredential(ctx, userID, scope.TenantID, &policy)
+		token, err := a.resolveCredential(ctx, userID, scope, &policy)
 		if err != nil {
 			return nil, err
 		}
 		return &ServerCredential{
-			AccessToken:          token,
+			Authorization:        token,
 			ServerWorkload:       policy.ServerWorkload,
 			ResourceSetID:        policy.ResourceSetID,
 			PolicyID:             policy.PolicyID,
@@ -225,30 +215,37 @@ func (a *RightSideAuth) GetCredentialByServerName(ctx context.Context, userID st
 	return nil, ErrNoPolicyForServer
 }
 
-func (a *RightSideAuth) resolveCredential(ctx context.Context, userID string, tenantID uuid.UUID, policy *RightSidePolicy) (string, error) {
+func (a *RightSideAuth) resolveCredential(ctx context.Context, userID string, scope TenantScope, policy *RightSidePolicy) (string, error) {
 	switch policy.CredentialType {
 	case "api_key", "username_password":
 		if a.decrypter == nil {
-			return "", ErrNoPolicyForServer
+			return "", ErrCredentialProviderNotConfigured
 		}
 		return a.decrypter.DecryptCredential(policy.CredentialConfigEncrypted, policy.CredentialType)
 	case "mcp_user_based_access_token":
-		return a.resolvePerUserToken(ctx, userID, tenantID, policy)
-	case "oauth_authorization_code":
-		if policy.SharedAccessToken == "" {
-			return "", ErrConsentRequired
+		token, err := a.resolvePerUserToken(ctx, userID, scope, policy)
+		if err != nil {
+			return "", err
 		}
-		return policy.SharedAccessToken, nil
+		return "Bearer " + token, nil
+	case "oauth_authorization_code":
+		if a.sharedOAuth == nil {
+			return "", ErrCredentialProviderNotConfigured
+		}
+		token, err := a.sharedOAuth.Resolve(ctx, policy.CredentialConfigEncrypted)
+		if err != nil {
+			return "", err
+		}
+		return "Bearer " + token, nil
 	default:
-		// Unsupported credential type for Gateway right-side auth.
 		return "", ErrNoPolicyForServer
 	}
 }
 
-func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, tenantID uuid.UUID, policy *RightSidePolicy) (string, error) {
-	entry, err := a.tokenStore.Get(ctx, tenantID, userID, policy.ServerWorkload.ID)
+func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, scope TenantScope, policy *RightSidePolicy) (string, error) {
+	entry, err := a.tokenStore.Get(ctx, scope.TenantID, userID, policy.ServerWorkload.ID)
 	if err != nil || entry == nil {
-		return "", ErrConsentRequired
+		return "", &ConsentRequiredError{ServerWorkloadID: policy.ServerWorkload.ID}
 	}
 
 	if time.Now().UTC().Before(entry.ExpiresAt) {
@@ -259,12 +256,12 @@ func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, 
 		return "", ErrCredentialExpired
 	}
 
-	refreshed, err := a.refresher.Refresh(ctx, entry.RefreshToken, policy.ServerWorkload.ID)
+	refreshed, err := a.refresher.Refresh(ctx, scope, entry.RefreshToken, policy.ServerWorkload.ID)
 	if err != nil {
 		return "", ErrCredentialExpired
 	}
 
-	if storeErr := a.tokenStore.Store(ctx, tenantID, userID, policy.ServerWorkload.ID, refreshed); storeErr != nil {
+	if storeErr := a.tokenStore.Store(ctx, scope.TenantID, userID, policy.ServerWorkload.ID, policy.CredentialProviderID, refreshed); storeErr != nil {
 		return "", ErrCredentialExpired
 	}
 

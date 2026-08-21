@@ -1,11 +1,4 @@
-/*
-oidc_validator.go is the generic OIDC validator covering GitLab, Terraform Cloud,
-and any standards-compliant OIDC provider.
-
-OIDCValidator supports three attestation methods: oidc_discovery (fetch JWKS from
-endpoint), upload_jwks (JWKS stored in config), symmetric_key (HMAC-SHA256).
-Used for gitlab_job, terraform_cloud, and oidc_id_token trust provider types.
-*/
+// oidc_validator.go is the generic OIDC validator (oidc_discovery, upload_jwks, symmetric_key) covering GitLab, Terraform Cloud, and any standards-compliant OIDC provider.
 package trust
 
 import (
@@ -16,20 +9,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/go-jose/go-jose/v4"
-
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-type OIDCValidator struct{}
+type OIDCValidator struct {
+	encryptionKey []byte
+}
+
+func NewOIDCValidator(encryptionKey []byte) *OIDCValidator {
+	return &OIDCValidator{encryptionKey: encryptionKey}
+}
 
 type oidcConfig struct {
 	AttestationMethod string `json:"attestationMethod"`
 	OIDCEndpoint      string `json:"oidcEndpoint"`
 	JWKS              string `json:"jwks"`
-	SymmetricKey      string `json:"symmetricKey"`
 	PublicKey         string `json:"publicKey"`
 }
 
@@ -49,11 +45,23 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 
 	switch cfg.AttestationMethod {
 	case "oidc_discovery", "":
-		claims, err = v.verifyWithDiscovery(ctx, token, cfg.OIDCEndpoint, jwksCache)
+		var verr *jwsVerifyError
+		claims, verr = verifyJWS(ctx, token, cachedKeySetResolver{cache: jwksCache, endpoint: cfg.OIDCEndpoint})
+		if verr != nil {
+			err = verr
+		}
 	case "upload_jwks":
-		claims, err = v.verifyWithUploadedJWKS(token, cfg.JWKS)
+		var verr *jwsVerifyError
+		claims, verr = verifyJWS(ctx, token, staticKeySetResolver{jwksJSON: cfg.JWKS})
+		if verr != nil {
+			err = verr
+		}
 	case "symmetric_key":
-		claims, err = v.verifyWithSymmetricKey(token, cfg.SymmetricKey)
+		var symmetricKey string
+		symmetricKey, err = v.decryptSymmetricKey(provider)
+		if err == nil {
+			claims, err = v.verifyWithSymmetricKey(token, symmetricKey)
+		}
 	default:
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
@@ -62,7 +70,14 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Check audience if configured
+	if cfg.AttestationMethod == "oidc_discovery" || cfg.AttestationMethod == "" {
+		iss, _ := claims["iss"].(string)
+		expectedIssuer := strings.TrimRight(cfg.OIDCEndpoint, "/")
+		if expectedIssuer == "" || strings.TrimRight(iss, "/") != expectedIssuer {
+			return &domain.TrustProviderResult{Attested: false, Reason: "InvalidIssuer"}, nil
+		}
+	}
+
 	if provider.EdgeSDKAudience != "" {
 		aud := fmt.Sprint(claims["aud"])
 		if aud != provider.EdgeSDKAudience {
@@ -70,14 +85,14 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}
 	}
 
-	// Check expiry
-	if exp, ok := claims["exp"].(float64); ok {
-		if int64(exp) < time.Now().Unix() {
-			return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
-		}
+	if expIsExpired(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenExpired"}, nil
 	}
 
-	// Evaluate match rules
+	if nbfNotYetValid(claims) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "TokenNotYetValid"}, nil
+	}
+
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
 	if !passed {
 		return &domain.TrustProviderResult{
@@ -89,65 +104,18 @@ func (v *OIDCValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
-func (v *OIDCValidator) verifyWithDiscovery(ctx context.Context, token, oidcEndpoint string, jwksCache *JWKSCache) (map[string]interface{}, error) {
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
+func (v *OIDCValidator) decryptSymmetricKey(provider *domain.TrustProvider) (string, error) {
+	if len(provider.SymmetricKeyEncrypted) == 0 {
+		return "", fmt.Errorf("trust provider has no symmetric key configured")
+	}
+	plaintext, err := crypto.Decrypt(provider.SymmetricKeyEncrypted, v.encryptionKey)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("decrypt symmetric key: %w", err)
 	}
-
-	keySet, err := jwksCache.Get(ctx, oidcEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("key not found: %s", kid)
-	}
-
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-	return claims, nil
-}
-
-func (v *OIDCValidator) verifyWithUploadedJWKS(token, jwksJSON string) (map[string]interface{}, error) {
-	var keySet jose.JSONWebKeySet
-	if err := json.Unmarshal([]byte(jwksJSON), &keySet); err != nil {
-		return nil, err
-	}
-
-	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256, jose.ES256})
-	if err != nil {
-		return nil, err
-	}
-
-	kid := jws.Signatures[0].Header.KeyID
-	keys := keySet.Key(kid)
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("key not found: %s", kid)
-	}
-
-	payload, err := jws.Verify(keys[0])
-	if err != nil {
-		return nil, err
-	}
-
-	var claims map[string]interface{}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, err
-	}
-	return claims, nil
+	return string(plaintext), nil
 }
 
 func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[string]interface{}, error) {
@@ -156,13 +124,11 @@ func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[str
 		return nil, fmt.Errorf("decode symmetric key: %w", err)
 	}
 
-	// Split JWT into parts
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format")
 	}
 
-	// Verify HMAC-SHA256
 	signingInput := parts[0] + "." + parts[1]
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -177,7 +143,6 @@ func (v *OIDCValidator) verifyWithSymmetricKey(token, keyBase64 string) (map[str
 		return nil, fmt.Errorf("signature mismatch")
 	}
 
-	// Decode payload
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, fmt.Errorf("decode payload: %w", err)
@@ -201,7 +166,6 @@ func extractOIDCToken(providerType string, evidence *domain.ClientEvidence) stri
 			return evidence.Terraform.IdentityToken
 		}
 	case "oidc_id_token":
-		// Generic OIDC — check multiple sources
 		if evidence.GitHub != nil && evidence.GitHub.IdentityToken != "" {
 			return evidence.GitHub.IdentityToken
 		}

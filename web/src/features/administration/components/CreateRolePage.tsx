@@ -8,20 +8,12 @@ import { useClickOutside } from '@/shared/hooks/useClickOutside'
 import { useCreateRole } from '@/features/administration/hooks/useRoles'
 import { apiErrorMessage } from '@/features/administration/api/rolesApi'
 import { apiClient } from '@/shared/lib/api-client'
+import { PERMISSION_ENTITIES, type PermissionLevel } from '@/features/administration/permissionEntities'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
 ]
-
-type PermissionLevel = 'no_access' | 'read_only' | 'read_write'
-
-const PERMISSION_ENTITIES = [
-  'Access Policies', 'Client Workloads', 'Trust Providers', 'Access Conditions',
-  'Integrations', 'Credential Providers', 'Server Workloads', 'Agent Controllers',
-  'Access Authorization Events', 'Audit Logs', 'Workload Events', 'Users', 'Roles',
-  'Log Streams', 'Identity Providers', 'Resource Sets', 'Global Policy Compliance',
-] as const
 
 export function CreateRolePage() {
   const navigate = useNavigate()
@@ -51,11 +43,11 @@ export function CreateRolePage() {
   const [resourceSets, setResourceSets] = useState<string[]>([])
   const [copyFromRole, setCopyFromRole] = useState('')
   const [permissions, setPermissions] = useState<Record<string, PermissionLevel>>(
-    Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, 'no_access' as PermissionLevel]))
+    Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e.id, 'no_access' as PermissionLevel]))
   )
 
-  function handlePermissionChange(entity: string, level: PermissionLevel) {
-    setPermissions({ ...permissions, [entity]: level })
+  function handlePermissionChange(entityId: string, level: PermissionLevel) {
+    setPermissions({ ...permissions, [entityId]: level })
   }
 
   function handleCopyFromRole(roleId: string) {
@@ -64,7 +56,7 @@ export function CreateRolePage() {
     const role = rolesData?.items?.find((r) => r.id === roleId)
     if (role?.permissions) {
       const perms = role.permissions as Record<string, string>
-      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e, (perms[e] as PermissionLevel) ?? 'no_access'])))
+      setPermissions(Object.fromEntries(PERMISSION_ENTITIES.map((e) => [e.id, (perms[e.id] as PermissionLevel) ?? 'no_access'])))
     }
   }
 
@@ -156,7 +148,7 @@ export function CreateRolePage() {
   )
 }
 
-function PermissionsTable({ permissions, onChange, disabled = false }: { permissions: Record<string, PermissionLevel>; onChange: (entity: string, level: PermissionLevel) => void; disabled?: boolean }) {
+function PermissionsTable({ permissions, onChange, disabled = false }: { permissions: Record<string, PermissionLevel>; onChange: (entityId: string, level: PermissionLevel) => void; disabled?: boolean }) {
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <table className="w-full text-xs">
@@ -170,16 +162,16 @@ function PermissionsTable({ permissions, onChange, disabled = false }: { permiss
         </thead>
         <tbody className="divide-y divide-border">
           {PERMISSION_ENTITIES.map((entity) => (
-            <tr key={entity} className="hover:bg-gray-50 transition-colors">
-              <td className="px-4 py-3 text-gray-700">{entity}</td>
+            <tr key={entity.id} className="hover:bg-gray-50 transition-colors">
+              <td className="px-4 py-3 text-gray-700">{entity.label}</td>
               <td className="px-4 py-3 text-center">
-                <input type="checkbox" checked={permissions[entity] === 'no_access'} onChange={() => onChange(entity, 'no_access')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                <input type="checkbox" checked={permissions[entity.id] === 'no_access'} onChange={() => onChange(entity.id, 'no_access')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
               </td>
               <td className="px-4 py-3 text-center">
-                <input type="checkbox" checked={permissions[entity] === 'read_only'} onChange={() => onChange(entity, 'read_only')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                <input type="checkbox" checked={permissions[entity.id] === 'read_only'} onChange={() => onChange(entity.id, 'read_only')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
               </td>
               <td className="px-4 py-3 text-center">
-                <input type="checkbox" checked={permissions[entity] === 'read_write'} onChange={() => onChange(entity, 'read_write')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
+                <input type="checkbox" checked={permissions[entity.id] === 'read_write'} onChange={() => onChange(entity.id, 'read_write')} disabled={disabled} className="w-3.5 h-3.5 accent-gray-600 cursor-pointer disabled:cursor-default disabled:opacity-60" />
               </td>
             </tr>
           ))}

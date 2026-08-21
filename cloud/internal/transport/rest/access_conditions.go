@@ -1,6 +1,11 @@
 /*
-Package rest — access_conditions.go is the HTTP handler for the Access
-Conditions resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/access-conditions
+	POST   /api/v1/access-conditions
+	GET    /api/v1/access-conditions/{id}
+	PUT    /api/v1/access-conditions/{id}
+	DELETE /api/v1/access-conditions/{id}
 */
 package rest
 
@@ -156,6 +161,10 @@ func (h *AccessConditionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ac, err := h.svc.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
+		return
+	}
+	if ac == nil {
+		respondError(w, http.StatusNotFound, "not_found", "access condition not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toAccessConditionResponse(ac))

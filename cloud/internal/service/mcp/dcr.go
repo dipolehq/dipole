@@ -1,10 +1,4 @@
-/*
-Package mcp implements the MCP Authorization Server business logic.
-
-DCRService handles Dynamic Client Registration (RFC 7591). MCP clients
-self-register at runtime by POSTing redirect_uris and grant_types, receiving
-a unique client_id for subsequent authorization requests.
-*/
+// dcr.go implements DCRService, which handles Dynamic Client Registration (RFC 7591) for MCP clients.
 package mcp
 
 import (
@@ -59,10 +53,6 @@ func NewDCRService(repo MCPClientRepository) *DCRService {
 }
 
 func (s *DCRService) Register(ctx context.Context, tenantID uuid.UUID, req *DCRRequest) (*DCRResponse, error) {
-	// RFC 7591 §2: when grant_types is omitted, the default is
-	// ["authorization_code"]; when response_types is omitted, the default is
-	// ["code"]. Claude.ai omits both, so we must apply defaults before
-	// validating rather than rejecting.
 	if len(req.GrantTypes) == 0 {
 		req.GrantTypes = []string{"authorization_code"}
 	}

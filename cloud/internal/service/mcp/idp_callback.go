@@ -1,12 +1,4 @@
-/*
-idp_callback.go processes Identity Provider callbacks after user authentication.
-
-OIDCCallbackHandler exchanges the IdP authorization code for an id_token,
-validates it using the Trust Provider (OIDC validator), extracts user claims,
-and resumes the MCP authorization flow by issuing an authorization code.
-
-SAMLCallbackHandler validates the SAML assertion and does the same.
-*/
+// idp_callback.go implements IdPCallbackService, which processes Identity Provider callbacks after user authentication and resumes the MCP authorization flow.
 package mcp
 
 import (
@@ -62,9 +54,6 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		return nil, fmt.Errorf("session missing identity provider configuration")
 	}
 
-	// OAuth requires the token exchange to present the SAME redirect_uri that
-	// was sent in the authorize step. Taking it from the stored original
-	// request guarantees they match, rather than re-deriving it here.
 	redirectURI := session.OriginalRequest.ServerBaseURL + platform.OIDCCallbackPath
 
 	idToken, err := s.exchangeCodeForToken(ctx, code, session.IdPConfig, redirectURI)
@@ -87,7 +76,6 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 		},
 	}
 
-	// EdgeSDKAudience only applies to Edge/CLI attestation, not OAuth code exchange — clear it on a copy.
 	tp := *session.TrustProvider
 	tp.EdgeSDKAudience = ""
 
@@ -104,7 +92,6 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 
 	userClaims := extractUserClaims(idToken)
 
-	// Prevents replay of a different, otherwise-valid id_token into this login attempt.
 	if err := verifyNonce(userClaims, session.Nonce); err != nil {
 		return &CallbackResult{
 			RedirectURL: buildErrorRedirect(session.OriginalRequest.RedirectURI, "access_denied", err.Error(), session.OriginalRequest.State),
@@ -114,7 +101,6 @@ func (s *IdPCallbackService) HandleOIDCCallback(ctx context.Context, code, state
 	return s.issueCodeAfterAuth(ctx, session, userClaims)
 }
 
-// verifyNonce checks the id_token's nonce claim against the session's nonce.
 func verifyNonce(claims map[string]any, expected string) error {
 	if expected == "" {
 		return fmt.Errorf("session missing nonce")
@@ -242,8 +228,6 @@ func extractUserClaims(idToken string) map[string]any {
 	if len(parts) != 3 {
 		return nil
 	}
-	// Decode payload (middle part) — no signature verification needed here
-	// (already validated by Trust Provider)
 	payload, err := decodeBase64URL(parts[1])
 	if err != nil {
 		return nil
@@ -254,8 +238,6 @@ func extractUserClaims(idToken string) map[string]any {
 }
 
 func extractSAMLClaims(samlResponse string) map[string]any {
-	// SAML claims are extracted during Trust Provider validation
-	// Return minimal claims — the Trust Provider already validated the assertion
 	return map[string]any{
 		"auth_method": "saml",
 	}

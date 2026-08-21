@@ -1,8 +1,4 @@
-/*
-aws_secrets_manager.go retrieves secrets from AWS Secrets Manager. First assumes
-an IAM role via STS (using our OIDC token), then calls GetSecretValue with the
-assumed credentials using AWS SigV4 signing.
-*/
+// aws_secrets_manager.go retrieves secrets from AWS Secrets Manager by assuming an IAM role via STS, then calling GetSecretValue with SigV4 signing.
 package credentials
 
 import (
@@ -41,8 +37,6 @@ type awsSecretsManagerConfig struct {
 	RoleARN   string `json:"role_arn"`
 }
 
-// issuerURL is the requesting tenant's identity host. It is forwarded to the STS
-// handler, which uses it as the `iss` of the token AWS verifies.
 func (h *AWSSecretsManagerHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg awsSecretsManagerConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
@@ -53,7 +47,6 @@ func (h *AWSSecretsManagerHandler) Retrieve(ctx context.Context, configJSON []by
 		cfg.Region = "ap-south-1"
 	}
 
-	// Assume role to get temporary credentials
 	stsConfig, _ := json.Marshal(awsStsConfig{
 		RoleARN:         cfg.RoleARN,
 		SessionName:     "dipole-secrets-session",
@@ -92,7 +85,6 @@ func (h *AWSSecretsManagerHandler) getSecretValue(ctx context.Context, secretARN
 	req.Header.Set("X-Amz-Date", amzDate)
 	req.Header.Set("X-Amz-Security-Token", creds.AWSSessionToken)
 
-	// Sign request with SigV4
 	signedHeaders := "content-type;host;x-amz-date;x-amz-security-token;x-amz-target"
 	host := fmt.Sprintf("secretsmanager.%s.amazonaws.com", region)
 

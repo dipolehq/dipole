@@ -1,12 +1,4 @@
-/*
-kerberos_validator.go verifies Kerberos-attested workload identity via
-Controller-signed HMAC-SHA256 attestation documents.
-
-The Agent Controller validates the Kerberos ticket locally (it holds the keytab)
-and signs an attestation {principal, realm, domain, timestamp} with HMAC-SHA256
-using a shared secret established during registration. Cloud verifies the
-signature and checks timestamp freshness (< 5 minutes) to prevent replay.
-*/
+// kerberos_validator.go verifies Kerberos-attested workload identity via Controller-signed HMAC-SHA256 attestation, checking timestamp freshness.
 package trust
 
 import (
@@ -20,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
 )
@@ -28,10 +21,11 @@ const kerberosTimestampMaxAge = 5 * time.Minute
 
 type KerberosValidator struct {
 	controllerRepo repository.AgentControllerRepository
+	encryptionKey  []byte
 }
 
-func NewKerberosValidator(controllerRepo repository.AgentControllerRepository) *KerberosValidator {
-	return &KerberosValidator{controllerRepo: controllerRepo}
+func NewKerberosValidator(controllerRepo repository.AgentControllerRepository, encryptionKey []byte) *KerberosValidator {
+	return &KerberosValidator{controllerRepo: controllerRepo, encryptionKey: encryptionKey}
 }
 
 type kerberosPayload struct {
@@ -43,7 +37,6 @@ type kerberosPayload struct {
 
 func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
 	if evidence.KerberosAttestation == nil {
-		// Fallback: extract from environment map for backward compat during migration
 		if evidence.Environment == nil {
 			return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
 		}
@@ -62,28 +55,30 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 
 	attest := evidence.KerberosAttestation
 
-	// Parse and validate controller ID
 	controllerUUID, err := uuid.Parse(attest.ControllerID)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Look up controller to get shared secret
 	controller, err := v.controllerRepo.GetByID(ctx, provider.TenantID, controllerUUID)
 	if err != nil || controller == nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	if controller.SharedSecret == "" {
+	if len(controller.SharedSecretEncrypted) == 0 {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	secretBytes, err := hex.DecodeString(controller.SharedSecret)
+	secretHex, err := crypto.Decrypt(controller.SharedSecretEncrypted, v.encryptionKey)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Verify HMAC-SHA256 signature
+	secretBytes, err := hex.DecodeString(string(secretHex))
+	if err != nil {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
+	}
+
 	mac := hmac.New(sha256.New, secretBytes)
 	mac.Write([]byte(attest.Payload))
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
@@ -92,7 +87,6 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Decode and validate the verified payload
 	payloadBytes, err := base64.StdEncoding.DecodeString(attest.Payload)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
@@ -103,7 +97,6 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	// Anti-replay: reject if timestamp is too old
 	attestTime := time.Unix(payload.Timestamp, 0)
 	if time.Since(attestTime) > kerberosTimestampMaxAge {
 		return &domain.TrustProviderResult{Attested: false, Reason: "AttestationExpired"}, nil
@@ -127,5 +120,5 @@ func (v *KerberosValidator) Validate(ctx context.Context, provider *domain.Trust
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }

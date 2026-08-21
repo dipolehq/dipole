@@ -20,7 +20,6 @@ type RegistrationResult struct {
 	ProxyID   string
 	Success   bool
 	CACertPEM string
-	CAKeyPEM  string
 }
 
 func FetchTokenFromController(ctx context.Context, controllerURL string, logger *slog.Logger) (string, error) {
@@ -111,12 +110,12 @@ func RunRegistration(ctx context.Context, controllerURL string, client *CloudCli
 	logger.Info("proxy registered", "proxy_id", result.ProxyID)
 
 	go startHealthReporting(ctx, client, activeConns, logger)
+	go startSessionTokenRefresh(ctx, client, logger)
 
 	return &RegistrationResult{
 		ProxyID:   result.ProxyID,
 		Success:   true,
 		CACertPEM: result.CACertPEM,
-		CAKeyPEM:  result.CAKeyPEM,
 	}
 }
 
@@ -136,4 +135,66 @@ func startHealthReporting(ctx context.Context, client *CloudClient, activeConns 
 			}
 		}
 	}
+}
+
+// sessionTokenRefreshFraction is how far into the current session token's
+// lifetime the proxy proactively renews it (0.5 = halfway). Refreshing
+// well before expiry, rather than waiting until close to it, leaves ample
+// margin to retry with backoff (see startSessionTokenRefresh) without ever
+// running out the clock on the token still in use.
+const sessionTokenRefreshFraction = 0.5
+
+// startSessionTokenRefresh proactively renews the proxy's session token
+// before it expires, for as long as ctx is live. It schedules the next
+// refresh attempt at sessionTokenRefreshFraction of the current token's
+// remaining lifetime; on failure it retries with exponential backoff
+// (capped) rather than waiting for the next full-lifetime cycle, since a
+// token nearing expiry that fails to refresh must be retried promptly, not
+// left until the next scheduled check.
+func startSessionTokenRefresh(ctx context.Context, client *CloudClient, logger *slog.Logger) {
+	const (
+		minRetryBackoff = 5 * time.Second
+		maxRetryBackoff = 60 * time.Second
+	)
+
+	timer := time.NewTimer(nextRefreshDelay(client.SessionTokenExpiresAt()))
+	defer timer.Stop()
+
+	backoff := minRetryBackoff
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+
+		expiresAt, err := client.RefreshSessionToken(ctx)
+		if err != nil {
+			logger.Warn("session token refresh failed, retrying with backoff", "error", err, "backoff", backoff)
+			timer.Reset(backoff)
+			backoff *= 2
+			if backoff > maxRetryBackoff {
+				backoff = maxRetryBackoff
+			}
+			continue
+		}
+
+		logger.Info("session token refreshed", "expires_at", expiresAt)
+		backoff = minRetryBackoff
+		timer.Reset(nextRefreshDelay(expiresAt))
+	}
+}
+
+// nextRefreshDelay returns how long to wait before the next refresh
+// attempt, given when the current token expires. Refreshing at
+// sessionTokenRefreshFraction of the remaining lifetime rather than at a
+// fixed interval means the delay self-corrects to whatever lifetime Cloud
+// actually issued, without either side hardcoding the other's assumption
+// about token lifetime.
+func nextRefreshDelay(expiresAt time.Time) time.Duration {
+	remaining := time.Until(expiresAt)
+	if remaining <= 0 {
+		return 0
+	}
+	return time.Duration(float64(remaining) * sessionTokenRefreshFraction)
 }

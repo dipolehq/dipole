@@ -1,7 +1,4 @@
-/*
-jwt.go issues custom JSON Web Tokens with arbitrary claims. More flexible than
-OIDC ID Token — allows any claim structure without OIDC constraints.
-*/
+// jwt.go issues custom JSON Web Tokens with arbitrary claims, without OIDC ID Token constraints.
 package credentials
 
 import (
@@ -28,7 +25,6 @@ type jwtConfig struct {
 	SigningAlgorithm string            `json:"signing_algorithm"`
 }
 
-// issuerURL is the requesting tenant's identity host, used as the token's `iss`.
 func (h *JWTHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, _ *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
 	var cfg jwtConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

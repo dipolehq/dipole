@@ -1,218 +1,184 @@
-/*
-service_test.go tests the RegistrationService with focus on single-use token behavior.
-*/
+// service_test.go tests RegistrationService.VerifyControllerSignature, the HMAC check that authenticates Agent Controller requests to /internal/controllers/token and /internal/controllers/health.
 package registration
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-type mockControllerRepo struct {
-	controller *domain.AgentController
-	err        error
+type fakeControllerRepoForSigTest struct {
+	controllers map[uuid.UUID]*domain.AgentController
 }
 
-func (m *mockControllerRepo) Create(_ context.Context, _ uuid.UUID, _ *domain.AgentController) error {
+func newFakeControllerRepoForSigTest() *fakeControllerRepoForSigTest {
+	return &fakeControllerRepoForSigTest{controllers: make(map[uuid.UUID]*domain.AgentController)}
+}
+
+func (f *fakeControllerRepoForSigTest) Create(_ context.Context, _ uuid.UUID, ac *domain.AgentController) error {
+	f.controllers[ac.ID] = ac
 	return nil
 }
-func (m *mockControllerRepo) GetByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.AgentController, error) {
-	return m.controller, m.err
+func (f *fakeControllerRepoForSigTest) GetByID(_ context.Context, _ uuid.UUID, id uuid.UUID) (*domain.AgentController, error) {
+	return f.controllers[id], nil
 }
-func (m *mockControllerRepo) List(_ context.Context, _ uuid.UUID, _ domain.ListOptions) ([]domain.AgentController, int, error) {
+func (f *fakeControllerRepoForSigTest) List(_ context.Context, _ uuid.UUID, _ domain.ListOptions) ([]domain.AgentController, int, error) {
 	return nil, 0, nil
 }
-func (m *mockControllerRepo) Update(_ context.Context, _ uuid.UUID, _ *domain.AgentController) error {
+func (f *fakeControllerRepoForSigTest) Update(_ context.Context, _ uuid.UUID, ac *domain.AgentController) error {
+	f.controllers[ac.ID] = ac
 	return nil
 }
-func (m *mockControllerRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error { return nil }
-func (m *mockControllerRepo) GetByDeviceCode(_ context.Context, _ uuid.UUID, _ string) (*domain.AgentController, error) {
-	return m.controller, m.err
+func (f *fakeControllerRepoForSigTest) Delete(_ context.Context, _ uuid.UUID, id uuid.UUID) error {
+	delete(f.controllers, id)
+	return nil
 }
-
-type mockProxyRepo struct {
-	created *domain.AgentProxy
-	err     error
-}
-
-func (m *mockProxyRepo) Create(_ context.Context, _ uuid.UUID, proxy *domain.AgentProxy) error {
-	m.created = proxy
-	return m.err
-}
-func (m *mockProxyRepo) GetByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.AgentProxy, error) {
+func (f *fakeControllerRepoForSigTest) ConsumeDeviceCode(_ context.Context, _ uuid.UUID, _ string, _ []byte) (*domain.AgentController, error) {
 	return nil, nil
 }
-func (m *mockProxyRepo) UpdateHealth(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string) error {
-	return nil
-}
-func (m *mockProxyRepo) ListByController(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]domain.AgentProxy, error) {
-	return nil, nil
-}
-func (m *mockProxyRepo) List(_ context.Context, _ uuid.UUID, _ domain.ListOptions) ([]domain.AgentProxy, int, error) {
-	return nil, 0, nil
+
+func testEncryptionKey() []byte {
+	return []byte("01234567890123456789012345678901")
 }
 
-type mockTokenRepo struct {
-	stored   []storedToken
-	consumed *domain.RegistrationToken
-	err      error
-}
-
-type storedToken struct {
-	tenantID     uuid.UUID
-	tokenHash    string
-	controllerID uuid.UUID
-	expiresAt    time.Time
-}
-
-func (m *mockTokenRepo) Store(_ context.Context, tenantID uuid.UUID, tokenHash string, controllerID uuid.UUID, expiresAt time.Time) error {
-	m.stored = append(m.stored, storedToken{tenantID, tokenHash, controllerID, expiresAt})
-	return nil
-}
-
-func (m *mockTokenRepo) Consume(_ context.Context, _ uuid.UUID, _ string) (*domain.RegistrationToken, error) {
-	return m.consumed, m.err
-}
-
-func TestIssueProxyToken_StoresHash(t *testing.T) {
-	tenantID := uuid.New()
-	controllerID := uuid.New()
-
-	ctrlRepo := &mockControllerRepo{
-		controller: &domain.AgentController{
-			ID:       controllerID,
-			TenantID: tenantID,
-			Status:   domain.AgentStatusHealthy,
-		},
-	}
-	tokenRepo := &mockTokenRepo{}
-	svc := NewRegistrationService(ctrlRepo, &mockProxyRepo{}, tokenRepo)
-
-	token, err := svc.IssueProxyToken(context.Background(), tenantID, controllerID)
+func newControllerWithSecret(t *testing.T, repo *fakeControllerRepoForSigTest, tenantID uuid.UUID, secret []byte) uuid.UUID {
+	t.Helper()
+	encKey := testEncryptionKey()
+	secretEncrypted, err := crypto.Encrypt(secret, encKey)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("encrypt test secret: %v", err)
 	}
-	if token == "" {
-		t.Fatal("expected non-empty token")
+	id := uuid.New()
+	repo.controllers[id] = &domain.AgentController{
+		ID:                    id,
+		TenantID:              tenantID,
+		Status:                domain.AgentStatusHealthy,
+		SharedSecretEncrypted: secretEncrypted,
 	}
+	return id
+}
 
-	if len(tokenRepo.stored) != 1 {
-		t.Fatalf("expected 1 stored hash, got %d", len(tokenRepo.stored))
-	}
+func sign(secret, body []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
-	hash := sha256.Sum256([]byte(token))
-	expectedHash := hex.EncodeToString(hash[:])
-	if tokenRepo.stored[0].tokenHash != expectedHash {
-		t.Errorf("stored hash mismatch: got %s, want %s", tokenRepo.stored[0].tokenHash, expectedHash)
-	}
-	if tokenRepo.stored[0].tenantID != tenantID {
-		t.Error("stored tenantID mismatch")
-	}
-	if tokenRepo.stored[0].controllerID != controllerID {
-		t.Error("stored controllerID mismatch")
-	}
-	if time.Until(tokenRepo.stored[0].expiresAt) < 59*time.Minute {
-		t.Error("expected expiry ~1 hour from now")
+func TestVerifyControllerSignature_ValidSignature_Succeeds(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
+	tenantID := uuid.New()
+	secret := []byte("controller-shared-secret")
+	controllerID := newControllerWithSecret(t, repo, tenantID, secret)
+
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	body := []byte(`{"tenant_id":"x","controller_id":"y"}`)
+	sig := sign(secret, body)
+
+	if err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, body, sig); err != nil {
+		t.Fatalf("expected valid signature to succeed, got %v", err)
 	}
 }
 
-func TestRegisterProxy_ConsumesToken(t *testing.T) {
+func TestVerifyControllerSignature_WrongSecret_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
 	tenantID := uuid.New()
-	controllerID := uuid.New()
+	controllerID := newControllerWithSecret(t, repo, tenantID, []byte("real-secret"))
 
-	ctrlRepo := &mockControllerRepo{
-		controller: &domain.AgentController{
-			ID:       controllerID,
-			TenantID: tenantID,
-			Status:   domain.AgentStatusHealthy,
-		},
-	}
-	proxyRepo := &mockProxyRepo{}
-	tokenRepo := &mockTokenRepo{
-		consumed: &domain.RegistrationToken{
-			ID:           uuid.New(),
-			TenantID:     tenantID,
-			ControllerID: controllerID,
-			Consumed:     true,
-			ExpiresAt:    time.Now().Add(1 * time.Hour),
-		},
-	}
-	svc := NewRegistrationService(ctrlRepo, proxyRepo, tokenRepo)
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
 
-	token := tenantID.String() + ":" + controllerID.String() + ":abcdef1234567890"
-	proxy, err := svc.RegisterProxy(context.Background(), tenantID, token)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if proxy == nil {
-		t.Fatal("expected proxy to be created")
-	}
-	if proxyRepo.created == nil {
-		t.Fatal("expected proxy to be persisted")
-	}
-}
+	body := []byte(`{"tenant_id":"x","controller_id":"y"}`)
+	sig := sign([]byte("attacker-guessed-secret"), body)
 
-func TestRegisterProxy_RejectsReplayedToken(t *testing.T) {
-	tenantID := uuid.New()
-	controllerID := uuid.New()
-
-	ctrlRepo := &mockControllerRepo{
-		controller: &domain.AgentController{
-			ID:       controllerID,
-			TenantID: tenantID,
-			Status:   domain.AgentStatusHealthy,
-		},
-	}
-	tokenRepo := &mockTokenRepo{
-		consumed: nil,
-		err:      fmt.Errorf("no rows"),
-	}
-	svc := NewRegistrationService(ctrlRepo, &mockProxyRepo{}, tokenRepo)
-
-	token := tenantID.String() + ":" + controllerID.String() + ":abcdef1234567890"
-	_, err := svc.RegisterProxy(context.Background(), tenantID, token)
-	if err == nil {
-		t.Fatal("expected error for replayed token")
-	}
-
+	err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, body, sig)
 	var regErr *domain.RegistrationError
 	if !errors.As(err, &regErr) {
-		t.Fatalf("expected RegistrationError, got %T: %v", err, err)
-	}
-	if regErr.Message != "invalid or already consumed registration token" {
-		t.Errorf("unexpected message: %s", regErr.Message)
+		t.Fatalf("expected a RegistrationError for a wrong-secret signature, got %v", err)
 	}
 }
 
-func TestRegisterProxy_RejectsExpiredToken(t *testing.T) {
+func TestVerifyControllerSignature_TamperedBody_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
+	tenantID := uuid.New()
+	secret := []byte("controller-shared-secret")
+	controllerID := newControllerWithSecret(t, repo, tenantID, secret)
+
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	originalBody := []byte(`{"tenant_id":"x","controller_id":"y"}`)
+	sig := sign(secret, originalBody)
+
+	tamperedBody := []byte(`{"tenant_id":"x","controller_id":"z"}`)
+
+	err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, tamperedBody, sig)
+	var regErr *domain.RegistrationError
+	if !errors.As(err, &regErr) {
+		t.Fatalf("expected a signature computed over a different body to be rejected, got %v", err)
+	}
+}
+
+func TestVerifyControllerSignature_MissingSignature_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
+	tenantID := uuid.New()
+	controllerID := newControllerWithSecret(t, repo, tenantID, []byte("real-secret"))
+
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, []byte(`{}`), "")
+	var regErr *domain.RegistrationError
+	if !errors.As(err, &regErr) {
+		t.Fatalf("expected an empty signature to be rejected, got %v", err)
+	}
+}
+
+func TestVerifyControllerSignature_UnknownController_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	err := svc.VerifyControllerSignature(context.Background(), uuid.New(), uuid.New(), []byte(`{}`), "aabbcc")
+	var regErr *domain.RegistrationError
+	if !errors.As(err, &regErr) {
+		t.Fatalf("expected an unknown controller to be rejected, got %v", err)
+	}
+}
+
+func TestVerifyControllerSignature_NoSecretConfigured_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
 	tenantID := uuid.New()
 	controllerID := uuid.New()
-
-	ctrlRepo := &mockControllerRepo{
-		controller: &domain.AgentController{
-			ID:       controllerID,
-			TenantID: tenantID,
-			Status:   domain.AgentStatusHealthy,
-		},
+	repo.controllers[controllerID] = &domain.AgentController{
+		ID:       controllerID,
+		TenantID: tenantID,
+		Status:   domain.AgentStatusHealthy,
 	}
-	tokenRepo := &mockTokenRepo{
-		consumed: nil,
-		err:      fmt.Errorf("no rows"),
-	}
-	svc := NewRegistrationService(ctrlRepo, &mockProxyRepo{}, tokenRepo)
 
-	token := tenantID.String() + ":" + controllerID.String() + ":expired123"
-	_, err := svc.RegisterProxy(context.Background(), tenantID, token)
-	if err == nil {
-		t.Fatal("expected error for expired token")
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, []byte(`{}`), "aabbcc")
+	var regErr *domain.RegistrationError
+	if !errors.As(err, &regErr) {
+		t.Fatalf("expected a controller with no shared secret to be rejected, got %v", err)
+	}
+}
+
+func TestVerifyControllerSignature_InvalidHexSignature_Rejected(t *testing.T) {
+	repo := newFakeControllerRepoForSigTest()
+	tenantID := uuid.New()
+	controllerID := newControllerWithSecret(t, repo, tenantID, []byte("real-secret"))
+
+	svc := NewRegistrationService(repo, nil, nil, testEncryptionKey())
+
+	err := svc.VerifyControllerSignature(context.Background(), tenantID, controllerID, []byte(`{}`), "not-valid-hex!!")
+	var regErr *domain.RegistrationError
+	if !errors.As(err, &regErr) {
+		t.Fatalf("expected a non-hex signature to be rejected, got %v", err)
 	}
 }

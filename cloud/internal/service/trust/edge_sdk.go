@@ -1,15 +1,4 @@
-/*
-edge_sdk.go auto-generates Edge SDK Client ID and Audience for Trust Providers.
-
-GenerateEdgeSDKClientID creates the identifier used by CLI/Edge API:
-
-	dipole:<region>:<tenantSubdomain>:identity:<type_short>:<providerUUID>
-
-The audience counterpart is built by platform.Hosts.IdentityIssuerURL, which is
-the single definition of the per-tenant identity hostname.
-
-Both values are immutable after Trust Provider creation.
-*/
+// edge_sdk.go auto-generates the Edge SDK Client ID and Audience for Trust Providers.
 package trust
 
 import (

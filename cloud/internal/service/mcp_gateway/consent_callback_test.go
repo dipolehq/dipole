@@ -13,16 +13,18 @@ import (
 )
 
 type mockConsentTokenStore struct {
-	stored *UserTokenEntry
-	key    string
+	stored               *UserTokenEntry
+	key                  string
+	credentialProviderID uuid.UUID
 }
 
 func (m *mockConsentTokenStore) Get(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error) {
 	return nil, nil
 }
 
-func (m *mockConsentTokenStore) Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, token *UserTokenEntry) error {
+func (m *mockConsentTokenStore) Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, credentialProviderID uuid.UUID, token *UserTokenEntry) error {
 	m.key = tenantID.String() + ":" + userID + ":" + serverWorkloadID.String()
+	m.credentialProviderID = credentialProviderID
 	m.stored = token
 	return nil
 }
@@ -70,13 +72,15 @@ func TestConsentCallback_ExchangesCodeAndStoresToken(t *testing.T) {
 	userID := "user@example.com"
 	state := tenantID.String() + ":" + userID + ":" + serverWorkloadID.String()
 
+	cpID := uuid.New()
 	store := &mockConsentTokenStore{}
 	resolver := &mockConsentConfigResolver{
 		config: &ConsentConfig{
-			TokenEndpoint:      tokenServer.URL,
-			ClientID:           "my-client",
-			ClientSecret:       "my-secret",
-			GatewayCallbackURL: "https://gateway.example.com/mcp/consent/callback",
+			TokenEndpoint:        tokenServer.URL,
+			ClientID:             "my-client",
+			ClientSecret:         "my-secret",
+			GatewayCallbackURL:   "https://gateway.example.com/mcp/consent/callback",
+			CredentialProviderID: cpID,
 		},
 	}
 
@@ -103,6 +107,9 @@ func TestConsentCallback_ExchangesCodeAndStoresToken(t *testing.T) {
 	expectedKey := tenantID.String() + ":" + userID + ":" + serverWorkloadID.String()
 	if store.key != expectedKey {
 		t.Errorf("expected store key %s, got %s", expectedKey, store.key)
+	}
+	if store.credentialProviderID != cpID {
+		t.Errorf("expected stored credential provider ID %s, got %s", cpID, store.credentialProviderID)
 	}
 }
 
@@ -192,10 +199,6 @@ func TestParseConsentState_InvalidServerUUID(t *testing.T) {
 	}
 }
 
-// state travels through the user's browser and is therefore attacker-visible. A
-// state naming a different tenant than the hostname the callback arrived on must
-// be refused, or a token could be stored against a tenant that never initiated
-// the consent flow.
 func TestConsentCallback_StateTenantMismatch_Rejected(t *testing.T) {
 	store := &mockConsentTokenStore{}
 	resolver := &mockConsentConfigResolver{

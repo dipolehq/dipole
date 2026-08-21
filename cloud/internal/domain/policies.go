@@ -13,21 +13,31 @@ type MatchRule struct {
 }
 
 type TrustProvider struct {
-	ID              uuid.UUID
-	TenantID        uuid.UUID
-	Name            string
-	Description     string
-	IsActive        bool
-	Type            string
-	Config          json.RawMessage
-	MatchRules      []MatchRule
-	EdgeSDKClientID string
-	EdgeSDKAudience string
-	Tags            []Tag
-	ResourceSetID   *uuid.UUID
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	PolicyCount     int
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	Name        string
+	Description string
+	IsActive    bool
+	Type        string
+	// Config holds non-secret attestation settings (OIDC endpoint, JWKS,
+	// public key, attestation method, etc). It must never carry the
+	// symmetric_key attestation secret — that lives encrypted in
+	// SymmetricKeyEncrypted instead.
+	Config json.RawMessage
+	// SymmetricKeyEncrypted holds the AES-256-GCM encrypted HMAC shared
+	// secret for the "symmetric_key" OIDC attestation method, or nil if
+	// this provider doesn't use that method. Decrypted only at validation
+	// time (service/trust) or when a caller explicitly re-encrypts an
+	// updated value (service/resources) — never returned to API clients.
+	SymmetricKeyEncrypted []byte
+	MatchRules            []MatchRule
+	EdgeSDKClientID       string
+	EdgeSDKAudience       string
+	Tags                  []Tag
+	ResourceSetID         *uuid.UUID
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	PolicyCount           int
 }
 
 type CredentialProvider struct {

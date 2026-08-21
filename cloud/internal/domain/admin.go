@@ -107,32 +107,33 @@ type GlobalPolicyCompliance struct {
 }
 
 type AgentController struct {
-	ID                  uuid.UUID
-	TenantID            uuid.UUID
-	Name                string
-	Description         string
-	IsActive            bool
-	Status              string
-	DeviceCode          string
-	DeviceCodeExpiresAt *time.Time
-	TrustProviderID     *uuid.UUID
-	TLSHostname         string
-	SharedSecret        string
-	Tags                []Tag
-	LastHealthAt        *time.Time
-	ResourceSetID       *uuid.UUID
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                    uuid.UUID
+	TenantID              uuid.UUID
+	Name                  string
+	Description           string
+	IsActive              bool
+	Status                string
+	DeviceCode            string
+	DeviceCodeExpiresAt   *time.Time
+	TrustProviderID       *uuid.UUID
+	TLSHostname           string
+	SharedSecretEncrypted []byte
+	Tags                  []Tag
+	LastHealthAt          *time.Time
+	ResourceSetID         *uuid.UUID
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type AgentProxy struct {
-	ID                uuid.UUID
-	TenantID          uuid.UUID
-	AgentControllerID *uuid.UUID
-	Status            string
-	LastHealthAt      *time.Time
-	ResourceSetID     *uuid.UUID
-	RegisteredAt      *time.Time
+	ID                    uuid.UUID
+	TenantID              uuid.UUID
+	AgentControllerID     *uuid.UUID
+	Status                string
+	LastHealthAt          *time.Time
+	ResourceSetID         *uuid.UUID
+	RegisteredAt          *time.Time
+	SessionTokenExpiresAt *time.Time
 }
 
 type LogStream struct {
@@ -145,6 +146,7 @@ type LogStream struct {
 	DestinationType string
 	Config          json.RawMessage
 	LastExportedAt  *time.Time
+	LastExportError *string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

@@ -1,9 +1,4 @@
-/*
-aws_sts.go exchanges our OIDC token for temporary AWS credentials via STS
-AssumeRoleWithWebIdentity. Issues an OIDC token with aud=sts.amazonaws.com,
-calls STS, and parses the XML response for AccessKeyId, SecretAccessKey,
-SessionToken, and Expiration.
-*/
+// aws_sts.go exchanges our OIDC token for temporary AWS credentials via STS AssumeRoleWithWebIdentity.
 package credentials
 
 import (
@@ -40,9 +35,6 @@ type awsStsConfig struct {
 	Region          string `json:"region"`
 }
 
-// issuerURL is the requesting tenant's identity host. AWS fetches OIDC
-// discovery from the token's `iss`, so this must match the OIDC provider the
-// customer registered in their AWS IAM configuration.
 func (h *AWSStsHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg awsStsConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

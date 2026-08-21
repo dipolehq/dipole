@@ -1,7 +1,4 @@
-/*
-tenant_resolver.go adapts TenantRepository to the EdgeTenantResolver interface
-used by the Edge API handler.
-*/
+// tenant_resolver.go adapts TenantRepository to the EdgeTenantResolver interface used by the Edge API handler.
 package service
 
 import (

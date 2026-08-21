@@ -2,7 +2,6 @@ export const LOG_TYPES = [
   { value: 'access_authorization', label: 'Access Authorization Events' },
   { value: 'audit_logs', label: 'Audit Logs' },
   { value: 'global_policy_compliance', label: 'Global Policy Compliance' },
-  { value: 'mcp_authorization_tracing', label: 'MCP Authorization Tracing' },
   { value: 'workload_events', label: 'Workload Events' },
 ] as const
 

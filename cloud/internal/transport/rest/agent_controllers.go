@@ -1,15 +1,25 @@
+/*
+Routes:
+
+	GET    /api/v1/agent-controllers
+	POST   /api/v1/agent-controllers
+	GET    /api/v1/agent-controllers/{id}
+	PUT    /api/v1/agent-controllers/{id}
+	DELETE /api/v1/agent-controllers/{id}
+	POST   /api/v1/agent-controllers/{id}/regenerate-device-code
+*/
 package rest
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
-// Agent Controllers
 func (h *APIHandlers) ListAgentControllers(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	opts := parseListOptions(r)
@@ -68,32 +78,28 @@ func (h *APIHandlers) ListAgentProxies(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceAgentControllers); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req agentControllerRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
 		return
 	}
 
-	// Use RegistrationService to create with device code + expiry
 	ac, err := h.registrationSvc.CreateController(r.Context(), tenantID, req.Name)
 	if err != nil {
 		respondDomainError(w, err)
 		return
 	}
 
-	// Apply additional fields from request that CreateController doesn't handle
 	needsUpdate := false
 	if req.Description != "" {
 		ac.Description = req.Description
 		needsUpdate = true
 	}
 	if req.TrustProviderID != nil {
+		if err := h.validateTrustProviderBelongsToTenant(r.Context(), tenantID, *req.TrustProviderID); err != nil {
+			respondDomainError(w, err)
+			return
+		}
 		ac.TrustProviderID = req.TrustProviderID
 		needsUpdate = true
 	}
@@ -118,7 +124,6 @@ func (h *APIHandlers) CreateAgentController(w http.ResponseWriter, r *http.Reque
 		needsUpdate = true
 	}
 
-	// If additional fields were set, update the record
 	if needsUpdate {
 		if err := h.agentControllers.Update(r.Context(), tenantID, ac); err != nil {
 			respondDomainError(w, err)
@@ -170,9 +175,18 @@ func (h *APIHandlers) UpdateAgentController(w http.ResponseWriter, r *http.Reque
 		respondBadRequest(w, err.Error())
 		return
 	}
+	if req.TrustProviderID != nil {
+		if err := h.validateTrustProviderBelongsToTenant(r.Context(), tenantID, *req.TrustProviderID); err != nil {
+			respondDomainError(w, err)
+			return
+		}
+	}
 	ac := req.toDomain()
 	ac.ID = id
 	ac.TenantID = tenantID
+	if ac.ResourceSetID == nil {
+		ac.ResourceSetID = existing.ResourceSetID
+	}
 	if err := h.agentControllers.Update(r.Context(), tenantID, &ac); err != nil {
 		respondDomainError(w, err)
 		return
@@ -211,6 +225,17 @@ func (h *APIHandlers) DeleteAgentController(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *APIHandlers) validateTrustProviderBelongsToTenant(ctx context.Context, tenantID, trustProviderID uuid.UUID) error {
+	tp, err := h.trustProviders.GetByID(ctx, tenantID, trustProviderID)
+	if err != nil {
+		return fmt.Errorf("resolve trust provider: %w", err)
+	}
+	if tp == nil {
+		return domain.NewValidationError("trustProviderId", "trust provider not found")
+	}
+	return nil
+}
+
 func (h *APIHandlers) RegenerateDeviceCode(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 	id, err := uuid.Parse(r.PathValue("id"))
@@ -225,8 +250,6 @@ func (h *APIHandlers) RegenerateDeviceCode(w http.ResponseWriter, r *http.Reques
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"deviceCode": code})
 }
-
-// --- Agent Controller DTOs ---
 
 type agentControllerRequest struct {
 	Name            string     `json:"name"`

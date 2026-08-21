@@ -1,3 +1,4 @@
+// sign_on_policy.go implements the SignOnPolicyRepository for PostgreSQL, a per-tenant singleton row controlling SSO/MFA enforcement.
 package postgres
 
 import (
@@ -20,7 +21,6 @@ func (r *SignOnPolicyRepo) Get(ctx context.Context, tenantID uuid.UUID) (*domain
 		`SELECT require_sso, require_mfa, updated_at FROM sign_on_policies WHERE tenant_id = $1`, tenantID).
 		Scan(&p.RequireSSO, &p.RequireMFA, &p.UpdatedAt)
 	if err == pgx.ErrNoRows {
-		// Return defaults (both false)
 		return p, nil
 	}
 	if err != nil {

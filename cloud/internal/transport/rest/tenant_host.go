@@ -1,19 +1,4 @@
-/*
-Package rest — tenant_host.go resolves which tenant a request belongs to from
-its public hostname.
-
-This is the single mechanism for hostname-based tenant resolution. It reads
-X-Forwarded-Host (NOT r.Host) because the Cloudflare Worker rewrites Host to
-Cloud Run's internal *.run.app hostname. Fails closed: if the tenant cannot be
-determined, the request is rejected with no default-tenant fallback.
-
-SECURITY: Cloud Run's raw *.run.app URL must NOT be publicly reachable, or a
-caller could forge X-Forwarded-Host and impersonate any tenant.
-
-The allowHeaderOverride field (DevTenantHeader) is a LOCAL DEV ONLY affordance
-for environments without wildcard DNS. It must be false in any deployed
-environment.
-*/
+// tenant_host.go resolves which tenant a request belongs to from its public hostname.
 package rest
 
 import (
@@ -36,7 +21,6 @@ var (
 	ErrTenantSubdomainInvalid = errors.New("tenant subdomain is not a valid hostname label")
 )
 
-// TenantLookup is the subset of the tenant repository this resolver needs.
 type TenantLookup interface {
 	GetBySubdomain(ctx context.Context, subdomain string) (*domain.Tenant, error)
 }
@@ -51,7 +35,7 @@ type ResolvedTenantHost struct {
 func (r *ResolvedTenantHost) TenantID() uuid.UUID { return r.Tenant.ID }
 
 type tenantCacheEntry struct {
-	tenant    *domain.Tenant // nil = negative result
+	tenant    *domain.Tenant
 	expiresAt time.Time
 }
 
@@ -82,7 +66,6 @@ func NewTenantHostResolver(tenants TenantLookup, hosts *platform.Hosts, allowHea
 	}
 }
 
-// Resolve determines the tenant and the service host for a request.
 func (r *TenantHostResolver) Resolve(ctx context.Context, req *http.Request) (*ResolvedTenantHost, error) {
 	subdomain, svc, _, ok := r.hosts.ParseHost(PublicHost(req))
 	if !ok {
@@ -115,7 +98,6 @@ func (r *TenantHostResolver) Resolve(ctx context.Context, req *http.Request) (*R
 	}, nil
 }
 
-// ResolveTenantID is a convenience for callers that only need the tenant UUID.
 func (r *TenantHostResolver) ResolveTenantID(ctx context.Context, req *http.Request) (uuid.UUID, error) {
 	resolved, err := r.Resolve(ctx, req)
 	if err != nil {
@@ -124,7 +106,6 @@ func (r *TenantHostResolver) ResolveTenantID(ctx context.Context, req *http.Requ
 	return resolved.Tenant.ID, nil
 }
 
-// BaseURLFor builds the canonical URL for a service given a tenant subdomain.
 func (r *TenantHostResolver) BaseURLFor(tenantSubdomain string, svc platform.Service) string {
 	return r.hosts.URLForService(tenantSubdomain, svc)
 }
@@ -198,7 +179,6 @@ func (r *TenantHostResolver) store(key string, tenant *domain.Tenant) {
 	r.cache[key] = tenantCacheEntry{tenant: tenant, expiresAt: time.Now().Add(ttl)}
 }
 
-// PublicHost returns the hostname the client actually addressed.
 func PublicHost(r *http.Request) string {
 	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
 		if i := strings.Index(fwd, ","); i >= 0 {

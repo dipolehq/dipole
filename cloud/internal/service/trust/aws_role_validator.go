@@ -1,12 +1,4 @@
-/*
-aws_role_validator.go verifies AWS IAM Role identity by replaying a SigV4-signed
-STS GetCallerIdentity request.
-
-AWSRoleValidator reconstructs an HTTP POST to STS using the signed headers from
-evidence. If STS accepts the request (HTTP 200), the identity is proven. The
-response ARN, Account, and UserId are then evaluated against match rules.
-This is the only validator that makes an outbound HTTP call from Cloud.
-*/
+// aws_role_validator.go verifies AWS IAM Role identity by replaying a SigV4-signed STS GetCallerIdentity request.
 package trust
 
 import (
@@ -15,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
+
+var awsRegionPattern = regexp.MustCompile(`^[a-z]{2}(-gov)?-[a-z]+-\d$`)
 
 type AWSRoleValidator struct {
 	httpClient *http.Client
@@ -28,8 +23,11 @@ type AWSRoleValidator struct {
 
 func NewAWSRoleValidator() *AWSRoleValidator {
 	return &AWSRoleValidator{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		stsURLFmt:  "https://sts.%s.amazonaws.com/",
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: newSSRFSafeTransport(),
+		},
+		stsURLFmt: "https://sts.%s.amazonaws.com/",
 	}
 }
 
@@ -41,6 +39,10 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 	sts := evidence.AWS.STSGetCallerIdentity
 	if len(sts.SignedHeaders) == 0 || sts.Region == "" {
 		return &domain.TrustProviderResult{Attested: false, Reason: "NoDataFound"}, nil
+	}
+
+	if !awsRegionPattern.MatchString(sts.Region) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidRegion"}, nil
 	}
 
 	identity, err := v.replaySTS(ctx, sts.SignedHeaders, sts.Region)
@@ -67,7 +69,7 @@ func (v *AWSRoleValidator) Validate(ctx context.Context, provider *domain.TrustP
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 type stsIdentity struct {
@@ -87,6 +89,14 @@ type getCallerIdentityResult struct {
 	UserID  string `xml:"UserId"`
 }
 
+var allowedSigV4Headers = map[string]bool{
+	"Authorization":        true,
+	"X-Amz-Date":           true,
+	"X-Amz-Security-Token": true,
+	"X-Amz-Content-Sha256": true,
+	"Content-Type":         true,
+}
+
 func (v *AWSRoleValidator) replaySTS(ctx context.Context, signedHeaders map[string]string, region string) (*stsIdentity, error) {
 	url := fmt.Sprintf(v.stsURLFmt, region)
 	body := "Action=GetCallerIdentity&Version=2011-06-15"
@@ -97,6 +107,9 @@ func (v *AWSRoleValidator) replaySTS(ctx context.Context, signedHeaders map[stri
 	}
 
 	for key, value := range signedHeaders {
+		if !allowedSigV4Headers[http.CanonicalHeaderKey(key)] {
+			continue
+		}
 		req.Header.Set(key, value)
 	}
 

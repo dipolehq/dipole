@@ -1,3 +1,4 @@
+// geoip_condition_test.go tests GeoIP condition fail-closed behavior when the database is unavailable or the IP is invalid.
 package conditions
 
 import (
@@ -5,7 +6,7 @@ import (
 )
 
 func TestGeoIP_NoDB_FailsClosed(t *testing.T) {
-	checker := NewGeoIPConditionChecker("")
+	checker := NewGeoIPConditionChecker("", nil)
 	cfg := &GeoIPConditionConfig{Countries: []string{"IN"}}
 
 	passed, reason, err := checker.Check("1.2.3.4", cfg)
@@ -21,8 +22,7 @@ func TestGeoIP_NoDB_FailsClosed(t *testing.T) {
 }
 
 func TestGeoIP_InvalidIP_Fails(t *testing.T) {
-	// Even with a valid DB, invalid IP should fail
-	checker := NewGeoIPConditionChecker("")
+	checker := NewGeoIPConditionChecker("", nil)
 	cfg := &GeoIPConditionConfig{Countries: []string{"US"}}
 
 	passed, _, err := checker.Check("not-an-ip", cfg)
@@ -35,13 +35,10 @@ func TestGeoIP_InvalidIP_Fails(t *testing.T) {
 }
 
 func TestGeoIP_EmptyConfig_Passes(t *testing.T) {
-	// No countries or subdivisions configured = no restriction
-	// But DB is nil → fail-closed
-	checker := NewGeoIPConditionChecker("")
+	checker := NewGeoIPConditionChecker("", nil)
 	cfg := &GeoIPConditionConfig{}
 
 	passed, _, _ := checker.Check("8.8.8.8", cfg)
-	// With nil DB, always fails closed
 	if passed {
 		t.Error("expected fail-closed with nil DB")
 	}

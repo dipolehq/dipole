@@ -1,6 +1,11 @@
 /*
-Package rest — credential_providers.go is the HTTP handler for the
-Credential Providers resource with encrypted config at rest.
+Routes:
+
+	GET    /api/v1/credential-providers
+	POST   /api/v1/credential-providers
+	GET    /api/v1/credential-providers/{id}
+	PUT    /api/v1/credential-providers/{id}
+	DELETE /api/v1/credential-providers/{id}
 */
 package rest
 
@@ -236,9 +241,6 @@ func (h *CredentialProviderHandler) Delete(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// redactCredentialConfig removes sensitive values from credential provider
-// config before returning in API responses. Non-sensitive fields (URLs,
-// scopes, audience, subject) are preserved for the UI to display.
 func redactCredentialConfig(config json.RawMessage) json.RawMessage {
 	if config == nil || len(config) == 0 {
 		return json.RawMessage("{}")

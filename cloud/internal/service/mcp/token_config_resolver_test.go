@@ -10,8 +10,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// mockPolicyRepoForResolver implements only what PolicyTokenConfigResolver
-// calls: GetByID. Other methods are unused stubs.
 type mockPolicyRepoForResolver struct {
 	policy *domain.AccessPolicy
 	err    error
@@ -99,11 +97,6 @@ func oidcCPConfigJSON(t *testing.T) []byte {
 	return b
 }
 
-// The Client Workload resolved by the /authorize redirect_uri match must be
-// carried into the TokenConfig, so it can be embedded in the issued JWT and
-// later read back by the Gateway's left-side auth. No second matching logic —
-// this test can only pass by reusing the ClientWorkloadID already on the
-// policy loaded for Credential Provider resolution.
 func TestResolveTokenConfig_PopulatesClientWorkloadFromPolicy(t *testing.T) {
 	tenantID := uuid.New()
 	policyID := uuid.New()
@@ -136,7 +129,7 @@ func TestResolveTokenConfig_PopulatesClientWorkloadFromPolicy(t *testing.T) {
 
 	resolver := NewPolicyTokenConfigResolver(policyRepo, cpRepo, cwRepo, nil)
 
-	cfg, err := resolver.ResolveTokenConfig(policyID, tenantID)
+	cfg, err := resolver.ResolveTokenConfig(context.Background(), policyID, tenantID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -149,10 +142,6 @@ func TestResolveTokenConfig_PopulatesClientWorkloadFromPolicy(t *testing.T) {
 	}
 }
 
-// A Client Workload lookup failure (e.g. deleted after the policy referenced
-// it) must never block token issuance — the security decision already
-// happened when the policy matched at /authorize time. The resolver must
-// degrade to an empty name, not an error.
 func TestResolveTokenConfig_ClientWorkloadLookupFails_StillSucceeds(t *testing.T) {
 	tenantID := uuid.New()
 	policyID := uuid.New()
@@ -180,7 +169,7 @@ func TestResolveTokenConfig_ClientWorkloadLookupFails_StillSucceeds(t *testing.T
 
 	resolver := NewPolicyTokenConfigResolver(policyRepo, cpRepo, cwRepo, nil)
 
-	cfg, err := resolver.ResolveTokenConfig(policyID, tenantID)
+	cfg, err := resolver.ResolveTokenConfig(context.Background(), policyID, tenantID)
 	if err != nil {
 		t.Fatalf("expected token config resolution to succeed despite CW lookup failure, got: %v", err)
 	}
@@ -192,8 +181,6 @@ func TestResolveTokenConfig_ClientWorkloadLookupFails_StillSucceeds(t *testing.T
 	}
 }
 
-// A nil cwRepo (e.g. not wired by some future caller) must also degrade
-// gracefully rather than panic.
 func TestResolveTokenConfig_NilClientWorkloadRepo_StillSucceeds(t *testing.T) {
 	tenantID := uuid.New()
 	policyID := uuid.New()
@@ -218,7 +205,7 @@ func TestResolveTokenConfig_NilClientWorkloadRepo_StillSucceeds(t *testing.T) {
 
 	resolver := NewPolicyTokenConfigResolver(policyRepo, cpRepo, nil, nil)
 
-	cfg, err := resolver.ResolveTokenConfig(policyID, tenantID)
+	cfg, err := resolver.ResolveTokenConfig(context.Background(), policyID, tenantID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

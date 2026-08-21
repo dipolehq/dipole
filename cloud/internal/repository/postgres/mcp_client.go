@@ -1,24 +1,23 @@
-/*
-mcp_client.go implements MCPClientRepository for PostgreSQL.
-Stores dynamically registered MCP OAuth clients with their redirect URIs.
-*/
+// mcp_client.go implements MCPClientRepository for PostgreSQL, storing dynamically registered MCP OAuth clients with their redirect URIs.
 package postgres
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dipolehq/dipole/cloud/internal/service/mcp"
 )
 
 type MCPClientRepo struct {
-	pool *pgxpool.Pool
+	pool Pool
 }
 
-func NewMCPClientRepo(pool *pgxpool.Pool) *MCPClientRepo {
+func NewMCPClientRepo(pool Pool) *MCPClientRepo {
 	return &MCPClientRepo{pool: pool}
 }
 
@@ -31,7 +30,10 @@ func (r *MCPClientRepo) Create(ctx context.Context, client *mcp.RegisteredClient
 		 VALUES ($1, $2, $3, $4, $5)`,
 		client.ID, client.TenantID, redirectURIs, grantTypes, client.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("create mcp client: %w", err)
+	}
+	return nil
 }
 
 func (r *MCPClientRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*mcp.RegisteredClient, error) {
@@ -43,8 +45,11 @@ func (r *MCPClientRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid
 		 FROM mcp_oauth_clients WHERE tenant_id = $1 AND id = $2`,
 		tenantID, id,
 	).Scan(&client.ID, &client.TenantID, &redirectURIsRaw, &grantTypesRaw, &client.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get mcp client: %w", err)
 	}
 
 	json.Unmarshal(redirectURIsRaw, &client.RedirectURIs)

@@ -107,7 +107,13 @@ export function ResourceSetDetailPage() {
               <button type="button" onClick={handleEdit} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                 <Pencil size={14} strokeWidth={2} className="opacity-60" /> Edit
               </button>
-              <button type="button" onClick={() => setDeleteDialogOpen(true)} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+              <button
+                type="button"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={resourceSet?.isDefault}
+                title={resourceSet?.isDefault ? 'The Default Resource Set cannot be deleted' : undefined}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+              >
                 <Trash2 size={14} strokeWidth={2} className="opacity-60" /> Delete
               </button>
             </>

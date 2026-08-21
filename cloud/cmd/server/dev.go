@@ -13,7 +13,7 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/config"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 )
 
 func devBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *config.Config, logger *slog.Logger) error {
@@ -29,19 +29,19 @@ func devBootstrap(ctx context.Context, repos *postgres.Repositories, cfg *config
 		logger.Info("dev tenant already present", "id", existing.ID, "subdomain", existing.Subdomain)
 		return nil
 	}
-	token, err := service.GenerateAPIToken()
+	token, err := auth.GenerateAPIToken()
 	if err != nil {
 		return fmt.Errorf("generate api token: %w", err)
 	}
 	tenant := &domain.Tenant{
 		Name:         "Dev Tenant",
 		Subdomain:    devSubdomain,
-		APITokenHash: service.HashAPIToken(token),
+		APITokenHash: auth.HashAPIToken(token),
 	}
 	if err := repos.Tenants.Create(ctx, tenant); err != nil {
 		return fmt.Errorf("create dev tenant: %w", err)
 	}
-	passwordHash, err := service.HashPassword("admin123")
+	passwordHash, err := auth.HashPassword("admin123")
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}

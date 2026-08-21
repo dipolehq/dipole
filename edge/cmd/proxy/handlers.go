@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,11 @@ import (
 	"github.com/dipolehq/dipole/edge/internal/proxy"
 	dipoletls "github.com/dipolehq/dipole/edge/internal/tls"
 )
+
+// leafSignTimeout bounds the SignLeafCertificate RPC issued per TLS Decrypt
+// handshake, matching the dial timeout used elsewhere in this file. There is
+// no local fallback if this deadline is exceeded: TLS Decrypt fails closed.
+const leafSignTimeout = 10 * time.Second
 
 func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, activeConnCount *atomic.Int64, logger *slog.Logger) proxy.ConnectionHandler {
 	return func(clientConn net.Conn, targetHost string, targetPort int, connID uuid.UUID) {
@@ -99,8 +105,15 @@ func newConnectionHandler(engine *dipoletls.MITMEngine, httpHandler *protocols.H
 }
 
 func handleHTTPS(engine *dipoletls.MITMEngine, httpHandler *protocols.HTTPHandler, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (*protocols.HTTPRequestInfo, bool, *policyResult) {
+	if engine == nil {
+		logger.Warn("TLS Decrypt unavailable (no cloud CA), denying HTTPS connection", "host", targetHost, "connection_id", connID)
+		clientConn.Close()
+		return nil, false, nil
+	}
 	bufferedConn := newBufferedConn(reader, clientConn)
-	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
+	signCtx, cancel := context.WithTimeout(context.Background(), leafSignTimeout)
+	defer cancel()
+	clientPlain, serverConn, err := engine.Decrypt(signCtx, bufferedConn, targetHost, targetPort)
 	if err != nil {
 		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
 		return nil, false, nil
@@ -153,8 +166,15 @@ func dialMTLS(targetHost string, targetPort int, cred *injection.Credential, log
 }
 
 func handleSnowflake(engine *dipoletls.MITMEngine, cloud *cloudclient.CloudClient, gatherer *identity.EvidenceGatherer, credCache *credcache.CredentialCache, cfg *config.ProxyConfig, clientConn net.Conn, reader *bufio.Reader, targetHost string, targetPort int, connID uuid.UUID, sourceIP string, sourcePort int, logger *slog.Logger) (bool, *policyResult) {
+	if engine == nil {
+		logger.Warn("TLS Decrypt unavailable (no cloud CA), denying Snowflake connection", "host", targetHost, "connection_id", connID)
+		clientConn.Close()
+		return false, nil
+	}
 	bufferedConn := newBufferedConn(reader, clientConn)
-	clientPlain, serverConn, err := engine.Decrypt(bufferedConn, targetHost, targetPort)
+	signCtx, cancel := context.WithTimeout(context.Background(), leafSignTimeout)
+	defer cancel()
+	clientPlain, serverConn, err := engine.Decrypt(signCtx, bufferedConn, targetHost, targetPort)
 	if err != nil {
 		logger.Warn("TLS MITM failed", "host", targetHost, "error", err, "connection_id", connID)
 		return false, nil

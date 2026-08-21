@@ -1122,14 +1122,25 @@ func (x *RegisterRequest) GetProxyVersion() string {
 }
 
 type RegisterResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProxyId       string                 `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
-	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	CaCertPem     string                 `protobuf:"bytes,4,opt,name=ca_cert_pem,json=caCertPem,proto3" json:"ca_cert_pem,omitempty"`
-	CaKeyPem      string                 `protobuf:"bytes,5,opt,name=ca_key_pem,json=caKeyPem,proto3" json:"ca_key_pem,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	ProxyId      string                 `protobuf:"bytes,1,opt,name=proxy_id,json=proxyId,proto3" json:"proxy_id,omitempty"`
+	Success      bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	CaCertPem    string                 `protobuf:"bytes,4,opt,name=ca_cert_pem,json=caCertPem,proto3" json:"ca_cert_pem,omitempty"`
+	// Bearer session token, issued once here and never sent again. The proxy
+	// must attach it as gRPC metadata ("authorization: bearer <token>") on
+	// every subsequent call on this service. Cloud verifies it server-side
+	// and derives the caller's tenant_id/proxy_id from it — request-body
+	// tenant_id/proxy_id fields on other RPCs are no longer trusted on their
+	// own. Re-registering issues a new token and invalidates the previous
+	// one. This token expires — see session_token_expires_at — and must be
+	// renewed via RefreshSessionToken before it does.
+	SessionToken string `protobuf:"bytes,6,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
+	// Unix timestamp when session_token expires. The proxy must call
+	// RefreshSessionToken well before this to avoid losing authentication.
+	SessionTokenExpiresAt int64 `protobuf:"varint,7,opt,name=session_token_expires_at,json=sessionTokenExpiresAt,proto3" json:"session_token_expires_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *RegisterResponse) Reset() {
@@ -1190,11 +1201,125 @@ func (x *RegisterResponse) GetCaCertPem() string {
 	return ""
 }
 
-func (x *RegisterResponse) GetCaKeyPem() string {
+func (x *RegisterResponse) GetSessionToken() string {
 	if x != nil {
-		return x.CaKeyPem
+		return x.SessionToken
 	}
 	return ""
+}
+
+func (x *RegisterResponse) GetSessionTokenExpiresAt() int64 {
+	if x != nil {
+		return x.SessionTokenExpiresAt
+	}
+	return 0
+}
+
+type RefreshSessionTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefreshSessionTokenRequest) Reset() {
+	*x = RefreshSessionTokenRequest{}
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshSessionTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshSessionTokenRequest) ProtoMessage() {}
+
+func (x *RefreshSessionTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshSessionTokenRequest.ProtoReflect.Descriptor instead.
+func (*RefreshSessionTokenRequest) Descriptor() ([]byte, []int) {
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{16}
+}
+
+type RefreshSessionTokenResponse struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Success      bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	// New bearer session token. Replaces the one used to authenticate this
+	// call; the old token is invalidated immediately.
+	SessionToken string `protobuf:"bytes,3,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
+	// Unix timestamp when the new session_token expires.
+	SessionTokenExpiresAt int64 `protobuf:"varint,4,opt,name=session_token_expires_at,json=sessionTokenExpiresAt,proto3" json:"session_token_expires_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *RefreshSessionTokenResponse) Reset() {
+	*x = RefreshSessionTokenResponse{}
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefreshSessionTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefreshSessionTokenResponse) ProtoMessage() {}
+
+func (x *RefreshSessionTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefreshSessionTokenResponse.ProtoReflect.Descriptor instead.
+func (*RefreshSessionTokenResponse) Descriptor() ([]byte, []int) {
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RefreshSessionTokenResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RefreshSessionTokenResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *RefreshSessionTokenResponse) GetSessionToken() string {
+	if x != nil {
+		return x.SessionToken
+	}
+	return ""
+}
+
+func (x *RefreshSessionTokenResponse) GetSessionTokenExpiresAt() int64 {
+	if x != nil {
+		return x.SessionTokenExpiresAt
+	}
+	return 0
 }
 
 type HealthReport struct {
@@ -1211,7 +1336,7 @@ type HealthReport struct {
 
 func (x *HealthReport) Reset() {
 	*x = HealthReport{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[16]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1223,7 +1348,7 @@ func (x *HealthReport) String() string {
 func (*HealthReport) ProtoMessage() {}
 
 func (x *HealthReport) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[16]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1361,7 @@ func (x *HealthReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthReport.ProtoReflect.Descriptor instead.
 func (*HealthReport) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{16}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *HealthReport) GetComponentId() string {
@@ -1290,7 +1415,7 @@ type HealthAck struct {
 
 func (x *HealthAck) Reset() {
 	*x = HealthAck{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[17]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1427,7 @@ func (x *HealthAck) String() string {
 func (*HealthAck) ProtoMessage() {}
 
 func (x *HealthAck) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[17]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1440,7 @@ func (x *HealthAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthAck.ProtoReflect.Descriptor instead.
 func (*HealthAck) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{17}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HealthAck) GetAcknowledged() bool {
@@ -1335,7 +1460,7 @@ type WorkloadEventBatch struct {
 
 func (x *WorkloadEventBatch) Reset() {
 	*x = WorkloadEventBatch{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[18]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1347,7 +1472,7 @@ func (x *WorkloadEventBatch) String() string {
 func (*WorkloadEventBatch) ProtoMessage() {}
 
 func (x *WorkloadEventBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[18]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1360,7 +1485,7 @@ func (x *WorkloadEventBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkloadEventBatch.ProtoReflect.Descriptor instead.
 func (*WorkloadEventBatch) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{18}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *WorkloadEventBatch) GetTenantId() string {
@@ -1396,7 +1521,7 @@ type WorkloadEvent struct {
 
 func (x *WorkloadEvent) Reset() {
 	*x = WorkloadEvent{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[19]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1533,7 @@ func (x *WorkloadEvent) String() string {
 func (*WorkloadEvent) ProtoMessage() {}
 
 func (x *WorkloadEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[19]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1546,7 @@ func (x *WorkloadEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkloadEvent.ProtoReflect.Descriptor instead.
 func (*WorkloadEvent) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{19}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *WorkloadEvent) GetEventId() string {
@@ -1510,7 +1635,7 @@ type EventAck struct {
 
 func (x *EventAck) Reset() {
 	*x = EventAck{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[20]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1522,7 +1647,7 @@ func (x *EventAck) String() string {
 func (*EventAck) ProtoMessage() {}
 
 func (x *EventAck) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[20]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1535,7 +1660,7 @@ func (x *EventAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventAck.ProtoReflect.Descriptor instead.
 func (*EventAck) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{20}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EventAck) GetAccepted() int32 {
@@ -1561,7 +1686,7 @@ type SignLeafRequest struct {
 
 func (x *SignLeafRequest) Reset() {
 	*x = SignLeafRequest{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[21]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1573,7 +1698,7 @@ func (x *SignLeafRequest) String() string {
 func (*SignLeafRequest) ProtoMessage() {}
 
 func (x *SignLeafRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[21]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1586,7 +1711,7 @@ func (x *SignLeafRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignLeafRequest.ProtoReflect.Descriptor instead.
 func (*SignLeafRequest) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{21}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SignLeafRequest) GetCsrDer() []byte {
@@ -1633,7 +1758,7 @@ type SignLeafResponse struct {
 
 func (x *SignLeafResponse) Reset() {
 	*x = SignLeafResponse{}
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[22]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1645,7 +1770,7 @@ func (x *SignLeafResponse) String() string {
 func (*SignLeafResponse) ProtoMessage() {}
 
 func (x *SignLeafResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dipole_v1_policy_service_proto_msgTypes[22]
+	mi := &file_dipole_v1_policy_service_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1658,7 +1783,7 @@ func (x *SignLeafResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignLeafResponse.ProtoReflect.Descriptor instead.
 func (*SignLeafResponse) Descriptor() ([]byte, []int) {
-	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{22}
+	return file_dipole_v1_policy_service_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SignLeafResponse) GetCertDer() []byte {
@@ -1793,14 +1918,21 @@ const file_dipole_v1_policy_service_proto_rawDesc = "" +
 	"\x0fRegisterRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12-\n" +
 	"\x12registration_token\x18\x02 \x01(\tR\x11registrationToken\x12#\n" +
-	"\rproxy_version\x18\x03 \x01(\tR\fproxyVersion\"\xaa\x01\n" +
+	"\rproxy_version\x18\x03 \x01(\tR\fproxyVersion\"\xfc\x01\n" +
 	"\x10RegisterResponse\x12\x19\n" +
 	"\bproxy_id\x18\x01 \x01(\tR\aproxyId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12\x1e\n" +
-	"\vca_cert_pem\x18\x04 \x01(\tR\tcaCertPem\x12\x1c\n" +
-	"\n" +
-	"ca_key_pem\x18\x05 \x01(\tR\bcaKeyPem\"\xcd\x01\n" +
+	"\vca_cert_pem\x18\x04 \x01(\tR\tcaCertPem\x12#\n" +
+	"\rsession_token\x18\x06 \x01(\tR\fsessionToken\x127\n" +
+	"\x18session_token_expires_at\x18\a \x01(\x03R\x15sessionTokenExpiresAtJ\x04\b\x05\x10\x06R\n" +
+	"ca_key_pem\"\x1c\n" +
+	"\x1aRefreshSessionTokenRequest\"\xba\x01\n" +
+	"\x1bRefreshSessionTokenResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
+	"\rsession_token\x18\x03 \x01(\tR\fsessionToken\x127\n" +
+	"\x18session_token_expires_at\x18\x04 \x01(\x03R\x15sessionTokenExpiresAt\"\xcd\x01\n" +
 	"\fHealthReport\x12!\n" +
 	"\fcomponent_id\x18\x01 \x01(\tR\vcomponentId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x16\n" +
@@ -1838,10 +1970,11 @@ const file_dipole_v1_policy_service_proto_rawDesc = "" +
 	"\bcert_der\x18\x01 \x01(\fR\acertDer\x12\x1b\n" +
 	"\tnot_after\x18\x02 \x01(\x03R\bnotAfter\x12\x18\n" +
 	"\asuccess\x18\x03 \x01(\bR\asuccess\x12#\n" +
-	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage2\x88\x03\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage2\xee\x03\n" +
 	"\x17PolicyEvaluationService\x12S\n" +
 	"\bEvaluate\x12\".dipole.v1.PolicyEvaluationRequest\x1a#.dipole.v1.PolicyEvaluationResponse\x12C\n" +
-	"\bRegister\x12\x1a.dipole.v1.RegisterRequest\x1a\x1b.dipole.v1.RegisterResponse\x12=\n" +
+	"\bRegister\x12\x1a.dipole.v1.RegisterRequest\x1a\x1b.dipole.v1.RegisterResponse\x12d\n" +
+	"\x13RefreshSessionToken\x12%.dipole.v1.RefreshSessionTokenRequest\x1a&.dipole.v1.RefreshSessionTokenResponse\x12=\n" +
 	"\fReportHealth\x12\x17.dipole.v1.HealthReport\x1a\x14.dipole.v1.HealthAck\x12D\n" +
 	"\fIngestEvents\x12\x1d.dipole.v1.WorkloadEventBatch\x1a\x13.dipole.v1.EventAck(\x01\x12N\n" +
 	"\x13SignLeafCertificate\x12\x1a.dipole.v1.SignLeafRequest\x1a\x1b.dipole.v1.SignLeafResponseB3Z1github.com/dipolehq/dipole/gen/dipole/v1;dipolev1b\x06proto3"
@@ -1858,33 +1991,35 @@ func file_dipole_v1_policy_service_proto_rawDescGZIP() []byte {
 	return file_dipole_v1_policy_service_proto_rawDescData
 }
 
-var file_dipole_v1_policy_service_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_dipole_v1_policy_service_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_dipole_v1_policy_service_proto_goTypes = []any{
-	(*PolicyEvaluationRequest)(nil),  // 0: dipole.v1.PolicyEvaluationRequest
-	(*PolicyEvaluationResponse)(nil), // 1: dipole.v1.PolicyEvaluationResponse
-	(*ClientEvidence)(nil),           // 2: dipole.v1.ClientEvidence
-	(*K8SEvidence)(nil),              // 3: dipole.v1.K8sEvidence
-	(*AwsEvidence)(nil),              // 4: dipole.v1.AwsEvidence
-	(*StsGetCallerIdentity)(nil),     // 5: dipole.v1.StsGetCallerIdentity
-	(*AzureEvidence)(nil),            // 6: dipole.v1.AzureEvidence
-	(*GcpEvidence)(nil),              // 7: dipole.v1.GcpEvidence
-	(*IdentityTokenEvidence)(nil),    // 8: dipole.v1.IdentityTokenEvidence
-	(*ProcessEvidence)(nil),          // 9: dipole.v1.ProcessEvidence
-	(*ServerTarget)(nil),             // 10: dipole.v1.ServerTarget
-	(*Credential)(nil),               // 11: dipole.v1.Credential
-	(*InjectionConfig)(nil),          // 12: dipole.v1.InjectionConfig
-	(*TrustProviderResult)(nil),      // 13: dipole.v1.TrustProviderResult
-	(*RegisterRequest)(nil),          // 14: dipole.v1.RegisterRequest
-	(*RegisterResponse)(nil),         // 15: dipole.v1.RegisterResponse
-	(*HealthReport)(nil),             // 16: dipole.v1.HealthReport
-	(*HealthAck)(nil),                // 17: dipole.v1.HealthAck
-	(*WorkloadEventBatch)(nil),       // 18: dipole.v1.WorkloadEventBatch
-	(*WorkloadEvent)(nil),            // 19: dipole.v1.WorkloadEvent
-	(*EventAck)(nil),                 // 20: dipole.v1.EventAck
-	(*SignLeafRequest)(nil),          // 21: dipole.v1.SignLeafRequest
-	(*SignLeafResponse)(nil),         // 22: dipole.v1.SignLeafResponse
-	nil,                              // 23: dipole.v1.ClientEvidence.EnvironmentEntry
-	nil,                              // 24: dipole.v1.StsGetCallerIdentity.SignedHeadersEntry
+	(*PolicyEvaluationRequest)(nil),     // 0: dipole.v1.PolicyEvaluationRequest
+	(*PolicyEvaluationResponse)(nil),    // 1: dipole.v1.PolicyEvaluationResponse
+	(*ClientEvidence)(nil),              // 2: dipole.v1.ClientEvidence
+	(*K8SEvidence)(nil),                 // 3: dipole.v1.K8sEvidence
+	(*AwsEvidence)(nil),                 // 4: dipole.v1.AwsEvidence
+	(*StsGetCallerIdentity)(nil),        // 5: dipole.v1.StsGetCallerIdentity
+	(*AzureEvidence)(nil),               // 6: dipole.v1.AzureEvidence
+	(*GcpEvidence)(nil),                 // 7: dipole.v1.GcpEvidence
+	(*IdentityTokenEvidence)(nil),       // 8: dipole.v1.IdentityTokenEvidence
+	(*ProcessEvidence)(nil),             // 9: dipole.v1.ProcessEvidence
+	(*ServerTarget)(nil),                // 10: dipole.v1.ServerTarget
+	(*Credential)(nil),                  // 11: dipole.v1.Credential
+	(*InjectionConfig)(nil),             // 12: dipole.v1.InjectionConfig
+	(*TrustProviderResult)(nil),         // 13: dipole.v1.TrustProviderResult
+	(*RegisterRequest)(nil),             // 14: dipole.v1.RegisterRequest
+	(*RegisterResponse)(nil),            // 15: dipole.v1.RegisterResponse
+	(*RefreshSessionTokenRequest)(nil),  // 16: dipole.v1.RefreshSessionTokenRequest
+	(*RefreshSessionTokenResponse)(nil), // 17: dipole.v1.RefreshSessionTokenResponse
+	(*HealthReport)(nil),                // 18: dipole.v1.HealthReport
+	(*HealthAck)(nil),                   // 19: dipole.v1.HealthAck
+	(*WorkloadEventBatch)(nil),          // 20: dipole.v1.WorkloadEventBatch
+	(*WorkloadEvent)(nil),               // 21: dipole.v1.WorkloadEvent
+	(*EventAck)(nil),                    // 22: dipole.v1.EventAck
+	(*SignLeafRequest)(nil),             // 23: dipole.v1.SignLeafRequest
+	(*SignLeafResponse)(nil),            // 24: dipole.v1.SignLeafResponse
+	nil,                                 // 25: dipole.v1.ClientEvidence.EnvironmentEntry
+	nil,                                 // 26: dipole.v1.StsGetCallerIdentity.SignedHeadersEntry
 }
 var file_dipole_v1_policy_service_proto_depIdxs = []int32{
 	2,  // 0: dipole.v1.PolicyEvaluationRequest.client:type_name -> dipole.v1.ClientEvidence
@@ -1900,22 +2035,24 @@ var file_dipole_v1_policy_service_proto_depIdxs = []int32{
 	8,  // 10: dipole.v1.ClientEvidence.gitlab:type_name -> dipole.v1.IdentityTokenEvidence
 	8,  // 11: dipole.v1.ClientEvidence.terraform:type_name -> dipole.v1.IdentityTokenEvidence
 	9,  // 12: dipole.v1.ClientEvidence.process:type_name -> dipole.v1.ProcessEvidence
-	23, // 13: dipole.v1.ClientEvidence.environment:type_name -> dipole.v1.ClientEvidence.EnvironmentEntry
+	25, // 13: dipole.v1.ClientEvidence.environment:type_name -> dipole.v1.ClientEvidence.EnvironmentEntry
 	5,  // 14: dipole.v1.AwsEvidence.sts_get_caller_identity:type_name -> dipole.v1.StsGetCallerIdentity
-	24, // 15: dipole.v1.StsGetCallerIdentity.signed_headers:type_name -> dipole.v1.StsGetCallerIdentity.SignedHeadersEntry
-	19, // 16: dipole.v1.WorkloadEventBatch.events:type_name -> dipole.v1.WorkloadEvent
+	26, // 15: dipole.v1.StsGetCallerIdentity.signed_headers:type_name -> dipole.v1.StsGetCallerIdentity.SignedHeadersEntry
+	21, // 16: dipole.v1.WorkloadEventBatch.events:type_name -> dipole.v1.WorkloadEvent
 	0,  // 17: dipole.v1.PolicyEvaluationService.Evaluate:input_type -> dipole.v1.PolicyEvaluationRequest
 	14, // 18: dipole.v1.PolicyEvaluationService.Register:input_type -> dipole.v1.RegisterRequest
-	16, // 19: dipole.v1.PolicyEvaluationService.ReportHealth:input_type -> dipole.v1.HealthReport
-	18, // 20: dipole.v1.PolicyEvaluationService.IngestEvents:input_type -> dipole.v1.WorkloadEventBatch
-	21, // 21: dipole.v1.PolicyEvaluationService.SignLeafCertificate:input_type -> dipole.v1.SignLeafRequest
-	1,  // 22: dipole.v1.PolicyEvaluationService.Evaluate:output_type -> dipole.v1.PolicyEvaluationResponse
-	15, // 23: dipole.v1.PolicyEvaluationService.Register:output_type -> dipole.v1.RegisterResponse
-	17, // 24: dipole.v1.PolicyEvaluationService.ReportHealth:output_type -> dipole.v1.HealthAck
-	20, // 25: dipole.v1.PolicyEvaluationService.IngestEvents:output_type -> dipole.v1.EventAck
-	22, // 26: dipole.v1.PolicyEvaluationService.SignLeafCertificate:output_type -> dipole.v1.SignLeafResponse
-	22, // [22:27] is the sub-list for method output_type
-	17, // [17:22] is the sub-list for method input_type
+	16, // 19: dipole.v1.PolicyEvaluationService.RefreshSessionToken:input_type -> dipole.v1.RefreshSessionTokenRequest
+	18, // 20: dipole.v1.PolicyEvaluationService.ReportHealth:input_type -> dipole.v1.HealthReport
+	20, // 21: dipole.v1.PolicyEvaluationService.IngestEvents:input_type -> dipole.v1.WorkloadEventBatch
+	23, // 22: dipole.v1.PolicyEvaluationService.SignLeafCertificate:input_type -> dipole.v1.SignLeafRequest
+	1,  // 23: dipole.v1.PolicyEvaluationService.Evaluate:output_type -> dipole.v1.PolicyEvaluationResponse
+	15, // 24: dipole.v1.PolicyEvaluationService.Register:output_type -> dipole.v1.RegisterResponse
+	17, // 25: dipole.v1.PolicyEvaluationService.RefreshSessionToken:output_type -> dipole.v1.RefreshSessionTokenResponse
+	19, // 26: dipole.v1.PolicyEvaluationService.ReportHealth:output_type -> dipole.v1.HealthAck
+	22, // 27: dipole.v1.PolicyEvaluationService.IngestEvents:output_type -> dipole.v1.EventAck
+	24, // 28: dipole.v1.PolicyEvaluationService.SignLeafCertificate:output_type -> dipole.v1.SignLeafResponse
+	23, // [23:29] is the sub-list for method output_type
+	17, // [17:23] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
@@ -1932,7 +2069,7 @@ func file_dipole_v1_policy_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dipole_v1_policy_service_proto_rawDesc), len(file_dipole_v1_policy_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

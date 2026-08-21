@@ -1,9 +1,4 @@
-/*
-gcp_wif.go exchanges our OIDC token for a GCP access token via Google
-Workload Identity Federation. Two-step process: (1) exchange our token at
-Google STS for a federated token, (2) impersonate a service account to get
-an access token with the requested scopes.
-*/
+// gcp_wif.go exchanges our OIDC token for a GCP access token via Google Workload Identity Federation, then impersonates a service account.
 package credentials
 
 import (
@@ -40,8 +35,6 @@ type gcpWIFConfig struct {
 	Scopes              string `json:"scopes"`
 }
 
-// issuerURL is the requesting tenant's identity host. GCP's Workload Identity
-// Pool provider is configured with this exact issuer URI and validates it.
 func (h *GCPWIFHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg gcpWIFConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

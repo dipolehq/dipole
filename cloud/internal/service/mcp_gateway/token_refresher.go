@@ -1,9 +1,4 @@
-/*
-token_refresher.go implements OAuth token refresh for per-user MCP credentials.
-
-OAuthTokenRefresher calls downstream MCP servers' OAuth token endpoints with
-grant_type=refresh_token to obtain new access tokens when existing ones expire.
-*/
+// token_refresher.go implements OAuthTokenRefresher, which refreshes expired per-user OAuth tokens against a downstream MCP server's token endpoint.
 package mcp_gateway
 
 import (
@@ -21,21 +16,24 @@ import (
 
 type OAuthTokenRefresher struct {
 	httpClient     *http.Client
-	tokenEndpoints map[uuid.UUID]string
+	configResolver ConsentConfigResolver
 }
 
-func NewOAuthTokenRefresher(tokenEndpoints map[uuid.UUID]string) *OAuthTokenRefresher {
+func NewOAuthTokenRefresher(configResolver ConsentConfigResolver) *OAuthTokenRefresher {
 	return &OAuthTokenRefresher{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		tokenEndpoints: tokenEndpoints,
+		configResolver: configResolver,
 	}
 }
 
-func (r *OAuthTokenRefresher) Refresh(ctx context.Context, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error) {
-	endpoint, ok := r.tokenEndpoints[serverWorkloadID]
-	if !ok || endpoint == "" {
+func (r *OAuthTokenRefresher) Refresh(ctx context.Context, scope TenantScope, refreshToken string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error) {
+	cfg, err := r.configResolver.GetConsentConfig(ctx, scope.TenantID, serverWorkloadID, scope.GatewayURL)
+	if err != nil {
+		return nil, fmt.Errorf("resolve token endpoint: %w", err)
+	}
+	if cfg.TokenEndpoint == "" {
 		return nil, fmt.Errorf("no token endpoint configured for server %s", serverWorkloadID)
 	}
 
@@ -43,8 +41,14 @@ func (r *OAuthTokenRefresher) Refresh(ctx context.Context, refreshToken string, 
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 	}
+	if cfg.ClientID != "" {
+		form.Set("client_id", cfg.ClientID)
+	}
+	if cfg.ClientSecret != "" {
+		form.Set("client_secret", cfg.ClientSecret)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("create refresh request: %w", err)
 	}

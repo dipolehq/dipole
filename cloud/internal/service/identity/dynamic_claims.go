@@ -1,11 +1,4 @@
-/*
-dynamic_claims.go resolves dynamic claim expressions against Trust Provider
-validated token claims.
-
-Supported pattern: ${oidc.identityToken.decode.payload.<claim_path>}
-Resolves by navigating the trust claims map to extract the referenced value.
-Returns the literal string unchanged if it contains no ${...} expression.
-*/
+// dynamic_claims.go resolves ${oidc.identityToken.decode.payload.<path>} expressions against Trust Provider validated token claims.
 package identity
 
 import (

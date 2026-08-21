@@ -1,6 +1,23 @@
 /*
-Package rest — api_handlers.go holds the legacy CRUD handlers for resources
-not yet migrated to the per-resource handler + service pattern.
+Routes (RegisterAPIRoutes):
+
+	GET    /api/v1/health
+	GET/POST /api/v1/agent-controllers, GET/PUT/DELETE /api/v1/agent-controllers/{id}
+	GET    /api/v1/agent-proxies
+	POST   /api/v1/agent-controllers/{id}/device-code
+	GET/POST /api/v1/users, GET/PUT/DELETE /api/v1/users/{id}
+	GET/POST /api/v1/roles, GET/PUT/DELETE /api/v1/roles/{id}
+	GET/POST /api/v1/resource-sets, GET/PUT/DELETE /api/v1/resource-sets/{id}
+	GET/POST /api/v1/identity-providers, GET/PUT/DELETE /api/v1/identity-providers/{id}
+	GET/PUT  /api/v1/sign-on-policy
+	GET/PUT  /api/v1/global-policy-compliance
+	GET      /api/v1/global-policy-compliance/report
+	GET/PUT  /api/v1/profile
+	POST     /api/v1/profile/token
+	GET      /api/v1/profile/tokens
+	DELETE   /api/v1/profile/tokens/{id}
+	POST     /api/v1/profile/password
+	GET/POST /api/v1/log-streams, GET/PUT/DELETE /api/v1/log-streams/{id}
 */
 package rest
 
@@ -11,7 +28,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -34,34 +50,73 @@ type tenantProfileStore interface {
 	Upsert(ctx context.Context, tenantID uuid.UUID, p *domain.TenantProfile) error
 }
 
-// ControllerCreator abstracts the registration service's controller creation
-// so the transport layer doesn't depend on the concrete type.
 type ControllerCreator interface {
 	CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error)
 	RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error)
 }
 
-// HealthPinger checks database connectivity for the health endpoint.
 type HealthPinger interface {
 	Ping(ctx context.Context) error
+}
+
+type userService interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.User, int, error)
+	Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.User, error)
+	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.User, error)
+	Create(ctx context.Context, tenantID uuid.UUID, u *domain.User) error
+	Update(ctx context.Context, tenantID uuid.UUID, u *domain.User) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
+}
+
+type roleService interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.Role, int, error)
+	Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.Role, error)
+	Create(ctx context.Context, tenantID uuid.UUID, role *domain.Role) error
+	Update(ctx context.Context, tenantID uuid.UUID, role *domain.Role) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
+}
+
+type resourceSetService interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ResourceSet, int, error)
+	Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.ResourceSet, error)
+	GetResourceCounts(ctx context.Context, tenantID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.ResourceSetCounts, error)
+	Create(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error
+	Update(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
+}
+
+type identityProviderService interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.IdentityProvider, int, error)
+	Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.IdentityProvider, error)
+	Create(ctx context.Context, tenantID uuid.UUID, idp *domain.IdentityProvider) error
+	Update(ctx context.Context, tenantID uuid.UUID, idp *domain.IdentityProvider) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
+}
+
+type logStreamService interface {
+	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.LogStream, int, error)
+	Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.LogStream, error)
+	Create(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
+	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
 }
 
 type APIHandlers struct {
 	agentControllers       repository.AgentControllerRepository
 	agentProxies           repository.AgentProxyRepository
 	apiTokens              repository.APITokenRepository
-	users                  repository.UserRepository
-	roles                  repository.RoleRepository
-	resourceSets           repository.ResourceSetRepository
-	identityProviders      repository.IdentityProviderRepository
+	trustProviders         repository.TrustProviderRepository
+	users                  userService
+	roles                  roleService
+	resourceSets           resourceSetService
+	identityProviders      identityProviderService
 	signOnPolicies         signOnPolicyStore
-	logStreams             repository.LogStreamRepository
+	logStreams             logStreamService
 	globalPolicyCompliance globalPolicyComplianceStore
 	complianceChecker      complianceChecker
 	tenantProfiles         tenantProfileStore
 	tenants                repository.TenantRepository
 	registrationSvc        ControllerCreator
-	planLimiter            *service.PlanLimiter
 	audit                  *events.EventBus
 	healthPinger           HealthPinger
 }
@@ -70,12 +125,13 @@ func NewAPIHandlers(
 	agc repository.AgentControllerRepository,
 	ap repository.AgentProxyRepository,
 	at repository.APITokenRepository,
-	u repository.UserRepository,
-	r repository.RoleRepository,
-	rs repository.ResourceSetRepository,
-	idp repository.IdentityProviderRepository,
+	tpr repository.TrustProviderRepository,
+	u userService,
+	r roleService,
+	rs resourceSetService,
+	idp identityProviderService,
 	sop signOnPolicyStore,
-	ls repository.LogStreamRepository,
+	ls logStreamService,
 	gpc globalPolicyComplianceStore,
 	cc complianceChecker,
 	tp tenantProfileStore,
@@ -86,6 +142,7 @@ func NewAPIHandlers(
 		agentControllers:       agc,
 		agentProxies:           ap,
 		apiTokens:              at,
+		trustProviders:         tpr,
 		users:                  u,
 		roles:                  r,
 		resourceSets:           rs,
@@ -99,8 +156,6 @@ func NewAPIHandlers(
 		registrationSvc:        regSvc,
 	}
 }
-
-func (h *APIHandlers) SetPlanLimiter(l *service.PlanLimiter) { h.planLimiter = l }
 
 func (h *APIHandlers) SetAudit(a *events.EventBus) { h.audit = a }
 

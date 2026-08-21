@@ -1,3 +1,4 @@
+// identity_provider.go implements the IdentityProviderRepository for PostgreSQL.
 package postgres
 
 import (

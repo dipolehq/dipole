@@ -20,13 +20,17 @@ func (r *mockMCPClientRepo) Create(_ context.Context, client *RegisteredClient) 
 	return nil
 }
 
+// GetByID mirrors the real postgres.MCPClientRepo's not-found contract:
+// a missing (or cross-tenant) client is (nil, nil), not an error — the
+// caller (AuthorizeService.Authorize) is responsible for turning a nil
+// result into ErrClientNotFound.
 func (r *mockMCPClientRepo) GetByID(_ context.Context, tenantID uuid.UUID, id uuid.UUID) (*RegisteredClient, error) {
 	c, ok := r.clients[id]
 	if !ok {
-		return nil, ErrClientNotFound
+		return nil, nil
 	}
 	if c.TenantID != tenantID {
-		return nil, ErrClientNotFound
+		return nil, nil
 	}
 	return c, nil
 }
@@ -93,8 +97,6 @@ func TestDCR_MissingResponseType_Error(t *testing.T) {
 	}
 }
 
-// RFC 7591 §2: when grant_types and response_types are omitted, defaults are
-// authorization_code and code respectively. Claude.ai sends neither.
 func TestDCR_OmittedGrantAndResponseTypes_DefaultsApplied(t *testing.T) {
 	repo := newMockClientRepo()
 	svc := NewDCRService(repo)

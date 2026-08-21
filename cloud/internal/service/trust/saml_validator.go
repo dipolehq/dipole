@@ -1,13 +1,4 @@
-/*
-saml_validator.go verifies SAMLv2 Response assertions from identity providers.
-
-SAMLValidator parses the IdP signing certificate from configured metadata
-(URL or XML), validates the SAML response XML signature, and evaluates match
-rules against assertion claims (aud, iss, sub).
-
-Used primarily for MCP Authorization Server flows where human users
-authenticate via SAML. Not triggered from the standard proxy path.
-*/
+// saml_validator.go verifies SAMLv2 Response assertions, binding XML-DSig signature validation to the specific Response/Assertion element.
 package trust
 
 import (
@@ -24,6 +15,7 @@ import (
 	"github.com/beevik/etree"
 	"github.com/crewjam/saml"
 	dsig "github.com/russellhaering/goxmldsig"
+	"github.com/russellhaering/goxmldsig/etreeutils"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -34,7 +26,10 @@ type SAMLValidator struct {
 
 func NewSAMLValidator() *SAMLValidator {
 	return &SAMLValidator{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: newSSRFSafeTransport(),
+		},
 	}
 }
 
@@ -63,9 +58,12 @@ func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		return nil, fmt.Errorf("get IdP certificate: %w", err)
 	}
 
-	claims, err := v.validateSAMLResponse(samlResponse, idpCert)
+	claims, expired, err := v.validateSAMLResponse(samlResponse, idpCert)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
+	}
+	if expired {
+		return &domain.TrustProviderResult{Attested: false, Reason: "AssertionExpired"}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), claims)
@@ -79,7 +77,7 @@ func (v *SAMLValidator) Validate(ctx context.Context, provider *domain.TrustProv
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: claims}, nil
 }
 
 func (v *SAMLValidator) getIdPCertificate(ctx context.Context, cfg samlConfig) (*x509.Certificate, error) {
@@ -134,24 +132,46 @@ func (v *SAMLValidator) getIdPCertificate(ctx context.Context, cfg samlConfig) (
 	return nil, fmt.Errorf("no signing certificate found in IdP metadata")
 }
 
-func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x509.Certificate) (map[string]interface{}, error) {
+const samlClockSkew = 180 * time.Second
+
+func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x509.Certificate) (claims map[string]interface{}, expired bool, err error) {
 	responseBytes, err := base64.StdEncoding.DecodeString(responseBase64)
 	if err != nil {
-		return nil, fmt.Errorf("decode SAML response: %w", err)
+		return nil, false, fmt.Errorf("decode SAML response: %w", err)
 	}
 
-	// Verify XML digital signature using IdP certificate
-	if err := verifySAMLSignature(responseBytes, idpCert); err != nil {
-		return nil, fmt.Errorf("signature verification failed: %w", err)
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(responseBytes); err != nil {
+		return nil, false, fmt.Errorf("parse XML: %w", err)
+	}
+	if doc.Root() == nil {
+		return nil, false, fmt.Errorf("invalid SAML response: no root element")
+	}
+
+	assertionEls := doc.Root().FindElements("./Assertion")
+	if len(assertionEls) == 0 {
+		return nil, false, fmt.Errorf("no Assertion element found in SAML response")
+	}
+	if len(assertionEls) > 1 {
+		return nil, false, fmt.Errorf("SAML response contains %d Assertion elements, expected exactly 1", len(assertionEls))
+	}
+	assertionEl := assertionEls[0]
+
+	if err := verifyAndBindSAMLSignature(doc.Root(), assertionEl, idpCert); err != nil {
+		return nil, false, fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	var assertion saml.Assertion
+	if err := unmarshalElement(assertionEl, &assertion); err != nil {
+		return nil, false, fmt.Errorf("parse Assertion XML: %w", err)
 	}
 
 	var response saml.Response
-	if err := xml.Unmarshal(responseBytes, &response); err != nil {
-		return nil, fmt.Errorf("parse SAML response XML: %w", err)
+	if err := unmarshalElement(doc.Root(), &response); err != nil {
+		return nil, false, fmt.Errorf("parse SAML response XML: %w", err)
 	}
 
-	// Extract claims from the SAML assertion
-	claims := map[string]interface{}{}
+	claims = map[string]interface{}{}
 
 	if response.Issuer != nil {
 		claims["iss"] = response.Issuer.Value
@@ -161,45 +181,88 @@ func (v *SAMLValidator) validateSAMLResponse(responseBase64 string, idpCert *x50
 		claims["aud"] = response.Destination
 	}
 
-	if response.Assertion != nil {
-		if response.Assertion.Subject != nil && response.Assertion.Subject.NameID != nil {
-			claims["sub"] = response.Assertion.Subject.NameID.Value
+	if assertion.Subject != nil && assertion.Subject.NameID != nil {
+		claims["sub"] = assertion.Subject.NameID.Value
+	}
+	if assertion.Conditions != nil {
+		for _, ar := range assertion.Conditions.AudienceRestrictions {
+			claims["aud"] = ar.Audience.Value
 		}
-		if response.Assertion.Conditions != nil {
-			for _, ar := range response.Assertion.Conditions.AudienceRestrictions {
-				claims["aud"] = ar.Audience.Value
-			}
+		if assertionExpired(assertion.Conditions.NotBefore, assertion.Conditions.NotOnOrAfter) {
+			return claims, true, nil
 		}
-		for _, stmt := range response.Assertion.AttributeStatements {
-			for _, attr := range stmt.Attributes {
-				if len(attr.Values) > 0 {
-					claims[attr.Name] = attr.Values[0].Value
-				}
+	}
+
+	for _, stmt := range assertion.AttributeStatements {
+		for _, attr := range stmt.Attributes {
+			if len(attr.Values) > 0 {
+				claims[attr.Name] = attr.Values[0].Value
 			}
 		}
 	}
 
-	return claims, nil
+	return claims, false, nil
 }
 
-func verifySAMLSignature(responseXML []byte, idpCert *x509.Certificate) error {
+func unmarshalElement(el *etree.Element, v interface{}) error {
+	namespaces := map[string]string{}
+	for _, descendant := range el.FindElements("//*") {
+		if ns := descendant.NamespaceURI(); ns != "" {
+			namespaces[descendant.Space] = ns
+		}
+	}
+
 	doc := etree.NewDocument()
-	if err := doc.ReadFromBytes(responseXML); err != nil {
-		return fmt.Errorf("parse XML: %w", err)
+	doc.SetRoot(el.Copy())
+	for prefix, uri := range namespaces {
+		doc.Root().CreateAttr("xmlns:"+prefix, uri)
 	}
 
-	sigEl := doc.Root().FindElement("//Signature")
-	if sigEl == nil {
-		// Also check within Assertion
-		sigEl = doc.Root().FindElement("./Assertion/Signature")
+	buf, err := doc.WriteToBytes()
+	if err != nil {
+		return err
 	}
-	if sigEl == nil {
-		return fmt.Errorf("no Signature element found")
-	}
+	return xml.Unmarshal(buf, v)
+}
 
+func assertionExpired(notBefore, notOnOrAfter time.Time) bool {
+	now := time.Now().UTC()
+	if !notBefore.IsZero() && notBefore.Add(-samlClockSkew).After(now) {
+		return true
+	}
+	if !notOnOrAfter.IsZero() && notOnOrAfter.Add(samlClockSkew).Before(now) {
+		return true
+	}
+	return false
+}
+
+func verifyAndBindSAMLSignature(responseEl, assertionEl *etree.Element, idpCert *x509.Certificate) error {
 	certStore := dsig.MemoryX509CertificateStore{Roots: []*x509.Certificate{idpCert}}
-	validationCtx := dsig.NewDefaultValidationContext(&certStore)
 
-	_, err := validationCtx.Validate(doc.Root())
+	if assertionEl.FindElement("./Signature") != nil {
+		return validateScopedSignature(assertionEl, &certStore)
+	}
+	if responseEl.FindElement("./Signature") != nil {
+		return validateScopedSignature(responseEl, &certStore)
+	}
+	return fmt.Errorf("no Signature element found on the Response or its Assertion")
+}
+
+func validateScopedSignature(el *etree.Element, certStore dsig.X509CertificateStore) error {
+	parentCtx, err := etreeutils.NSBuildParentContext(el)
+	if err != nil {
+		return fmt.Errorf("build namespace context: %w", err)
+	}
+	ctx, err := parentCtx.SubContext(el)
+	if err != nil {
+		return fmt.Errorf("build namespace context: %w", err)
+	}
+	detached, err := etreeutils.NSDetatch(ctx, el)
+	if err != nil {
+		return fmt.Errorf("detach element for signature scoping: %w", err)
+	}
+
+	validationCtx := dsig.NewDefaultValidationContext(certStore)
+	_, err = validationCtx.Validate(detached)
 	return err
 }

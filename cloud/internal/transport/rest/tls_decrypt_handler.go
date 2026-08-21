@@ -1,10 +1,9 @@
 /*
-tls_decrypt_handler.go serves the TLS Decrypt configuration and Root CA
-download endpoints.
+Routes:
 
-GET  /api/v1/tls-decrypt         — returns TLS Decrypt config (enabled, leaf lifetime)
-PUT  /api/v1/tls-decrypt         — update leaf certificate lifetime
-GET  /api/v1/tls-decrypt/root-ca — download the tenant's Root CA public certificate (PEM)
+	GET /api/v1/tls-decrypt
+	PUT /api/v1/tls-decrypt
+	GET /api/v1/tls-decrypt/root-ca
 */
 package rest
 
@@ -19,7 +18,7 @@ import (
 
 type tlsDecryptService interface {
 	GetTenantCACert(ctx context.Context, tenantID uuid.UUID) (string, error)
-	IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) bool
+	IsTlsDecryptEnabled(ctx context.Context, tenantID uuid.UUID) (bool, error)
 	GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error)
 	SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error
 }
@@ -45,12 +44,17 @@ func (h *TlsDecryptHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	enabled := h.svc.IsTlsDecryptEnabled(r.Context(), tenantID)
+	enabled, err := h.svc.IsTlsDecryptEnabled(r.Context(), tenantID)
+	if err != nil {
+		slog.Error("check tls decrypt enabled failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve TLS Decrypt status")
+		return
+	}
 
 	lifetime, err := h.svc.GetLeafLifetime(r.Context(), tenantID)
 	if err != nil {
 		slog.Error("get leaf lifetime failed", "error", err)
-		lifetime = 86400 // default 1 day
+		lifetime = 86400
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{

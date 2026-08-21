@@ -83,7 +83,15 @@ type AgentControllerRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentController, int, error)
 	Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AgentController) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
-	GetByDeviceCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.AgentController, error)
+	// ConsumeDeviceCode atomically claims a Controller's device code in a
+	// single UPDATE ... RETURNING: it transitions status from
+	// Unregistered to Registered, clears the code, and stores the given
+	// encrypted shared secret, so two concurrent claims of the same code
+	// cannot both succeed and the claim + secret assignment cannot
+	// partially apply. Returns nil (no error) if the code doesn't exist
+	// for this tenant, is already consumed (status != Unregistered), or
+	// has expired.
+	ConsumeDeviceCode(ctx context.Context, tenantID uuid.UUID, deviceCode string, sharedSecretEncrypted []byte) (*domain.AgentController, error)
 }
 
 type EventRepository interface {
@@ -141,7 +149,13 @@ type LogStreamRepository interface {
 	Update(ctx context.Context, tenantID uuid.UUID, ls *domain.LogStream) error
 	Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error
 	ListAllActive(ctx context.Context) ([]domain.LogStream, error)
+	// UpdateLastExportedAt records a successful export and clears any
+	// previously recorded export error.
 	UpdateLastExportedAt(ctx context.Context, id uuid.UUID, t time.Time) error
+	// SetLastExportError records that the most recent export attempt for
+	// this stream failed, with the given error message surfaced to the
+	// customer via the log stream's REST representation.
+	SetLastExportError(ctx context.Context, id uuid.UUID, errMsg string) error
 }
 
 type AgentProxyRepository interface {
@@ -150,10 +164,24 @@ type AgentProxyRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentProxy, int, error)
 	UpdateHealth(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, status string) error
 	ListByController(ctx context.Context, tenantID uuid.UUID, controllerID uuid.UUID) ([]domain.AgentProxy, error)
+	// SetSessionTokenHash stores the SHA-256 hash of the bearer session
+	// token issued to this proxy, along with its expiry, overwriting any
+	// previous hash (re-registering or refreshing invalidates the old
+	// token).
+	SetSessionTokenHash(ctx context.Context, tenantID uuid.UUID, proxyID uuid.UUID, tokenHash string, expiresAt time.Time) error
+	// GetBySessionTokenHash resolves a proxy by its session token hash,
+	// with no tenant scoping — the token itself is the proof of tenant
+	// membership and is looked up globally, exactly like API token and
+	// registration token lookups elsewhere in this package. Returns nil
+	// (no error) if no proxy holds this hash OR if the hash matches but
+	// the token has expired — an expired token must be indistinguishable
+	// from an unknown one to the caller.
+	GetBySessionTokenHash(ctx context.Context, tokenHash string) (*domain.AgentProxy, error)
 }
 
 type TenantCARepository interface {
 	GetOrCreateCA(ctx context.Context, tenantID uuid.UUID, certPEM string, keyEncrypted []byte) (storedCertPEM string, storedKeyEncrypted []byte, err error)
+	GetCA(ctx context.Context, tenantID uuid.UUID) (certPEM string, keyEncrypted []byte, err error)
 	HasCA(ctx context.Context, tenantID uuid.UUID) (bool, error)
 	GetLeafLifetime(ctx context.Context, tenantID uuid.UUID) (int, error)
 	SetLeafLifetime(ctx context.Context, tenantID uuid.UUID, lifetimeSeconds int) error

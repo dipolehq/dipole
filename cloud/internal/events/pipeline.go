@@ -1,12 +1,4 @@
-/*
-pipeline.go is the single entry point for all event emission in the Dipole
-cloud service.
-
-EventBus composes the four category-specific pipelines (Security, Workload,
-Tracing, Audit) behind a unified API. Every event producer in the system
-receives an *EventBus as its sole dependency for logging — no direct access
-to individual pipelines or repositories.
-*/
+// pipeline.go is the single entry point for all event emission in the Dipole cloud service: EventBus composes the Security, Workload, and Audit pipelines behind a unified API.
 package events
 
 import (
@@ -21,10 +13,11 @@ import (
 type EventBus struct {
 	security *SecurityPipeline
 	workload *WorkloadPipeline
-	tracing  *TracingPipeline
 	audit    *AuditPipeline
 	metrics  *Metrics
+	logger   *slog.Logger
 	cancel   context.CancelFunc
+	done     chan struct{}
 }
 
 func NewEventBus(repo Repository, logger *slog.Logger) *EventBus {
@@ -33,15 +26,20 @@ func NewEventBus(repo Repository, logger *slog.Logger) *EventBus {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	wp := newWorkloadPipeline(repo, logger, metrics)
-	go wp.Run(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		wp.Run(ctx)
+	}()
 
 	return &EventBus{
 		security: newSecurityPipeline(repo, logger, metrics),
 		workload: wp,
-		tracing:  newTracingPipeline(metrics),
 		audit:    newAuditPipeline(repo, logger, metrics),
 		metrics:  metrics,
+		logger:   logger,
 		cancel:   cancel,
+		done:     done,
 	}
 }
 
@@ -51,10 +49,6 @@ func (b *EventBus) EmitSecurity(ctx context.Context, event SecurityEvent) error 
 
 func (b *EventBus) EmitWorkload(event WorkloadEvent) {
 	b.workload.Emit(event)
-}
-
-func (b *EventBus) EmitTrace(entry TraceEntry) {
-	b.tracing.Emit(entry)
 }
 
 func (b *EventBus) EmitAudit(ctx context.Context, event AuditEvent) error {
@@ -70,6 +64,9 @@ func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, inco
 		if incoming[i].Timestamp.IsZero() {
 			incoming[i].Timestamp = time.Now().UTC()
 		}
+		if incoming[i].EventID == uuid.Nil {
+			incoming[i].EventID = uuid.New()
+		}
 		if incoming[i].ConnectionID == uuid.Nil {
 			incoming[i].ConnectionID = uuid.New()
 		}
@@ -82,22 +79,22 @@ func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, inco
 	return b.workload.repo.InsertWorkloadEventBatch(ctx, incoming)
 }
 
-func (b *EventBus) RecentTraces(tenantID uuid.UUID) []TraceEntry {
-	return b.tracing.Recent(tenantID)
-}
-
-func (b *EventBus) SubscribeTraces(tenantID uuid.UUID) (string, chan TraceEntry) {
-	return b.tracing.Subscribe(tenantID)
-}
-
-func (b *EventBus) UnsubscribeTraces(id string) {
-	b.tracing.Unsubscribe(id)
-}
-
 func (b *EventBus) Metrics() *Metrics {
 	return b.metrics
 }
 
+// Shutdown signals the workload pipeline to stop accepting new events and
+// flush whatever it's already buffered, then blocks until that drain
+// completes or timeout elapses — whichever comes first. A timeout that
+// elapses first is logged (rather than silently discarding buffered
+// events) so an operator can tell shutdown didn't fully drain.
 func (b *EventBus) Shutdown(timeout time.Duration) {
 	b.cancel()
+	select {
+	case <-b.done:
+	case <-time.After(timeout):
+		if b.logger != nil {
+			b.logger.Warn("event bus shutdown timed out before workload pipeline finished draining", "timeout", timeout)
+		}
+	}
 }

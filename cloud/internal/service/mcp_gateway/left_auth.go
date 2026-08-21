@@ -1,25 +1,10 @@
-/*
-Package mcp_gateway implements the MCP Identity Gateway business logic.
-
-left_auth.go validates inbound Bearer tokens from AI agents (left-side auth).
-It verifies the JWT signature against our JWKS, checks the audience, checks
-expiration, and extracts user identity from claims. Unauthenticated requests are
-rejected immediately with no downstream processing.
-
-The expected audience is supplied PER CALL, not held on the struct. It is the
-Gateway URL of the tenant whose hostname the request arrived on, and it is what
-binds a token to one tenant: the signing key is shared platform-wide, so a token
-minted for tenant A's Gateway is distinguishable from tenant B's only by its
-`aud` claim. Holding one audience on the struct made every tenant's tokens get
-checked against whichever tenant was configured at startup.
-*/
+// left_auth.go implements LeftSideAuth, which validates inbound Bearer tokens from AI agents against the Gateway's expected audience.
 package mcp_gateway
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -27,15 +12,11 @@ import (
 )
 
 var (
-	ErrMissingToken     = errors.New("missing bearer token")
-	ErrInvalidToken     = errors.New("invalid token")
-	ErrTokenExpired     = errors.New("token expired")
-	ErrAudienceMismatch = errors.New("token audience does not match gateway")
-	ErrNoUserIdentity   = errors.New("no user identity in token claims")
-	// ErrNoExpectedAudience means the caller did not say which Gateway URL the
-	// token must be addressed to. Treated as a failure rather than "accept any
-	// audience", because accepting any audience would accept every other
-	// tenant's tokens.
+	ErrMissingToken       = errors.New("missing bearer token")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrTokenExpired       = errors.New("token expired")
+	ErrAudienceMismatch   = errors.New("token audience does not match gateway")
+	ErrNoUserIdentity     = errors.New("no user identity in token claims")
 	ErrNoExpectedAudience = errors.New("expected gateway audience not supplied")
 )
 
@@ -53,10 +34,6 @@ func NewLeftSideAuth(issuer *identity.IdentityIssuer) *LeftSideAuth {
 	return &LeftSideAuth{issuer: issuer}
 }
 
-// Authenticate validates an inbound Bearer token from an AI agent.
-//
-// expectedAudience must be the Gateway URL of the tenant that owns the hostname
-// this request arrived on. It is required: see ErrNoExpectedAudience.
 func (a *LeftSideAuth) Authenticate(token string, expectedAudience string) (*AuthResult, error) {
 	if token == "" {
 		return nil, ErrMissingToken
@@ -96,47 +73,10 @@ func (a *LeftSideAuth) verifyAndDecode(token string) (map[string]any, error) {
 		return nil, ErrInvalidToken
 	}
 
-	// Verify signature using our JWKS
-	jwks := a.issuer.JWKS()
-	keys, ok := jwks["keys"].([]map[string]interface{})
-	if !ok || len(keys) == 0 {
-		return nil, fmt.Errorf("no signing keys available")
-	}
-
-	// Decode header to get algorithm and kid
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return nil, ErrInvalidToken
-	}
-	var header struct {
-		Alg string `json:"alg"`
-		Kid string `json:"kid"`
-	}
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
+	if err := a.issuer.VerifyTokenSignature(token); err != nil {
 		return nil, ErrInvalidToken
 	}
 
-	// Find matching key and verify
-	verified := false
-	for _, key := range keys {
-		kid, _ := key["kid"].(string)
-		alg, _ := key["alg"].(string)
-		if kid == header.Kid && alg == header.Alg {
-			if err := a.issuer.VerifyTokenSignature(token); err == nil {
-				verified = true
-				break
-			}
-		}
-	}
-
-	if !verified {
-		// Fallback: try verification without kid matching (for tokens from our own issuer)
-		if err := a.issuer.VerifyTokenSignature(token); err != nil {
-			return nil, ErrInvalidToken
-		}
-	}
-
-	// Decode payload
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, ErrInvalidToken
@@ -150,9 +90,6 @@ func (a *LeftSideAuth) verifyAndDecode(token string) (map[string]any, error) {
 	return claims, nil
 }
 
-// validateAudience checks the token's `aud` claim against the Gateway URL of
-// the tenant handling this request. `aud` may be a single string or an array
-// (RFC 7519 §4.1.3); the array form matches if any element matches.
 func validateAudience(claims map[string]any, expectedAudience string) error {
 	aud, ok := claims["aud"]
 	if !ok {
@@ -179,12 +116,6 @@ func validateAudience(claims map[string]any, expectedAudience string) error {
 	return nil
 }
 
-// audienceMatches compares two audience values, normalising a trailing slash on
-// BOTH sides. The customer types the audience into their Credential Provider
-// config by hand, so "https://x-mcpgateway.example.com" and the same value with
-// a trailing slash have to be treated as the same audience. Normalising only the
-// expected side (as this previously did) rejected tokens whose own `aud` carried
-// the slash.
 func audienceMatches(got, expected string) bool {
 	return strings.TrimSuffix(got, "/") == strings.TrimSuffix(expected, "/")
 }

@@ -1,14 +1,9 @@
-/*
-Package registration handles Agent Controller and Proxy registration with Cloud.
-
-Validates device codes (6-digit, single-use, 1-hour expiry), issues proxy
-registration tokens, and tracks agent health. Controllers register on startup,
-proxies register via tokens obtained from their Controller.
-*/
+// Package registration handles Agent Controller and Proxy registration with Cloud: device codes, one-time proxy tokens, session token issuance/refresh, and health tracking.
 package registration
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,55 +14,98 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dipolehq/dipole/cloud/internal/crypto"
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 	"github.com/dipolehq/dipole/cloud/internal/repository"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 )
+
+const sessionTokenLifetime = 1 * time.Hour
 
 type RegistrationService struct {
 	controllerRepo repository.AgentControllerRepository
 	proxyRepo      repository.AgentProxyRepository
 	tokenRepo      repository.RegistrationTokenRepository
-	logger         interface{ Info(string, ...interface{}) }
+	encryptionKey  []byte
+	limiter        *service.PlanLimiter
 }
 
-func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository) *RegistrationService {
-	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo}
+func NewRegistrationService(controllerRepo repository.AgentControllerRepository, proxyRepo repository.AgentProxyRepository, tokenRepo repository.RegistrationTokenRepository, encryptionKey []byte) *RegistrationService {
+	return &RegistrationService{controllerRepo: controllerRepo, proxyRepo: proxyRepo, tokenRepo: tokenRepo, encryptionKey: encryptionKey}
 }
 
-func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (*domain.AgentController, error) {
-	controller, err := s.controllerRepo.GetByDeviceCode(ctx, tenantID, deviceCode)
+func (s *RegistrationService) SetLimiter(l *service.PlanLimiter) { s.limiter = l }
+
+func (s *RegistrationService) VerifyControllerSignature(ctx context.Context, tenantID, controllerID uuid.UUID, body []byte, sig string) error {
+	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid or expired device code")
+		return fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return domain.NewRegistrationError("controller not found")
+	}
+	if len(controller.SharedSecretEncrypted) == 0 {
+		return domain.NewRegistrationError("controller has no shared secret configured")
 	}
 
-	if controller.Status != domain.AgentStatusUnregistered {
-		return nil, fmt.Errorf("device code already used")
+	sharedSecret, err := crypto.Decrypt(controller.SharedSecretEncrypted, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("decrypt shared secret: %w", err)
 	}
 
-	if controller.DeviceCodeExpiresAt != nil && time.Now().After(*controller.DeviceCodeExpiresAt) {
-		return nil, fmt.Errorf("device code expired")
+	sigBytes, err := hex.DecodeString(sig)
+	if err != nil {
+		return domain.NewRegistrationError("invalid signature encoding")
 	}
 
-	controller.Status = domain.AgentStatusRegistered
-	controller.DeviceCode = ""
+	mac := hmac.New(sha256.New, sharedSecret)
+	mac.Write(body)
+	expected := mac.Sum(nil)
 
-	// Generate shared secret for Kerberos attestation signing (HMAC-SHA256)
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return nil, fmt.Errorf("generate shared secret: %w", err)
-	}
-	controller.SharedSecret = hex.EncodeToString(secret)
-
-	if err := s.controllerRepo.Update(ctx, tenantID, controller); err != nil {
-		return nil, fmt.Errorf("update controller: %w", err)
+	if !hmac.Equal(sigBytes, expected) {
+		return domain.NewRegistrationError("signature mismatch")
 	}
 
-	return controller, nil
+	return nil
+}
+
+func (s *RegistrationService) RegisterController(ctx context.Context, tenantID uuid.UUID, deviceCode string) (controller *domain.AgentController, sharedSecret string, err error) {
+	sharedSecret, err = generateSharedSecret()
+	if err != nil {
+		return nil, "", fmt.Errorf("generate shared secret: %w", err)
+	}
+
+	secretEncrypted, err := crypto.Encrypt([]byte(sharedSecret), s.encryptionKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("encrypt shared secret: %w", err)
+	}
+
+	controller, err = s.controllerRepo.ConsumeDeviceCode(ctx, tenantID, deviceCode, secretEncrypted)
+	if err != nil {
+		return nil, "", fmt.Errorf("consume device code: %w", err)
+	}
+	if controller == nil {
+		return nil, "", domain.NewRegistrationError("invalid or expired device code")
+	}
+
+	return controller, sharedSecret, nil
 }
 
 func (s *RegistrationService) CreateController(ctx context.Context, tenantID uuid.UUID, name string) (*domain.AgentController, error) {
+	if s.limiter != nil {
+		if err := s.limiter.Check(ctx, tenantID, service.ResourceAgentControllers); err != nil {
+			return nil, err
+		}
+	}
 	code := generateDeviceCode()
 	expiresAt := time.Now().Add(1 * time.Hour)
+	// agent_controllers.resource_set_id is NOT NULL DEFAULT
+	// scope.DefaultResourceSetID, but a column DEFAULT only applies when
+	// the column is omitted from the INSERT — AgentControllerRepo.Create
+	// always includes it, so it must be resolved here rather than left
+	// nil, or the insert violates the NOT NULL constraint.
+	defaultRS := scope.DefaultResourceSetID
 
 	controller := &domain.AgentController{
 		ID:                  uuid.New(),
@@ -77,6 +115,7 @@ func (s *RegistrationService) CreateController(ctx context.Context, tenantID uui
 		Status:              domain.AgentStatusUnregistered,
 		DeviceCode:          code,
 		DeviceCodeExpiresAt: &expiresAt,
+		ResourceSetID:       &defaultRS,
 		CreatedAt:           time.Now(),
 	}
 
@@ -90,7 +129,10 @@ func (s *RegistrationService) CreateController(ctx context.Context, tenantID uui
 func (s *RegistrationService) RegenerateDeviceCode(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error) {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return "", fmt.Errorf("controller not found: %w", err)
+		return "", fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return "", domain.NewRegistrationError("controller not found")
 	}
 
 	code := generateDeviceCode()
@@ -109,11 +151,14 @@ func (s *RegistrationService) RegenerateDeviceCode(ctx context.Context, tenantID
 func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, controllerID uuid.UUID) (string, error) {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return "", fmt.Errorf("controller not found: %w", err)
+		return "", fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return "", domain.NewRegistrationError("controller not found")
 	}
 
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return "", fmt.Errorf("controller not registered")
+		return "", domain.NewRegistrationError("controller not registered")
 	}
 
 	rawBytes := make([]byte, 32)
@@ -133,80 +178,134 @@ func (s *RegistrationService) IssueProxyToken(ctx context.Context, tenantID, con
 	return token, nil
 }
 
-func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, error) {
+func (s *RegistrationService) RegisterProxy(ctx context.Context, tenantID uuid.UUID, registrationToken string) (*domain.AgentProxy, string, time.Time, error) {
 	if registrationToken == "" {
-		return nil, domain.NewRegistrationError("empty registration token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("empty registration token")
 	}
 
 	parts := strings.SplitN(registrationToken, ":", 3)
 	if len(parts) != 3 {
-		return nil, domain.NewRegistrationError("invalid registration token format")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid registration token format")
 	}
 
 	tokenTenantID, err := uuid.Parse(parts[0])
 	if err != nil {
-		return nil, domain.NewRegistrationError("invalid tenant_id in token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid tenant_id in token")
 	}
 	if tokenTenantID != tenantID {
-		return nil, domain.NewRegistrationError("token tenant mismatch")
+		return nil, "", time.Time{}, domain.NewRegistrationError("token tenant mismatch")
 	}
 
 	controllerID, err := uuid.Parse(parts[1])
 	if err != nil {
-		return nil, domain.NewRegistrationError("invalid controller_id in token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid controller_id in token")
 	}
 
-	// Verify token is valid, not consumed, not expired — and consume it atomically
 	hash := sha256.Sum256([]byte(registrationToken))
 	tokenHash := hex.EncodeToString(hash[:])
 
 	consumed, err := s.tokenRepo.Consume(ctx, tenantID, tokenHash)
 	if err != nil || consumed == nil {
-		return nil, domain.NewRegistrationError("invalid or already consumed registration token")
+		return nil, "", time.Time{}, domain.NewRegistrationError("invalid or already consumed registration token")
 	}
 
-	// Verify controller exists and is registered/healthy
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return nil, fmt.Errorf("lookup controller: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("lookup controller: %w", err)
 	}
 	if controller == nil {
-		return nil, domain.NewRegistrationError("controller not found")
+		return nil, "", time.Time{}, domain.NewRegistrationError("controller not found")
 	}
 	if controller.Status != domain.AgentStatusRegistered && controller.Status != domain.AgentStatusHealthy {
-		return nil, domain.NewRegistrationError("controller not in valid state for proxy registration")
+		return nil, "", time.Time{}, domain.NewRegistrationError("controller not in valid state for proxy registration")
 	}
 
 	now := time.Now()
+	// agent_proxies.resource_set_id is NOT NULL DEFAULT
+	// scope.DefaultResourceSetID — same reasoning as CreateController
+	// above: a Postgres column DEFAULT never applies to an explicit NULL,
+	// and AgentProxyRepo.Create always includes this column, so it must
+	// be resolved here.
+	defaultRS := scope.DefaultResourceSetID
 	proxy := &domain.AgentProxy{
 		ID:                uuid.New(),
 		TenantID:          tenantID,
 		AgentControllerID: &controllerID,
 		Status:            domain.AgentStatusRegistered,
+		ResourceSetID:     &defaultRS,
 		RegisteredAt:      &now,
 	}
 
 	if err := s.proxyRepo.Create(ctx, tenantID, proxy); err != nil {
-		return nil, fmt.Errorf("persist proxy: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("persist proxy: %w", err)
 	}
 
-	return proxy, nil
+	sessionToken, expiresAt, err := s.issueSessionToken(ctx, tenantID, proxy.ID)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+
+	return proxy, sessionToken, expiresAt, nil
+}
+
+func (s *RegistrationService) RefreshSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
+	return s.issueSessionToken(ctx, tenantID, proxyID)
+}
+
+func (s *RegistrationService) issueSessionToken(ctx context.Context, tenantID, proxyID uuid.UUID) (string, time.Time, error) {
+	sessionToken, err := generateSessionToken()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("generate session token: %w", err)
+	}
+	sessionTokenHash := hashSessionToken(sessionToken)
+	expiresAt := time.Now().Add(sessionTokenLifetime)
+	if err := s.proxyRepo.SetSessionTokenHash(ctx, tenantID, proxyID, sessionTokenHash, expiresAt); err != nil {
+		return "", time.Time{}, fmt.Errorf("store session token: %w", err)
+	}
+	return sessionToken, expiresAt, nil
+}
+
+func generateSessionToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+func hashSessionToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *RegistrationService) UpdateHealth(ctx context.Context, tenantID, controllerID uuid.UUID) error {
 	controller, err := s.controllerRepo.GetByID(ctx, tenantID, controllerID)
 	if err != nil {
-		return err
+		return fmt.Errorf("lookup controller: %w", err)
+	}
+	if controller == nil {
+		return domain.NewRegistrationError("controller not found")
 	}
 
 	now := time.Now()
 	controller.LastHealthAt = &now
 	controller.Status = domain.AgentStatusHealthy
 
-	return s.controllerRepo.Update(ctx, tenantID, controller)
+	if err := s.controllerRepo.Update(ctx, tenantID, controller); err != nil {
+		return fmt.Errorf("update controller: %w", err)
+	}
+	return nil
 }
 
 func generateDeviceCode() string {
 	n, _ := rand.Int(rand.Reader, big.NewInt(900000))
 	return fmt.Sprintf("%06d", n.Int64()+100000)
+}
+
+func generateSharedSecret() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	return hex.EncodeToString(secret), nil
 }

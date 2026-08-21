@@ -1,14 +1,22 @@
+/*
+admin_settings.go handles administration settings endpoints:
+  - GET  /api/v1/sign-on-policy
+  - PUT  /api/v1/sign-on-policy
+  - GET  /api/v1/global-policy-compliance
+  - PUT  /api/v1/global-policy-compliance
+  - GET  /api/v1/global-policy-compliance/report
+*/
 package rest
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
-
-// --- Sign-On Policy Handlers ---
 
 func (h *APIHandlers) GetSignOnPolicy(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -50,8 +58,6 @@ func (h *APIHandlers) UpdateSignOnPolicy(w http.ResponseWriter, r *http.Request)
 		"requireMfa": req.RequireMFA,
 	})
 }
-
-// --- Global Policy Compliance Handlers ---
 
 func (h *APIHandlers) GetGlobalPolicyCompliance(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -106,6 +112,19 @@ func (h *APIHandlers) UpdateGlobalPolicyCompliance(w http.ResponseWriter, r *htt
 	})
 }
 
+func complianceAttributeStatus(level string, present bool) string {
+	if level == "" {
+		level = "optional"
+	}
+	if level == "optional" {
+		return "optional"
+	}
+	if present {
+		return "compliant"
+	}
+	return level
+}
+
 func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
 
@@ -122,6 +141,12 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	resourceSetNames, err := h.resourceSetNames(r.Context(), tenantID)
+	if err != nil {
+		slog.Error("compliance report: list resource sets failed", "error", err)
+		resourceSetNames = map[uuid.UUID]string{}
+	}
+
 	type complianceRow struct {
 		ID                 uuid.UUID `json:"id"`
 		PolicyName         string    `json:"policyName"`
@@ -135,24 +160,18 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 
 	items := make([]complianceRow, 0, len(policies))
 	for _, pol := range policies {
-		tp := p.APTrustProvider
-		if tp == "" {
-			tp = "optional"
-		}
-
-		ac := p.APAccessCondition
-		if ac == "" {
-			ac = "optional"
-		}
+		tp := complianceAttributeStatus(p.APTrustProvider, len(pol.TrustProviders) > 0)
+		ac := complianceAttributeStatus(p.APAccessCondition, len(pol.AccessConditions) > 0)
 
 		cpName := ""
 		if len(pol.CredentialProviders) > 0 {
 			cpName = pol.CredentialProviders[0].Name
 		}
 
-		rsName := "Default"
-		if pol.Policy.ResourceSetID != nil && *pol.Policy.ResourceSetID != uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff") {
-			rsName = pol.Policy.ResourceSetID.String()
+		rsID := scope.ResolveResourceSetID(pol.Policy.ResourceSetID)
+		rsName, ok := resourceSetNames[rsID]
+		if !ok {
+			rsName = "Default"
 		}
 
 		items = append(items, complianceRow{
@@ -168,4 +187,16 @@ func (h *APIHandlers) GetComplianceReport(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+func (h *APIHandlers) resourceSetNames(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]string, error) {
+	sets, _, err := h.resourceSets.List(ctx, tenantID, domain.ListOptions{Page: 1, PerPage: 1000})
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]string, len(sets))
+	for _, rs := range sets {
+		names[rs.ID] = rs.Name
+	}
+	return names, nil
 }

@@ -1,5 +1,7 @@
 /*
-dashboard_handler.go serves the admin dashboard summary statistics endpoint.
+Routes:
+
+	GET /api/v1/dashboard
 */
 package rest
 
@@ -9,11 +11,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/reporting"
 )
 
 type dashboardService interface {
-	GetStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*service.DashboardStats, error)
+	GetStats(ctx context.Context, tenantID uuid.UUID, timeRange string) (*reporting.DashboardStats, error)
 }
 
 type DashboardHandler struct {

@@ -1,14 +1,4 @@
-/*
-idp_redirect.go handles Identity Provider integration for MCP Enforce SSO flows.
-
-IdPService builds redirect URLs using the tenant's configured Identity Provider
-(from Administration → Identity Providers) and manages session state that maps
-the OAuth state param back to the original MCP authorization request.
-
-The Identity Provider provides OAuth credentials (client_id, secret, discovery URL).
-The Trust Provider provides token validation rules (match rules, attestation method).
-These are separate concerns following Aembit's architecture.
-*/
+// idp_redirect.go implements IdPService, which builds Identity Provider redirect URLs for MCP Enforce SSO flows and owns the pending-session map.
 package mcp
 
 import (
@@ -36,9 +26,7 @@ type IdPSession struct {
 	AccessConditions []domain.AccessCondition
 	ClientIP         string
 	CreatedAt        time.Time
-
-	// Nonce sent to the IdP in the OIDC authorize request; empty for SAML. Verified against the id_token on callback.
-	Nonce string
+	Nonce            string
 }
 
 type IdPRedirectResult struct {
@@ -59,10 +47,6 @@ type IdentityProviderResolver interface {
 	ResolveSAMLProvider(ctx context.Context, tenantID uuid.UUID) (*ResolvedSAMLConfig, error)
 }
 
-// IdPService is stateless with respect to tenant. The callback base URL comes
-// from each AuthorizeRequest (set by the transport layer from the request
-// hostname) rather than being fixed at construction, because one process serves
-// every tenant and each tenant has its own MCP Authorization Server hostname.
 type IdPService struct {
 	idpResolver IdentityProviderResolver
 	sessions    map[string]*IdPSession
@@ -78,8 +62,6 @@ func NewIdPService(idpResolver IdentityProviderResolver) *IdPService {
 
 func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeRequest, tenantID uuid.UUID, policyID uuid.UUID, tp *domain.TrustProvider, conditions []domain.AccessCondition, clientIP string) (*IdPRedirectResult, error) {
 	if req.ServerBaseURL == "" {
-		// Without this we'd send the IdP a malformed redirect_uri and fail with
-		// an opaque error at the provider. Fail loudly here instead.
 		return nil, fmt.Errorf("cannot build IdP redirect: server base URL not resolved from request")
 	}
 
@@ -110,9 +92,6 @@ func (s *IdPService) BuildOIDCRedirect(ctx context.Context, req *AuthorizeReques
 		scopes = "openid profile email"
 	}
 
-	// Built with url.Values so every value is correctly percent-encoded. The
-	// previous string concatenation left "://" and spaces raw, which providers
-	// tolerate inconsistently.
 	params := url.Values{
 		"response_type": {"code"},
 		"client_id":     {idpCfg.ClientID},
@@ -165,18 +144,15 @@ func (s *IdPService) BuildSAMLRedirect(ctx context.Context, req *AuthorizeReques
 	}, nil
 }
 
-func (s *IdPService) GetSession(state string) (*IdPSession, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *IdPService) SweepExpired(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	session, ok := s.sessions[state]
-	if !ok {
-		return nil, false
+	for state, session := range s.sessions {
+		if now.After(session.CreatedAt.Add(5 * time.Minute)) {
+			delete(s.sessions, state)
+		}
 	}
-	if time.Now().UTC().After(session.CreatedAt.Add(5 * time.Minute)) {
-		return nil, false
-	}
-	return session, true
 }
 
 func (s *IdPService) ConsumeSession(state string) (*IdPSession, bool) {

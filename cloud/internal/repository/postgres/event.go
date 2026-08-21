@@ -1,3 +1,4 @@
+// event.go implements the EventRepository for PostgreSQL, the read+write path for auth/workload events, audit logs, and dashboard stats.
 package postgres
 
 import (
@@ -294,9 +295,6 @@ func buildAuditLogFilters(ctx context.Context, tenantID uuid.UUID, opts domain.E
 		args = append(args, *opts.EndDate)
 	}
 
-	// Note: audit_logs does not have a resource_set_id column — it's tenant-wide.
-	// No resource set filter applied here.
-
 	return strings.Join(clauses, " AND "), args
 }
 
@@ -305,11 +303,9 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 
 	interval, truncInterval := resolveTimeGranularity(timeRange)
 
-	// Build resource-set filter fragment for dashboard queries.
-	// All dashboard queries use $1 = tenantID. If scope is present, $2 = resource_set_id.
 	rsClause := ""
-	weRsClause := "" // For workload_events queries with table alias "we"
-	aeRsClause := "" // For access_authorization_events queries with table alias "ae"
+	weRsClause := ""
+	aeRsClause := ""
 	baseArgs := []interface{}{tenantID}
 	if s := scope.FromContext(ctx); s != nil {
 		rsClause = " AND resource_set_id = $2"
@@ -318,7 +314,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		baseArgs = append(baseArgs, s.ResourceSetID)
 	}
 
-	// Aggregate counts for the time range from access_authorization_events.
 	err := r.pool.QueryRow(ctx,
 		`SELECT
 			COUNT(*) AS total,
@@ -332,7 +327,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		return nil, fmt.Errorf("dashboard event counts: %w", err)
 	}
 
-	// Workload events time series with dynamic granularity.
 	rows, err := r.pool.Query(ctx,
 		`SELECT
 			date_trunc('`+truncInterval+`', timestamp) AS bucket,
@@ -359,7 +353,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Access decision time series (authorized vs denied per bucket).
 	rows, err = r.pool.Query(ctx,
 		`SELECT
 			date_trunc('`+truncInterval+`', timestamp) AS bucket,
@@ -385,7 +378,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Top client workloads by connection count (last 24h).
 	rows, err = r.pool.Query(ctx,
 		`SELECT we.client_workload_id::text, COALESCE(cw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
@@ -410,7 +402,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Top server workloads by connection count (last 24h).
 	rows, err = r.pool.Query(ctx,
 		`SELECT we.server_workload_id::text, COALESCE(sw.name, 'Unknown'), COUNT(*)
 		 FROM workload_events we
@@ -435,7 +426,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Credential usage by type (last 24h from access.credential events).
 	rows, err = r.pool.Query(ctx,
 		`SELECT payload->'credentialProvider'->>'type' AS cp_type, COUNT(*)
 		 FROM access_authorization_events
@@ -460,7 +450,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Connections by protocol (last 24h from workload events event_type prefix).
 	rows, err = r.pool.Query(ctx,
 		`SELECT split_part(event_type, '.', 1) AS protocol, COUNT(*)
 		 FROM workload_events
@@ -483,7 +472,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	}
 	rows.Close()
 
-	// Policies with most condition/attestation failures (last 24h).
 	rows, err = r.pool.Query(ctx,
 		`SELECT ae.payload->'accessPolicy'->>'id' AS policy_id, COALESCE(ae.payload->'accessPolicy'->>'name', 'Unknown'), COUNT(*)
 		 FROM access_authorization_events ae
@@ -508,7 +496,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 		data.PolicyFailures = append(data.PolicyFailures, pf)
 	}
 
-	// Trust provider attestation results (last 24h).
 	attRows, err := r.pool.Query(ctx,
 		`SELECT result, COUNT(*) FROM (
 			SELECT jsonb_array_elements(payload->'trustProviders')->>'result' AS result
@@ -538,8 +525,6 @@ func (r *EventRepo) DashboardEventStats(ctx context.Context, tenantID uuid.UUID,
 	return data, nil
 }
 
-// resolveTimeGranularity maps a timeRange string to a PostgreSQL INTERVAL
-// and a date_trunc granularity that produces ~30-70 data points for charts.
 func resolveTimeGranularity(timeRange string) (interval string, truncGranularity string) {
 	switch timeRange {
 	case "1h":

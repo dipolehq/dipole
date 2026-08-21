@@ -1,7 +1,3 @@
-/*
-token_refresher_test.go tests the OAuthTokenRefresher that calls downstream
-MCP servers' OAuth token endpoints with grant_type=refresh_token.
-*/
 package mcp_gateway
 
 import (
@@ -14,6 +10,18 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type mockRefresherConfigResolver struct {
+	config *ConsentConfig
+	err    error
+}
+
+func (m *mockRefresherConfigResolver) GetConsentConfig(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ string) (*ConsentConfig, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.config, nil
+}
 
 func TestOAuthTokenRefresher_Refresh_Success(t *testing.T) {
 	var receivedGrantType string
@@ -40,10 +48,10 @@ func TestOAuthTokenRefresher_Refresh_Success(t *testing.T) {
 	defer srv.Close()
 
 	serverID := uuid.New()
-	endpoints := map[uuid.UUID]string{serverID: srv.URL}
-	refresher := NewOAuthTokenRefresher(endpoints)
+	resolver := &mockRefresherConfigResolver{config: &ConsentConfig{TokenEndpoint: srv.URL}}
+	refresher := NewOAuthTokenRefresher(resolver)
 
-	entry, err := refresher.Refresh(context.Background(), "old-refresh-token", serverID)
+	entry, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "old-refresh-token", serverID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +76,6 @@ func TestOAuthTokenRefresher_Refresh_Success(t *testing.T) {
 func TestOAuthTokenRefresher_Refresh_PreservesOldRefreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Response does NOT include refresh_token — should preserve the old one
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "new-access",
 			"expires_in":   3600,
@@ -76,11 +83,10 @@ func TestOAuthTokenRefresher_Refresh_PreservesOldRefreshToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	serverID := uuid.New()
-	endpoints := map[uuid.UUID]string{serverID: srv.URL}
-	refresher := NewOAuthTokenRefresher(endpoints)
+	resolver := &mockRefresherConfigResolver{config: &ConsentConfig{TokenEndpoint: srv.URL}}
+	refresher := NewOAuthTokenRefresher(resolver)
 
-	entry, err := refresher.Refresh(context.Background(), "keep-this-refresh-token", serverID)
+	entry, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "keep-this-refresh-token", uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,14 +97,22 @@ func TestOAuthTokenRefresher_Refresh_PreservesOldRefreshToken(t *testing.T) {
 }
 
 func TestOAuthTokenRefresher_Refresh_NoEndpoint_Error(t *testing.T) {
-	serverID := uuid.New()
-	otherID := uuid.New()
-	endpoints := map[uuid.UUID]string{otherID: "https://other.example.com/token"}
-	refresher := NewOAuthTokenRefresher(endpoints)
+	resolver := &mockRefresherConfigResolver{config: &ConsentConfig{TokenEndpoint: ""}}
+	refresher := NewOAuthTokenRefresher(resolver)
 
-	_, err := refresher.Refresh(context.Background(), "token", serverID)
+	_, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "token", uuid.New())
 	if err == nil {
 		t.Fatal("expected error for missing endpoint")
+	}
+}
+
+func TestOAuthTokenRefresher_Refresh_ConfigResolutionFails_Error(t *testing.T) {
+	resolver := &mockRefresherConfigResolver{err: ErrNoGatewayURL}
+	refresher := NewOAuthTokenRefresher(resolver)
+
+	_, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "token", uuid.New())
+	if err == nil {
+		t.Fatal("expected error when the token endpoint cannot be resolved")
 	}
 }
 
@@ -109,11 +123,10 @@ func TestOAuthTokenRefresher_Refresh_ServerError_ReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	serverID := uuid.New()
-	endpoints := map[uuid.UUID]string{serverID: srv.URL}
-	refresher := NewOAuthTokenRefresher(endpoints)
+	resolver := &mockRefresherConfigResolver{config: &ConsentConfig{TokenEndpoint: srv.URL}}
+	refresher := NewOAuthTokenRefresher(resolver)
 
-	_, err := refresher.Refresh(context.Background(), "revoked-token", serverID)
+	_, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "revoked-token", uuid.New())
 	if err == nil {
 		t.Fatal("expected error for 400 response")
 	}
@@ -122,7 +135,6 @@ func TestOAuthTokenRefresher_Refresh_ServerError_ReturnsError(t *testing.T) {
 func TestOAuthTokenRefresher_Refresh_DefaultExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// expires_in is 0 — should default to 1 hour
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "token",
 			"expires_in":   0,
@@ -130,16 +142,14 @@ func TestOAuthTokenRefresher_Refresh_DefaultExpiry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	serverID := uuid.New()
-	endpoints := map[uuid.UUID]string{serverID: srv.URL}
-	refresher := NewOAuthTokenRefresher(endpoints)
+	resolver := &mockRefresherConfigResolver{config: &ConsentConfig{TokenEndpoint: srv.URL}}
+	refresher := NewOAuthTokenRefresher(resolver)
 
-	entry, err := refresher.Refresh(context.Background(), "rt", serverID)
+	entry, err := refresher.Refresh(context.Background(), testScope(uuid.New()), "rt", uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should default to approximately 1 hour from now
 	expectedMin := time.Now().UTC().Add(55 * time.Minute)
 	if entry.ExpiresAt.Before(expectedMin) {
 		t.Errorf("expected ExpiresAt at least 55 minutes from now, got %v", entry.ExpiresAt)

@@ -68,6 +68,11 @@ var (
 		Name: "dipole_proxy_credential_cache_size",
 		Help: "Current number of entries in the credential cache",
 	})
+
+	TLSCATrustInjectionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dipole_proxy_tls_ca_trust_injection_failures_total",
+		Help: "Total failures writing the tenant CA certificate to the shared trust volume. A nonzero value means TLS Decrypt is signing leaf certs server-side but clients on this host have not been given the CA to trust them, so connections will fail certificate validation.",
+	})
 )
 
 func init() {
@@ -83,6 +88,7 @@ func init() {
 		CredentialCacheHits,
 		CredentialCacheMisses,
 		CredentialCacheSize,
+		TLSCATrustInjectionFailures,
 	)
 }
 

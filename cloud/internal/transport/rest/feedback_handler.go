@@ -1,9 +1,7 @@
 /*
-feedback_handler.go serves the POST /api/v1/feedback endpoint.
+Routes:
 
-Accepts user feedback (message + optional base64 image) from the admin console
-and sends it as an email to the support address via Resend API with CID-embedded
-image attachment.
+	POST /api/v1/feedback
 */
 package rest
 
@@ -37,7 +35,7 @@ func (h *FeedbackHandler) HandleSubmitFeedback(w http.ResponseWriter, r *http.Re
 
 	var req struct {
 		Message string `json:"message"`
-		Image   string `json:"image"` // base64 data URI (optional)
+		Image   string `json:"image"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, "invalid request body")
@@ -52,7 +50,6 @@ func (h *FeedbackHandler) HandleSubmitFeedback(w http.ResponseWriter, r *http.Re
 	subject := fmt.Sprintf("Feedback from %s (tenant %s)", userEmail, tenantID.String()[:8])
 	html := buildFeedbackEmail(userEmail, tenantID.String(), req.Message, req.Image != "")
 
-	// Build Resend API payload with optional CID image attachment
 	payload := map[string]interface{}{
 		"from":    h.fromEmail,
 		"to":      []string{h.supportEmail},
@@ -61,7 +58,7 @@ func (h *FeedbackHandler) HandleSubmitFeedback(w http.ResponseWriter, r *http.Re
 	}
 
 	if req.Image != "" {
-		// Strip data URI prefix (e.g., "data:image/png;base64,") to get raw base64
+
 		content := req.Image
 		if idx := strings.Index(content, ","); idx != -1 {
 			content = content[idx+1:]

@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/log-streams
+	POST   /api/v1/log-streams
+	GET    /api/v1/log-streams/{id}
+	PUT    /api/v1/log-streams/{id}
+	DELETE /api/v1/log-streams/{id}
+*/
 package rest
 
 import (
@@ -6,11 +15,8 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
-	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
-
-// --- Log Stream Handlers ---
 
 func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -26,37 +32,9 @@ func (h *APIHandlers) ListLogStreams(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
-	if h.planLimiter != nil {
-		if err := h.planLimiter.Check(r.Context(), tenantID, service.ResourceLogStreams); err != nil {
-			respondBadRequest(w, err.Error())
-			return
-		}
-	}
 	var req logStreamRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondBadRequest(w, err.Error())
-		return
-	}
-	if req.Name == "" {
-		respondBadRequest(w, "name is required")
-		return
-	}
-	if req.EventType == "" {
-		respondBadRequest(w, "eventType is required")
-		return
-	}
-	if req.DestinationType == "" {
-		respondBadRequest(w, "destinationType is required")
-		return
-	}
-	validEventTypes := map[string]bool{"access_authorization": true, "audit_logs": true, "workload_events": true}
-	if !validEventTypes[req.EventType] {
-		respondBadRequest(w, "eventType must be access_authorization, audit_logs, or workload_events")
-		return
-	}
-	validDestTypes := map[string]bool{"aws_s3": true, "gcs_bucket": true, "crowdstrike_siem": true, "splunk_siem": true}
-	if !validDestTypes[req.DestinationType] {
-		respondBadRequest(w, "destinationType must be aws_s3, gcs_bucket, crowdstrike_siem, or splunk_siem")
 		return
 	}
 	ls := req.toDomain()
@@ -64,8 +42,8 @@ func (h *APIHandlers) CreateLogStream(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.logStreams.GetByID(r.Context(), tenantID, ls.ID)
-	if err != nil || saved == nil {
+	saved, err := h.logStreams.Get(r.Context(), tenantID, ls.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toLogStreamResponse(&ls))
 		return
@@ -81,13 +59,9 @@ func (h *APIHandlers) GetLogStream(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	ls, err := h.logStreams.GetByID(r.Context(), tenantID, id)
+	ls, err := h.logStreams.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if ls == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toLogStreamResponse(ls))
@@ -98,15 +72,6 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
 		return
 	}
 	var req logStreamRequest
@@ -121,8 +86,8 @@ func (h *APIHandlers) UpdateLogStream(w http.ResponseWriter, r *http.Request) {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.logStreams.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", ls.ID, ls.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toLogStreamResponse(&ls))
 		return
@@ -138,15 +103,6 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	existing, err := h.logStreams.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "log stream not found")
-		return
-	}
 	if err := h.logStreams.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
@@ -154,8 +110,6 @@ func (h *APIHandlers) DeleteLogStream(w http.ResponseWriter, r *http.Request) {
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "LogStreams", "log_stream", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- Log Stream DTOs ---
 
 type logStreamRequest struct {
 	Name            string          `json:"name"`
@@ -193,16 +147,18 @@ type logStreamResponse struct {
 	EventType       string          `json:"eventType"`
 	DestinationType string          `json:"destinationType"`
 	Config          json.RawMessage `json:"config"`
+	LastExportedAt  *string         `json:"lastExportedAt,omitempty"`
+	LastExportError *string         `json:"lastExportError,omitempty"`
 	CreatedAt       string          `json:"createdAt"`
 	UpdatedAt       string          `json:"updatedAt"`
 }
 
-// TODO: Encrypt Log Stream config at rest (contains apiKey/authToken for SIEM destinations).
-// For now, config is stored as plaintext JSONB — acceptable for MVP behind auth.
 func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
-	config := ls.Config
-	if config == nil {
-		config = json.RawMessage(`{}`)
+	config := redactLogStreamConfig(ls.Config)
+	var lastExportedAt *string
+	if ls.LastExportedAt != nil {
+		formatted := ls.LastExportedAt.Format("2006-01-02T15:04:05Z07:00")
+		lastExportedAt = &formatted
 	}
 	return logStreamResponse{
 		ID:              ls.ID,
@@ -212,9 +168,42 @@ func toLogStreamResponse(ls *domain.LogStream) logStreamResponse {
 		EventType:       ls.EventType,
 		DestinationType: ls.DestinationType,
 		Config:          config,
+		LastExportedAt:  lastExportedAt,
+		LastExportError: ls.LastExportError,
 		CreatedAt:       ls.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:       ls.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+var logStreamSensitiveConfigKeys = map[string]bool{
+	"hec_token":            true,
+	"client_secret":        true,
+	"access_key_id":        true,
+	"secret_access_key":    true,
+	"service_account_json": true,
+}
+
+func redactLogStreamConfig(config json.RawMessage) json.RawMessage {
+	if len(config) == 0 {
+		return json.RawMessage(`{}`)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(config, &parsed); err != nil {
+		return json.RawMessage(`{}`)
+	}
+
+	for key := range parsed {
+		if logStreamSensitiveConfigKeys[key] {
+			parsed[key] = "**REDACTED**"
+		}
+	}
+
+	redacted, err := json.Marshal(parsed)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return redacted
 }
 
 func toLogStreamResponses(streams []domain.LogStream) []logStreamResponse {

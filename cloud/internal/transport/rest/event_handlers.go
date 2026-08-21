@@ -1,9 +1,9 @@
 /*
-Package rest — event_handlers.go implements the event query API endpoints.
+Routes:
 
-Provides GET endpoints for querying: Access Authorization Events, Workload Events,
-and Audit Logs. Supports filtering by timespan, severity, event type, protocol,
-and text search. Paginated responses, sorted by timestamp DESC.
+	GET /api/v1/events/auth
+	GET /api/v1/events/workload
+	GET /api/v1/events/audit
 */
 package rest
 
@@ -72,7 +72,6 @@ func (h *EventHandlers) QueryWorkloadEvents(w http.ResponseWriter, r *http.Reque
 		opts.EventType = et
 	}
 
-	// Dedicated workload filters
 	var clientWorkloadIDs, serverWorkloadIDs []string
 	if cw := r.URL.Query().Get("clientWorkload"); cw != "" {
 		clientWorkloadIDs = append(clientWorkloadIDs, cw)

@@ -1,11 +1,4 @@
-/*
-aws_imds_validator.go verifies EC2 instance identity documents.
-
-AWSIMDSValidator base64-decodes the identity document and RSA signature from
-evidence, verifies the signature using the AWS public certificate stored in
-the Trust Provider config, then evaluates match rules against document fields
-(accountId, instanceId, region, etc.).
-*/
+// aws_imds_validator.go verifies EC2 instance identity documents via customer-supplied AWS signing certificate.
 package trust
 
 import (
@@ -18,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -48,9 +42,22 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
-	pubKey, err := parseRSAPublicKeyFromPEM(cfg.Certificate)
+	cert, err := parseCertificateFromPEM(cfg.Certificate)
 	if err != nil {
 		return nil, fmt.Errorf("parse aws certificate: %w", err)
+	}
+
+	pubKey, ok := cert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("aws certificate does not contain an RSA public key")
+	}
+
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "CertificateNotYetValid"}, nil
+	}
+	if now.After(cert.NotAfter) {
+		return &domain.TrustProviderResult{Attested: false, Reason: "CertificateExpired"}, nil
 	}
 
 	hash := sha256.Sum256(docBytes)
@@ -74,10 +81,10 @@ func (v *AWSIMDSValidator) Validate(_ context.Context, provider *domain.TrustPro
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: docFields}, nil
 }
 
-func parseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
+func parseCertificateFromPEM(pemStr string) (*x509.Certificate, error) {
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("no PEM block found in certificate")
@@ -88,10 +95,5 @@ func parseRSAPublicKeyFromPEM(pemStr string) (*rsa.PublicKey, error) {
 		return nil, fmt.Errorf("parse x509 certificate: %w", err)
 	}
 
-	rsaKey, ok := cert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("certificate does not contain RSA public key")
-	}
-
-	return rsaKey, nil
+	return cert, nil
 }

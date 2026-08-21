@@ -1,6 +1,11 @@
 /*
-Package rest — trust_providers.go is the HTTP handler for the Trust
-Providers resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/trust-providers
+	POST   /api/v1/trust-providers
+	GET    /api/v1/trust-providers/{id}
+	PUT    /api/v1/trust-providers/{id}
+	DELETE /api/v1/trust-providers/{id}
 */
 package rest
 
@@ -122,10 +127,7 @@ func toTrustProviderResponse(tp *domain.TrustProvider) trustProviderResponse {
 		tags = append(tags, tagDTO{Key: t.Key, Value: t.Value})
 	}
 
-	cfg := tp.Config
-	if cfg == nil {
-		cfg = json.RawMessage("{}")
-	}
+	cfg := redactTrustProviderConfig(tp.Config)
 
 	return trustProviderResponse{
 		ID:              tp.ID,
@@ -143,6 +145,27 @@ func toTrustProviderResponse(tp *domain.TrustProvider) trustProviderResponse {
 		CreatedAt:       tp.CreatedAt,
 		UpdatedAt:       tp.UpdatedAt,
 	}
+}
+
+func redactTrustProviderConfig(config json.RawMessage) json.RawMessage {
+	if len(config) == 0 {
+		return json.RawMessage("{}")
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(config, &parsed); err != nil {
+		return json.RawMessage("{}")
+	}
+
+	if _, ok := parsed["symmetricKey"]; ok {
+		parsed["symmetricKey"] = "**REDACTED**"
+	}
+
+	redacted, err := json.Marshal(parsed)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return redacted
 }
 
 func (h *TrustProviderHandler) List(w http.ResponseWriter, r *http.Request) {

@@ -1,10 +1,4 @@
-/*
-policy_finder.go implements MCP-specific policy matching.
-
-MCPPolicyFinder finds Access Policies where the Client Workload has a
-redirect_uri identifier matching the MCP client's redirect URI, AND the
-Server Workload matches the MCP server's host+port with protocol=MCP.
-*/
+// policy_finder.go implements MCPPolicyFinder, which matches an MCP client's redirect_uri and server host/port to the corresponding Access Policy.
 package mcp
 
 import (

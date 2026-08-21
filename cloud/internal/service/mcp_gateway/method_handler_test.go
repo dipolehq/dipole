@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -21,7 +22,7 @@ func testScope(tenantID uuid.UUID) TenantScope {
 
 type mapClientFactory map[string]MCPServerClient
 
-func (f mapClientFactory) ClientFor(server ServerInfo) MCPServerClient {
+func (f mapClientFactory) ClientFor(_ uuid.UUID, server ServerInfo) MCPServerClient {
 	if client, ok := f[server.Name]; ok {
 		return client
 	}
@@ -52,6 +53,17 @@ type mockDecrypter struct {
 
 func (d *mockDecrypter) DecryptCredential(_ []byte, _ string) (string, error) {
 	return d.token, nil
+}
+
+type mockSharedOAuthResolver struct {
+	err error
+}
+
+func (r *mockSharedOAuthResolver) Resolve(_ context.Context, configEncrypted []byte) (string, error) {
+	if r.err != nil {
+		return "", r.err
+	}
+	return string(configEncrypted), nil
 }
 
 type mockMCPClient struct {
@@ -126,7 +138,7 @@ func (s *mockTokenStore) Get(_ context.Context, _ uuid.UUID, userID string, serv
 	return entry, nil
 }
 
-func (s *mockTokenStore) Store(_ context.Context, _ uuid.UUID, userID string, serverID uuid.UUID, token *UserTokenEntry) error {
+func (s *mockTokenStore) Store(_ context.Context, _ uuid.UUID, userID string, serverID uuid.UUID, _ uuid.UUID, token *UserTokenEntry) error {
 	key := userID + ":" + serverID.String()
 	s.tokens[key] = token
 	return nil
@@ -152,14 +164,14 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 
 	policyFinder := &mockRightSidePolicyFinder{
 		policies: []RightSidePolicy{
-			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
-			{ServerWorkload: ServerInfo{ID: slackID, Name: "slack"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "slack-token"},
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("jira-token")},
+			{ServerWorkload: ServerInfo{ID: slackID, Name: "slack"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("slack-token")},
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, &mockSharedOAuthResolver{})
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/list", nil)
 	if err != nil {
@@ -199,7 +211,6 @@ func TestToolsList_AggregatesWithPrefixes(t *testing.T) {
 		t.Errorf("missing %s__list_channels", slackPrefix)
 	}
 
-	// Verify annotations preserved
 	for _, tool := range tools {
 		if tool.Name == jiraPrefix+"__search_issues" {
 			if tool.Annotations == nil || tool.Annotations["readOnlyHint"] != true {
@@ -219,16 +230,15 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 
 	policyFinder := &mockRightSidePolicyFinder{
 		policies: []RightSidePolicy{
-			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
-			{ServerWorkload: ServerInfo{ID: githubID, Name: "github"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "github-token"},
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("jira-token")},
+			{ServerWorkload: ServerInfo{ID: githubID, Name: "github"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("github-token")},
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, &mockSharedOAuthResolver{})
 	clients := mapClientFactory{"jira": jiraClient, "github": githubClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
-	// Call jira tool
 	jiraPrefix := toolPrefix(ServerInfo{ID: jiraID, Name: "jira"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": "%s__create_issue", "arguments": {"project": "PROJ"}}`, jiraPrefix))
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -238,11 +248,10 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 	if jiraClient.lastTool != "create_issue" {
 		t.Errorf("expected tool name 'create_issue', got '%s'", jiraClient.lastTool)
 	}
-	if jiraClient.lastToken != "jira-token" {
-		t.Errorf("expected jira-token, got '%s'", jiraClient.lastToken)
+	if jiraClient.lastToken != "Bearer jira-token" {
+		t.Errorf("expected 'Bearer jira-token', got '%s'", jiraClient.lastToken)
 	}
 
-	// Call github tool
 	githubPrefix := toolPrefix(ServerInfo{ID: githubID, Name: "github"})
 	params = json.RawMessage(fmt.Sprintf(`{"name": "%s__create_pr", "arguments": {"title": "fix"}}`, githubPrefix))
 	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -252,16 +261,16 @@ func TestToolsCall_RoutesToCorrectServer(t *testing.T) {
 	if githubClient.lastTool != "create_pr" {
 		t.Errorf("expected tool name 'create_pr', got '%s'", githubClient.lastTool)
 	}
-	if githubClient.lastToken != "github-token" {
-		t.Errorf("expected github-token, got '%s'", githubClient.lastToken)
+	if githubClient.lastToken != "Bearer github-token" {
+		t.Errorf("expected 'Bearer github-token', got '%s'", githubClient.lastToken)
 	}
 }
 
 func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	params := json.RawMessage(`{"name": "unknown__tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -273,8 +282,8 @@ func TestToolsCall_UnknownPrefix_Error(t *testing.T) {
 func TestToolsCall_NoPrefixSeparator_Error(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	params := json.RawMessage(`{"name": "no-prefix-tool", "arguments": {}}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
@@ -335,10 +344,10 @@ func TestToolsCall_SuccessfulCallToServer(t *testing.T) {
 			{ServerWorkload: ServerInfo{ID: serverID, Name: "Customer Database MCP Server"}, CredentialType: "api_key"},
 		},
 	}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
 	clients := mapClientFactory{"Customer Database MCP Server": client}
 
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Customer Database MCP Server"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__list_customers"))
@@ -361,10 +370,10 @@ func TestToolsCall_FailurePath_ReturnsError(t *testing.T) {
 			{ServerWorkload: ServerInfo{ID: serverID, Name: "Payments API"}, CredentialType: "api_key"},
 		},
 	}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
 	clients := mapClientFactory{"Payments API": client}
 
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Payments API"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__charge"))
@@ -389,11 +398,10 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
 	clients := mapClientFactory{"My  Server!": client}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
-	// Step 1: tools/list
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/list", nil)
 	if err != nil {
 		t.Fatalf("tools/list error: %v", err)
@@ -404,7 +412,6 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 		t.Fatalf("expected 1 tool, got %d", len(tools))
 	}
 
-	// The exposed name must not contain spaces or special chars
 	exposedName := tools[0].Name
 	for _, c := range exposedName {
 		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
@@ -412,7 +419,6 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 		}
 	}
 
-	// Step 2: tools/call with the exact name from tools/list
 	callParams := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, exposedName))
 	_, err = handler.HandleMethod(context.Background(), &RequestContext{UserID: "u", Scope: testScope(tenantID)}, "tools/call", callParams)
 	if err != nil {
@@ -429,8 +435,8 @@ func TestToolsListAndCall_RoundTrip(t *testing.T) {
 func TestPing_RespondsDirect(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "ping", nil)
 	if err != nil {
@@ -444,8 +450,8 @@ func TestPing_RespondsDirect(t *testing.T) {
 func TestInitialize_ReturnsCapabilities(t *testing.T) {
 	tenantID := uuid.New()
 	policyFinder := &mockRightSidePolicyFinder{}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
-	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "initialize", nil)
 	if err != nil {
@@ -502,14 +508,14 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 
 	policyFinder := &mockRightSidePolicyFinder{
 		policies: []RightSidePolicy{
-			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
-			{ServerWorkload: ServerInfo{ID: slackID, Name: "slack"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "slack-token"},
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("jira-token")},
+			{ServerWorkload: ServerInfo{ID: slackID, Name: "slack"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("slack-token")},
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, &mockSharedOAuthResolver{})
 	clients := mapClientFactory{"jira": jiraClient, "slack": slackClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/list", nil)
 	if err != nil {
@@ -528,7 +534,6 @@ func TestResourcesList_AggregatesWithoutPrefixes(t *testing.T) {
 		t.Fatalf("expected 2 resources, got %d", len(resources))
 	}
 
-	// Resources should NOT have server-name prefixes (unlike tools)
 	uris := map[string]bool{}
 	for _, r := range resources {
 		uris[r.URI] = true
@@ -553,13 +558,13 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 
 	policyFinder := &mockRightSidePolicyFinder{
 		policies: []RightSidePolicy{
-			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("jira-token")},
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, &mockSharedOAuthResolver{})
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///jira/board.json"}`)
 	result, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
@@ -574,8 +579,8 @@ func TestResourcesRead_RoutesToCorrectServer(t *testing.T) {
 	if content.URI != "file:///jira/board.json" {
 		t.Errorf("expected URI 'file:///jira/board.json', got '%s'", content.URI)
 	}
-	if jiraClient.lastToken != "jira-token" {
-		t.Errorf("expected jira-token, got '%s'", jiraClient.lastToken)
+	if jiraClient.lastToken != "Bearer jira-token" {
+		t.Errorf("expected 'Bearer jira-token', got '%s'", jiraClient.lastToken)
 	}
 }
 
@@ -584,18 +589,18 @@ func TestResourcesRead_NotFound_Error(t *testing.T) {
 	tenantID := uuid.New()
 
 	jiraClient := &mockMCPClient{
-		resources: []MCPResource{}, // No resources — ReadResource returns nil
+		resources: []MCPResource{},
 	}
 
 	policyFinder := &mockRightSidePolicyFinder{
 		policies: []RightSidePolicy{
-			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", SharedAccessToken: "jira-token"},
+			{ServerWorkload: ServerInfo{ID: jiraID, Name: "jira"}, CredentialType: "oauth_authorization_code", CredentialConfigEncrypted: []byte("jira-token")},
 		},
 	}
 
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil)
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, &mockSharedOAuthResolver{})
 	clients := mapClientFactory{"jira": jiraClient}
-	handler := NewMethodHandler(rightAuth, clients, nil, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, nil, nil)
 
 	params := json.RawMessage(`{"uri": "file:///nonexistent.json"}`)
 	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "alice@corp.com", Scope: testScope(tenantID)}, "resources/read", params)
@@ -609,10 +614,6 @@ type recordingRepo struct {
 	securityEvents []*events.SecurityEvent
 }
 
-// notNullConstraintErr simulates Postgres SQLSTATE 23502 (not-null violation),
-// the exact failure mode the real access_authorization_events and
-// workload_events tables produce for a nil ResourceSetID after migration 039
-// added NOT NULL to that column.
 var errResourceSetNotNull = fmt.Errorf(`insert security event: ERROR: null value in column "resource_set_id" violates not-null constraint (SQLSTATE 23502)`)
 
 func (r *recordingRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
@@ -638,18 +639,6 @@ func (r *recordingRepo) InsertAuditEvent(_ context.Context, _ *events.AuditEvent
 	return nil
 }
 
-func (r *recordingRepo) QuerySecurityEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.SecurityEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.WorkloadEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingRepo) QueryAuditEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.AuditEvent, int, error) {
-	return nil, 0, nil
-}
-
 func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T) {
 	serverID := uuid.New()
 	tenantID := uuid.New()
@@ -660,12 +649,12 @@ func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T)
 			{ServerWorkload: ServerInfo{ID: serverID, Name: "Test Server"}, CredentialType: "api_key"},
 		},
 	}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
 	clients := mapClientFactory{"Test Server": client}
 
 	repo := &recordingRepo{}
 	bus := events.NewEventBus(repo, nil)
-	handler := NewMethodHandler(rightAuth, clients, bus, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, bus, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -677,37 +666,183 @@ func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T)
 	time.Sleep(200 * time.Millisecond)
 
 	repo.mu.Lock()
-	count := len(repo.securityEvents)
+	recorded := append([]*events.SecurityEvent(nil), repo.securityEvents...)
 	repo.mu.Unlock()
 
-	if count < 1 {
-		t.Fatalf("expected at least 1 security event emitted despite cancelled context, got %d", count)
+	var authEvent *events.SecurityEvent
+	for _, ev := range recorded {
+		if ev.Source != "mcp_gateway" {
+			t.Errorf("expected source 'mcp_gateway', got %q", ev.Source)
+		}
+		if ev.EventType == "access.authorization" {
+			authEvent = ev
+		}
 	}
-
-	repo.mu.Lock()
-	ev := repo.securityEvents[0]
-	repo.mu.Unlock()
-
-	if ev.Source != "mcp_gateway" {
-		t.Errorf("expected source 'mcp_gateway', got %q", ev.Source)
+	if authEvent == nil {
+		t.Fatal("expected an access.authorization event among the recorded events")
 	}
-	if !ev.Allowed {
+	auth, ok := authEvent.Detail.(events.AuthorizationDetail)
+	if !ok {
+		t.Fatalf("expected access.authorization event to carry AuthorizationDetail, got %T", authEvent.Detail)
+	}
+	if !auth.Allowed {
 		t.Errorf("expected allowed=true, got false")
 	}
-	if ev.ServerWorkload != "Test Server" {
-		t.Errorf("expected server workload 'Test Server', got %q", ev.ServerWorkload)
+	if auth.ServerWorkload != "Test Server" {
+		t.Errorf("expected server workload 'Test Server', got %q", auth.ServerWorkload)
 	}
 }
 
-// TestEmitEvents_AlwaysSetResourceSetID is a regression test for a production
-// incident: migration 039 added a NOT NULL constraint (with a DEFAULT) to
-// resource_set_id on access_authorization_events and workload_events, but no
-// event emission call site populated the field. Postgres defaults only apply
-// when a column is omitted from the INSERT, not when NULL is passed explicitly,
-// so every security and workload event insert failed silently in production
-// while all local tests (which used a repo stub ignoring the column) passed.
-// This test uses a repo stub that reproduces the real constraint so a future
-// regression fails the build instead of only failing in staging.
+type failingSecurityRepo struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (r *failingSecurityRepo) InsertSecurityEvent(_ context.Context, event *events.SecurityEvent) error {
+	r.mu.Lock()
+	r.seen = append(r.seen, event.EventType)
+	r.mu.Unlock()
+	return fmt.Errorf("simulated insert failure")
+}
+
+func (r *failingSecurityRepo) InsertWorkloadEventBatch(_ context.Context, _ []events.WorkloadEvent) error {
+	return nil
+}
+
+func (r *failingSecurityRepo) InsertAuditEvent(_ context.Context, _ *events.AuditEvent) error {
+	return nil
+}
+
+type countingLogHandler struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (h *countingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *countingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "failed to emit MCP access log" {
+		h.mu.Lock()
+		h.count++
+		h.mu.Unlock()
+	}
+	return nil
+}
+
+func (h *countingLogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *countingLogHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func TestEmitRightSideAuth_AllFailedEventsAreLogged(t *testing.T) {
+	serverID := uuid.New()
+	tenantID := uuid.New()
+
+	client := &mockMCPClient{callResult: map[string]any{"ok": true}}
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "Test Server"}, CredentialType: "api_key"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
+	clients := mapClientFactory{"Test Server": client}
+
+	repo := &failingSecurityRepo{}
+	bus := events.NewEventBus(repo, nil)
+	logHandler := &countingLogHandler{}
+	logger := slog.New(logHandler)
+	handler := NewMethodHandler(rightAuth, clients, nil, bus, logger)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Test Server"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__do_thing"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "user@test.com", Scope: testScope(tenantID)}, "tools/call", params)
+	if err != nil {
+		t.Fatalf("tools/call failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	repo.mu.Lock()
+	seenCount := len(repo.seen)
+	repo.mu.Unlock()
+
+	if seenCount != 4 {
+		t.Fatalf("expected 4 security events attempted, got %d", seenCount)
+	}
+
+	logHandler.mu.Lock()
+	logCount := logHandler.count
+	logHandler.mu.Unlock()
+
+	if logCount != 4 {
+		t.Errorf("expected 4 failure log lines (one per failed event), got %d", logCount)
+	}
+}
+
+func TestHandleToolsCall_ConsentRequired_EnrichesErrorWithConsentURL(t *testing.T) {
+	serverID := uuid.New()
+	tenantID := uuid.New()
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "jira"}, CredentialType: "mcp_user_based_access_token"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+
+	consentResolver := &mockConsentResolver{
+		config: &ConsentConfig{
+			AuthorizationEndpoint: "https://auth.jira.com/authorize",
+			ClientID:              "jira-client",
+			GatewayCallbackURL:    "https://gw.example.com/mcp/consent/callback",
+		},
+	}
+	userConsent := NewUserConsentService(consentResolver)
+
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, userConsent, nil, nil)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "jira"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__create_issue"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "newuser@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
+
+	var consentErr *ConsentRequiredError
+	if !errors.As(err, &consentErr) {
+		t.Fatalf("expected *ConsentRequiredError, got %v (%T)", err, err)
+	}
+	if consentErr.ConsentURL == "" {
+		t.Fatal("expected ConsentURL to be populated by MethodHandler")
+	}
+	if !strings.Contains(consentErr.ConsentURL, "auth.jira.com/authorize") {
+		t.Errorf("expected consent URL to point at the jira authorization endpoint, got %q", consentErr.ConsentURL)
+	}
+}
+
+func TestHandleToolsCall_ConsentRequired_NoConsentServiceConfigured(t *testing.T) {
+	serverID := uuid.New()
+	tenantID := uuid.New()
+
+	policyFinder := &mockRightSidePolicyFinder{
+		policies: []RightSidePolicy{
+			{ServerWorkload: ServerInfo{ID: serverID, Name: "jira"}, CredentialType: "mcp_user_based_access_token"},
+		},
+	}
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, nil, nil)
+	handler := NewMethodHandler(rightAuth, mapClientFactory{}, nil, nil, nil)
+
+	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "jira"})
+	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__create_issue"))
+	_, err := handler.HandleMethod(context.Background(), &RequestContext{UserID: "newuser@corp.com", Scope: testScope(tenantID)}, "tools/call", params)
+
+	if !errors.Is(err, ErrConsentRequired) {
+		t.Fatalf("expected ErrConsentRequired, got %v", err)
+	}
+	var consentErr *ConsentRequiredError
+	if !errors.As(err, &consentErr) {
+		t.Fatalf("expected *ConsentRequiredError, got %T", err)
+	}
+	if consentErr.ConsentURL != "" {
+		t.Errorf("expected empty ConsentURL with no consent service configured, got %q", consentErr.ConsentURL)
+	}
+}
+
 func TestEmitEvents_AlwaysSetResourceSetID(t *testing.T) {
 	serverID := uuid.New()
 	tenantID := uuid.New()
@@ -723,12 +858,12 @@ func TestEmitEvents_AlwaysSetResourceSetID(t *testing.T) {
 			},
 		},
 	}
-	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"})
+	rightAuth := NewRightSideAuth(policyFinder, newMockTokenStore(), nil, &mockDecrypter{token: "secret"}, nil)
 	clients := mapClientFactory{"Test Server": client}
 
 	repo := &recordingRepo{}
 	bus := events.NewEventBus(repo, nil)
-	handler := NewMethodHandler(rightAuth, clients, bus, nil)
+	handler := NewMethodHandler(rightAuth, clients, nil, bus, nil)
 
 	prefix := toolPrefix(ServerInfo{ID: serverID, Name: "Test Server"})
 	params := json.RawMessage(fmt.Sprintf(`{"name": %q, "arguments": {}}`, prefix+"__do_thing"))

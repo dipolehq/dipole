@@ -1,8 +1,4 @@
-/*
-cache.go provides a thread-safe credential cache keyed by credential_provider_id.
-Caches tokens at 80% of their TTL to ensure refresh before expiry. Static
-credentials (API Key, Username/Password) are not cached.
-*/
+// cache.go provides a thread-safe credential cache keyed by credential_provider_id, caching tokens at 80% of their TTL.
 package credentials
 
 import (

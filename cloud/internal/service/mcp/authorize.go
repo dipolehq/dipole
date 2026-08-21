@@ -1,11 +1,4 @@
-/*
-authorize.go orchestrates the OAuth 2.1 authorization flow for MCP clients.
-
-AuthorizeService validates the authorization request, finds the matching
-Access Policy (by redirect_uri → Client Workload, resource → Server Workload),
-evaluates access conditions, and issues an authorization code.
-If Enforce SSO is on, it returns a redirect URL to the IdP instead.
-*/
+// authorize.go implements AuthorizeService, which orchestrates the OAuth 2.1 authorization flow for MCP clients.
 package mcp
 
 import (
@@ -21,12 +14,13 @@ import (
 )
 
 var (
-	ErrClientNotFound         = errors.New("client_id not found")
-	ErrRedirectURIMismatch    = errors.New("redirect_uri does not match registered URIs")
-	ErrInvalidChallengeMethod = errors.New("code_challenge_method must be S256")
-	ErrMissingCodeChallenge   = errors.New("code_challenge is required")
-	ErrNoPolicyFound          = errors.New("No matching Access Policy found")
-	ErrConditionFailed        = errors.New("access condition failed")
+	ErrClientNotFound            = errors.New("client_id not found")
+	ErrRedirectURIMismatch       = errors.New("redirect_uri does not match registered URIs")
+	ErrInvalidChallengeMethod    = errors.New("code_challenge_method must be S256")
+	ErrMissingCodeChallenge      = errors.New("code_challenge is required")
+	ErrNoPolicyFound             = errors.New("No matching Access Policy found")
+	ErrConditionFailed           = errors.New("access condition failed")
+	ErrMultipleSSOTrustProviders = errors.New("policy has more than one SSO-capable (OIDC/SAML) Trust Provider configured; exactly one is required")
 )
 
 type AuthorizeRequest struct {
@@ -38,13 +32,7 @@ type AuthorizeRequest struct {
 	Scope               string
 	State               string
 	Resource            string
-
-	// ServerBaseURL is the MCP Authorization Server base URL this request
-	// arrived on (e.g. https://647251-mcp.dipolehq.com). Set by the transport
-	// layer from the request hostname, and used to build the redirect_uri we
-	// hand the customer's IdP. It is per-request rather than per-process
-	// because one process serves every tenant, each on its own hostname.
-	ServerBaseURL string
+	ServerBaseURL       string
 }
 
 type AuthorizeResult struct {
@@ -86,6 +74,9 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 
 	client, err := s.dcr.GetClient(ctx, tenantID, clientUUID)
 	if err != nil {
+		return nil, fmt.Errorf("look up mcp client: %w", err)
+	}
+	if client == nil {
 		return nil, ErrClientNotFound
 	}
 
@@ -110,19 +101,21 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 		return nil, ErrNoPolicyFound
 	}
 
-	// Enforce SSO: if the policy has OIDC or SAML Trust Providers, redirect to IdP.
 	if s.idpService != nil {
-		for _, tp := range policy.TrustProviders {
-			tp := tp
-			switch tp.Type {
+		ssoProvider, err := findSSOTrustProvider(policy.TrustProviders)
+		if err != nil {
+			return nil, err
+		}
+		if ssoProvider != nil {
+			switch ssoProvider.Type {
 			case domain.TrustProviderTypeOIDCIDToken:
-				result, err := s.idpService.BuildOIDCRedirect(ctx, req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				result, err := s.idpService.BuildOIDCRedirect(ctx, req, tenantID, policy.Policy.ID, ssoProvider, policy.AccessConditions, clientIP)
 				if err != nil {
 					return nil, err
 				}
 				return &AuthorizeResult{IdPRedirect: result.RedirectURL}, nil
 			case domain.TrustProviderTypeSAMLv2Response:
-				result, err := s.idpService.BuildSAMLRedirect(ctx, req, tenantID, policy.Policy.ID, &tp, policy.AccessConditions, clientIP)
+				result, err := s.idpService.BuildSAMLRedirect(ctx, req, tenantID, policy.Policy.ID, ssoProvider, policy.AccessConditions, clientIP)
 				if err != nil {
 					return nil, err
 				}
@@ -130,8 +123,6 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 			}
 		}
 	}
-
-	// SSO off path: no OIDC/SAML Trust Provider → skip user auth, evaluate conditions, issue code.
 
 	if len(policy.AccessConditions) > 0 && s.conditions != nil {
 		evidence := &domain.ClientEvidence{SourceIP: clientIP}
@@ -161,6 +152,21 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 
 	redirectURL := buildAuthCodeRedirect(req.RedirectURI, code, req.State)
 	return &AuthorizeResult{RedirectURL: redirectURL}, nil
+}
+
+func findSSOTrustProvider(trustProviders []domain.TrustProvider) (*domain.TrustProvider, error) {
+	var found *domain.TrustProvider
+	for i := range trustProviders {
+		tp := &trustProviders[i]
+		switch tp.Type {
+		case domain.TrustProviderTypeOIDCIDToken, domain.TrustProviderTypeSAMLv2Response:
+			if found != nil {
+				return nil, ErrMultipleSSOTrustProviders
+			}
+			found = tp
+		}
+	}
+	return found, nil
 }
 
 func buildAuthCodeRedirect(redirectURI, code, state string) string {

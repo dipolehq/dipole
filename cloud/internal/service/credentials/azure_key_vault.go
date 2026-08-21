@@ -1,8 +1,4 @@
-/*
-azure_key_vault.go retrieves secrets from Azure Key Vault. First obtains an
-Azure access token via WIF, then calls the Key Vault REST API to get the
-secret value.
-*/
+// azure_key_vault.go retrieves secrets from Azure Key Vault by obtaining an Azure access token via WIF, then calling the Key Vault REST API.
 package credentials
 
 import (
@@ -36,15 +32,12 @@ type azureKeyVaultConfig struct {
 	ClientID   string `json:"client_id"`
 }
 
-// issuerURL is the requesting tenant's identity host. It is forwarded to the
-// Azure WIF handler, which uses it as the `iss` Entra verifies.
 func (h *AzureKeyVaultHandler) Retrieve(ctx context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, _ map[string]interface{}) (*domain.Credential, error) {
 	var cfg azureKeyVaultConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {
 		return nil, fmt.Errorf("parse azure key vault config: %w", err)
 	}
 
-	// Get Azure token with Key Vault scope
 	wifConfig, _ := json.Marshal(azureWIFConfig{
 		TenantID: cfg.TenantID,
 		ClientID: cfg.ClientID,

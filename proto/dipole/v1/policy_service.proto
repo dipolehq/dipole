@@ -5,6 +5,7 @@ option go_package = "github.com/dipolehq/dipole/gen/dipole/v1;dipolev1";
 service PolicyEvaluationService {
   rpc Evaluate(PolicyEvaluationRequest) returns (PolicyEvaluationResponse);
   rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc RefreshSessionToken(RefreshSessionTokenRequest) returns (RefreshSessionTokenResponse);
   rpc ReportHealth(HealthReport) returns (HealthAck);
   rpc IngestEvents(stream WorkloadEventBatch) returns (EventAck);
   rpc SignLeafCertificate(SignLeafRequest) returns (SignLeafResponse);
@@ -140,7 +141,42 @@ message RegisterResponse {
   bool success = 2;
   string error_message = 3;
   string ca_cert_pem = 4;
-  string ca_key_pem = 5;
+  // The tenant's Root CA private key is never sent to the proxy. Leaf
+  // certificates are issued via SignLeafCertificate, which signs a
+  // proxy-submitted CSR without exposing the CA private key.
+  reserved 5;
+  reserved "ca_key_pem";
+  // Bearer session token, issued once here and never sent again. The proxy
+  // must attach it as gRPC metadata ("authorization: bearer <token>") on
+  // every subsequent call on this service. Cloud verifies it server-side
+  // and derives the caller's tenant_id/proxy_id from it — request-body
+  // tenant_id/proxy_id fields on other RPCs are no longer trusted on their
+  // own. Re-registering issues a new token and invalidates the previous
+  // one. This token expires — see session_token_expires_at — and must be
+  // renewed via RefreshSessionToken before it does.
+  string session_token = 6;
+  // Unix timestamp when session_token expires. The proxy must call
+  // RefreshSessionToken well before this to avoid losing authentication.
+  int64 session_token_expires_at = 7;
+}
+
+// --- Session Token Refresh ---
+// Renews the caller's session token before it expires. Authenticated via
+// the existing (possibly soon-to-expire) session token like every RPC
+// except Register — the proxy is already a known, trusted identity at
+// this point, so no registration token is needed. Issues a brand new
+// token and invalidates the previous one, mirroring Register's issuance.
+
+message RefreshSessionTokenRequest {}
+
+message RefreshSessionTokenResponse {
+  bool success = 1;
+  string error_message = 2;
+  // New bearer session token. Replaces the one used to authenticate this
+  // call; the old token is invalidated immediately.
+  string session_token = 3;
+  // Unix timestamp when the new session_token expires.
+  int64 session_token_expires_at = 4;
 }
 
 // --- Health ---

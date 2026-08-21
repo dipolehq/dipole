@@ -1,10 +1,4 @@
-/*
-plan_limits.go enforces per-plan creation limits for tenants.
-
-Each plan (starter, teams, enterprise) has a maximum count for each resource
-type. The PlanLimiter checks the current count before any Create operation
-and returns ErrPlanLimitReached if the tenant is at capacity.
-*/
+// plan_limits.go enforces per-plan creation limits for tenants: each plan has a maximum count per resource type, checked before Create and rejected with ErrPlanLimitReached if the tenant is at capacity.
 package service
 
 import (

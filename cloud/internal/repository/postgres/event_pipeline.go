@@ -1,13 +1,4 @@
-/*
-event_pipeline.go implements the events.Repository interface for the centralized
-event pipeline.
-
-This adapter maps the typed event structs from cloud/internal/events to the
-existing database tables (access_authorization_events, workload_events,
-audit_logs) without schema changes. The payload JSONB column for security
-events is built from typed struct fields at write time — never from
-map[string]any at the caller side.
-*/
+// event_pipeline.go implements the write side of events.Repository (InsertSecurityEvent/InsertWorkloadEventBatch/InsertAuditEvent), mapping typed event structs from cloud/internal/events to the existing access_authorization_events/workload_events/audit_logs tables.
 package postgres
 
 import (
@@ -15,12 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/dipolehq/dipole/cloud/internal/events"
-	"github.com/dipolehq/dipole/cloud/internal/scope"
 )
 
 type EventPipelineRepo struct {
@@ -71,8 +60,13 @@ func (r *EventPipelineRepo) InsertWorkloadEventBatch(ctx context.Context, batch 
 			payload = json.RawMessage(`{}`)
 		}
 
+		id := e.EventID
+		if id == uuid.Nil {
+			id = uuid.New()
+		}
+
 		args = append(args,
-			uuid.New(),
+			id,
 			e.TenantID,
 			e.ConnectionID,
 			e.EventType,
@@ -112,203 +106,37 @@ func (r *EventPipelineRepo) InsertAuditEvent(ctx context.Context, event *events.
 	return nil
 }
 
-func (r *EventPipelineRepo) QuerySecurityEvents(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) ([]events.SecurityEvent, int, error) {
-	where, args := buildPipelineAuthFilters(ctx, tenantID, opts)
-
-	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM access_authorization_events WHERE `+where, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count security events: %w", err)
-	}
-
-	offset := (opts.Page - 1) * opts.PerPage
-	args = append(args, opts.PerPage, offset)
-	limitParam := fmt.Sprintf("$%d", len(args)-1)
-	offsetParam := fmt.Sprintf("$%d", len(args))
-
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, event_type, context_id, severity, client_ip, timestamp, payload, resource_set_id, source
-		 FROM access_authorization_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
-		args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query security events: %w", err)
-	}
-	defer rows.Close()
-
-	var results []events.SecurityEvent
-	for rows.Next() {
-		var (
-			id          uuid.UUID
-			tid         uuid.UUID
-			eventType   string
-			contextID   uuid.UUID
-			severity    string
-			clientIP    string
-			timestamp   time.Time
-			payload     json.RawMessage
-			resourceSet *uuid.UUID
-			source      string
-		)
-		if err := rows.Scan(&id, &tid, &eventType, &contextID, &severity, &clientIP, &timestamp, &payload, &resourceSet, &source); err != nil {
-			return nil, 0, fmt.Errorf("scan security event: %w", err)
-		}
-		results = append(results, events.SecurityEvent{
-			TenantID:      tid,
-			ContextID:     contextID,
-			Timestamp:     timestamp,
-			SourceIP:      clientIP,
-			Source:        source,
-			EventType:     eventType,
-			Severity:      severity,
-			ResourceSetID: resourceSet,
-		})
-	}
-	return results, total, nil
-}
-
-func (r *EventPipelineRepo) QueryWorkloadEvents(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) ([]events.WorkloadEvent, int, error) {
-	where, args := buildPipelineWorkloadFilters(ctx, tenantID, opts)
-
-	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workload_events WHERE `+where, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count workload events: %w", err)
-	}
-
-	offset := (opts.Page - 1) * opts.PerPage
-	args = append(args, opts.PerPage, offset)
-	limitParam := fmt.Sprintf("$%d", len(args)-1)
-	offsetParam := fmt.Sprintf("$%d", len(args))
-
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, connection_id, event_type, policy_id, client_workload_id, server_workload_id, outcome, severity, timestamp, payload, resource_set_id
-		 FROM workload_events WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
-		args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query workload events: %w", err)
-	}
-	defer rows.Close()
-
-	var results []events.WorkloadEvent
-	for rows.Next() {
-		var (
-			id          uuid.UUID
-			tid         uuid.UUID
-			connID      uuid.UUID
-			eventType   string
-			policyID    *uuid.UUID
-			cwID        *uuid.UUID
-			swID        *uuid.UUID
-			outcome     string
-			severity    string
-			timestamp   time.Time
-			payload     json.RawMessage
-			resourceSet *uuid.UUID
-		)
-		_ = id
-		if err := rows.Scan(&id, &tid, &connID, &eventType, &policyID, &cwID, &swID, &outcome, &severity, &timestamp, &payload, &resourceSet); err != nil {
-			return nil, 0, fmt.Errorf("scan workload event: %w", err)
-		}
-		results = append(results, events.WorkloadEvent{
-			TenantID:         tid,
-			ConnectionID:     connID,
-			Timestamp:        timestamp,
-			EventType:        eventType,
-			Severity:         severity,
-			Outcome:          outcome,
-			PolicyID:         policyID,
-			ClientWorkloadID: cwID,
-			ServerWorkloadID: swID,
-			ResourceSetID:    resourceSet,
-			Payload:          payload,
-		})
-	}
-	return results, total, nil
-}
-
-func (r *EventPipelineRepo) QueryAuditEvents(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) ([]events.AuditEvent, int, error) {
-	where, args := buildPipelineAuditFilters(ctx, tenantID, opts)
-
-	var total int
-	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE `+where, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count audit events: %w", err)
-	}
-
-	offset := (opts.Page - 1) * opts.PerPage
-	args = append(args, opts.PerPage, offset)
-	limitParam := fmt.Sprintf("$%d", len(args)-1)
-	offsetParam := fmt.Sprintf("$%d", len(args))
-
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, tenant_id, actor_email, category, activity, target_type, target_id, target_name, severity, client_ip, timestamp
-		 FROM audit_logs WHERE `+where+` ORDER BY timestamp DESC, id DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
-		args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query audit events: %w", err)
-	}
-	defer rows.Close()
-
-	var results []events.AuditEvent
-	for rows.Next() {
-		var (
-			id        uuid.UUID
-			tid       uuid.UUID
-			email     string
-			category  string
-			activity  string
-			tType     string
-			tID       *uuid.UUID
-			tName     string
-			severity  string
-			clientIP  string
-			timestamp time.Time
-		)
-		_ = id
-		if err := rows.Scan(&id, &tid, &email, &category, &activity, &tType, &tID, &tName, &severity, &clientIP, &timestamp); err != nil {
-			return nil, 0, fmt.Errorf("scan audit event: %w", err)
-		}
-		results = append(results, events.AuditEvent{
-			TenantID:   tid,
-			Timestamp:  timestamp,
-			ActorEmail: email,
-			ActorIP:    clientIP,
-			Category:   category,
-			Activity:   activity,
-			TargetType: tType,
-			TargetID:   tID,
-			TargetName: tName,
-		})
-	}
-	return results, total, nil
-}
-
 func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	switch event.EventType {
 	case "access.request":
-		return buildRequestPayload(event)
+		detail, _ := event.Detail.(events.RequestDetail)
+		return buildRequestPayload(event.SourceIP, detail)
 	case "access.authorization":
-		return buildAuthorizationPayload(event)
+		detail, _ := event.Detail.(events.AuthorizationDetail)
+		return buildAuthorizationPayload(detail)
 	case "access.credential":
-		return buildCredentialPayload(event)
+		detail, _ := event.Detail.(events.CredentialDetail)
+		return buildCredentialPayload(detail)
 	case "access.discovery":
-		return buildDiscoveryPayload(event)
+		detail, _ := event.Detail.(events.DiscoveryDetail)
+		return buildDiscoveryPayload(detail)
 	default:
-		return buildAuthorizationPayload(event)
+		detail, _ := event.Detail.(events.AuthorizationDetail)
+		return buildAuthorizationPayload(detail)
 	}
 }
 
-func buildRequestPayload(event *events.SecurityEvent) json.RawMessage {
+func buildRequestPayload(sourceIP string, detail events.RequestDetail) json.RawMessage {
 	payload := map[string]any{
 		"clientRequest": map[string]any{
 			"version": "1.0.0",
 			"network": map[string]any{
-				"sourceIP":          event.SourceIP,
+				"sourceIP":          sourceIP,
 				"sourcePort":        0,
 				"transportProtocol": "TCP",
 				"proxyPort":         8080,
-				"targetHost":        event.ServerHost,
-				"targetPort":        event.ServerPort,
+				"targetHost":        detail.ServerHost,
+				"targetPort":        detail.ServerPort,
 			},
 		},
 	}
@@ -316,42 +144,42 @@ func buildRequestPayload(event *events.SecurityEvent) json.RawMessage {
 	return data
 }
 
-func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
+func buildAuthorizationPayload(detail events.AuthorizationDetail) json.RawMessage {
 	outcome := map[string]any{"result": "Error"}
-	if event.Allowed {
+	if detail.Allowed {
 		outcome["result"] = "Authorized"
-	} else if event.DenyReason != "" {
+	} else if detail.DenyReason != "" {
 		outcome["result"] = "Unauthorized"
-		outcome["reason"] = event.DenyReason
+		outcome["reason"] = detail.DenyReason
 	}
 
 	cwBlock := map[string]any{"result": "NotFound"}
-	if event.ClientWorkload != "" {
-		cwBlock = map[string]any{"name": event.ClientWorkload, "result": "Identified"}
-		if event.ClientWorkloadID != nil {
-			cwBlock["id"] = event.ClientWorkloadID.String()
+	if detail.ClientWorkload != "" {
+		cwBlock = map[string]any{"name": detail.ClientWorkload, "result": "Identified"}
+		if detail.ClientWorkloadID != nil {
+			cwBlock["id"] = detail.ClientWorkloadID.String()
 		}
 	}
 
 	swBlock := map[string]any{"result": "NotFound"}
-	if event.ServerWorkload != "" {
-		swBlock = map[string]any{"name": event.ServerWorkload, "result": "Identified"}
-		if event.ServerWorkloadID != nil {
-			swBlock["id"] = event.ServerWorkloadID.String()
+	if detail.ServerWorkload != "" {
+		swBlock = map[string]any{"name": detail.ServerWorkload, "result": "Identified"}
+		if detail.ServerWorkloadID != nil {
+			swBlock["id"] = detail.ServerWorkloadID.String()
 		}
 	}
 
 	apBlock := map[string]any{"result": "NotFound"}
-	if event.PolicyName != "" {
-		apBlock = map[string]any{"name": event.PolicyName, "result": "Identified"}
-		if event.PolicyID != nil {
-			apBlock["id"] = event.PolicyID.String()
+	if detail.PolicyName != "" {
+		apBlock = map[string]any{"name": detail.PolicyName, "result": "Identified"}
+		if detail.PolicyID != nil {
+			apBlock["id"] = detail.PolicyID.String()
 		}
 	}
 
 	tpBlocks := []map[string]any{}
-	if len(event.TrustResults) > 0 {
-		for _, tr := range event.TrustResults {
+	if len(detail.TrustResults) > 0 {
+		for _, tr := range detail.TrustResults {
 			tp := map[string]any{
 				"name": tr.ProviderName,
 			}
@@ -371,9 +199,9 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 			}
 			tpBlocks = append(tpBlocks, tp)
 		}
-	} else if event.TrustProvider != "" {
-		tp := map[string]any{"name": event.TrustProvider}
-		if event.TrustAttested {
+	} else if detail.TrustProvider != "" {
+		tp := map[string]any{"name": detail.TrustProvider}
+		if detail.TrustAttested {
 			tp["result"] = "Attested"
 		} else {
 			tp["result"] = "Unauthorized"
@@ -382,16 +210,16 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	cpBlock := map[string]any{}
-	if event.CredentialName != "" {
-		cpBlock["name"] = event.CredentialName
-		cpBlock["type"] = event.CredentialType
-		if event.CredentialProviderID != nil {
-			cpBlock["id"] = event.CredentialProviderID.String()
+	if detail.CredentialName != "" {
+		cpBlock["name"] = detail.CredentialName
+		cpBlock["type"] = detail.CredentialType
+		if detail.CredentialProviderID != nil {
+			cpBlock["id"] = detail.CredentialProviderID.String()
 		}
-		if event.Allowed {
+		if detail.Allowed {
 			cpBlock["result"] = "Retrieved"
-			if event.CredentialMaxAge > 0 {
-				cpBlock["maxAge"] = event.CredentialMaxAge
+			if detail.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = detail.CredentialMaxAge
 			}
 		} else {
 			cpBlock["result"] = "Identified"
@@ -408,50 +236,50 @@ func buildAuthorizationPayload(event *events.SecurityEvent) json.RawMessage {
 		"credentialProvider": cpBlock,
 	}
 
-	if event.ToolName != "" {
-		payload["toolName"] = event.ToolName
+	if detail.ToolName != "" {
+		payload["toolName"] = detail.ToolName
 	}
-	if event.UserID != "" {
-		payload["userId"] = event.UserID
+	if detail.UserID != "" {
+		payload["userId"] = detail.UserID
 	}
 
 	data, _ := json.Marshal(payload)
 	return data
 }
 
-func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
+func buildCredentialPayload(detail events.CredentialDetail) json.RawMessage {
 	outcome := map[string]any{"result": "Unauthorized"}
-	if event.Allowed {
+	if detail.Allowed {
 		outcome["result"] = "Authorized"
 	}
 
 	cwBlock := map[string]any{"result": "NotFound"}
-	if event.ClientWorkload != "" {
-		cwBlock = map[string]any{"name": event.ClientWorkload, "result": "Identified"}
-		if event.ClientWorkloadID != nil {
-			cwBlock["id"] = event.ClientWorkloadID.String()
+	if detail.ClientWorkload != "" {
+		cwBlock = map[string]any{"name": detail.ClientWorkload, "result": "Identified"}
+		if detail.ClientWorkloadID != nil {
+			cwBlock["id"] = detail.ClientWorkloadID.String()
 		}
 	}
 
 	swBlock := map[string]any{"result": "NotFound"}
-	if event.ServerWorkload != "" {
-		swBlock = map[string]any{"name": event.ServerWorkload, "result": "Identified"}
-		if event.ServerWorkloadID != nil {
-			swBlock["id"] = event.ServerWorkloadID.String()
+	if detail.ServerWorkload != "" {
+		swBlock = map[string]any{"name": detail.ServerWorkload, "result": "Identified"}
+		if detail.ServerWorkloadID != nil {
+			swBlock["id"] = detail.ServerWorkloadID.String()
 		}
 	}
 
 	apBlock := map[string]any{"result": "NotFound"}
-	if event.PolicyName != "" {
-		apBlock = map[string]any{"name": event.PolicyName, "result": "Identified"}
-		if event.PolicyID != nil {
-			apBlock["id"] = event.PolicyID.String()
+	if detail.PolicyName != "" {
+		apBlock = map[string]any{"name": detail.PolicyName, "result": "Identified"}
+		if detail.PolicyID != nil {
+			apBlock["id"] = detail.PolicyID.String()
 		}
 	}
 
 	tpBlocks := []map[string]any{}
-	if len(event.TrustResults) > 0 {
-		for _, tr := range event.TrustResults {
+	if len(detail.TrustResults) > 0 {
+		for _, tr := range detail.TrustResults {
 			tp := map[string]any{"name": tr.ProviderName}
 			if tr.ProviderID != (uuid.UUID{}) {
 				tp["id"] = tr.ProviderID.String()
@@ -467,21 +295,21 @@ func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	cpBlock := map[string]any{}
-	if event.CredentialName != "" {
-		cpBlock["type"] = event.CredentialType
-		cpBlock["name"] = event.CredentialName
-		if event.CredentialProviderID != nil {
-			cpBlock["id"] = event.CredentialProviderID.String()
+	if detail.CredentialName != "" {
+		cpBlock["type"] = detail.CredentialType
+		cpBlock["name"] = detail.CredentialName
+		if detail.CredentialProviderID != nil {
+			cpBlock["id"] = detail.CredentialProviderID.String()
 		}
-		if event.Allowed {
+		if detail.Allowed {
 			cpBlock["result"] = "Retrieved"
-			if event.CredentialMaxAge > 0 {
-				cpBlock["maxAge"] = event.CredentialMaxAge
+			if detail.CredentialMaxAge > 0 {
+				cpBlock["maxAge"] = detail.CredentialMaxAge
 			}
 		} else {
 			cpBlock["result"] = "Failed"
-			if event.DenyReason != "" {
-				cpBlock["reason"] = event.DenyReason
+			if detail.DenyReason != "" {
+				cpBlock["reason"] = detail.DenyReason
 			}
 		}
 	}
@@ -499,9 +327,9 @@ func buildCredentialPayload(event *events.SecurityEvent) json.RawMessage {
 	return data
 }
 
-func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
+func buildDiscoveryPayload(detail events.DiscoveryDetail) json.RawMessage {
 	clientWorkloads := []map[string]any{}
-	for _, cw := range event.CandidateClientWorkloads {
+	for _, cw := range detail.CandidateClientWorkloads {
 		clientWorkloads = append(clientWorkloads, map[string]any{
 			"id":   cw.ID.String(),
 			"name": cw.Name,
@@ -509,7 +337,7 @@ func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 
 	serverWorkloads := []map[string]any{}
-	for _, sw := range event.CandidateServerWorkloads {
+	for _, sw := range detail.CandidateServerWorkloads {
 		serverWorkloads = append(serverWorkloads, map[string]any{
 			"id":   sw.ID.String(),
 			"name": sw.Name,
@@ -522,145 +350,4 @@ func buildDiscoveryPayload(event *events.SecurityEvent) json.RawMessage {
 	}
 	data, _ := json.Marshal(payload)
 	return data
-}
-
-func buildPipelineAuthFilters(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) (string, []interface{}) {
-	args := []interface{}{tenantID}
-	clauses := []string{"tenant_id = $1"}
-	n := 1
-
-	if opts.Search != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR context_id::text ILIKE '%%' || $%d || '%%' OR client_ip ILIKE '%%' || $%d || '%%')", n, n, n))
-		args = append(args, opts.Search)
-	}
-	if len(opts.Severities) > 0 {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
-		args = append(args, opts.Severities)
-	} else if opts.Severity != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
-		args = append(args, opts.Severity)
-	}
-	if opts.EventType != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
-		args = append(args, opts.EventType)
-	}
-	if opts.Source != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("source = $%d", n))
-		args = append(args, opts.Source)
-	}
-	if opts.StartDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
-		args = append(args, *opts.StartDate)
-	}
-	if opts.EndDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
-		args = append(args, *opts.EndDate)
-	}
-
-	if s := scope.FromContext(ctx); s != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("resource_set_id = $%d", n))
-		args = append(args, s.ResourceSetID)
-	}
-
-	return strings.Join(clauses, " AND "), args
-}
-
-func buildPipelineWorkloadFilters(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) (string, []interface{}) {
-	args := []interface{}{tenantID}
-	clauses := []string{"tenant_id = $1"}
-	n := 1
-
-	if opts.Search != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("(event_type ILIKE '%%' || $%d || '%%' OR connection_id::text ILIKE '%%' || $%d || '%%' OR outcome ILIKE '%%' || $%d || '%%')", n, n, n))
-		args = append(args, opts.Search)
-	}
-	if len(opts.Severities) > 0 {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
-		args = append(args, opts.Severities)
-	} else if opts.Severity != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
-		args = append(args, opts.Severity)
-	}
-	if opts.EventType != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("event_type = $%d", n))
-		args = append(args, opts.EventType)
-	}
-	if opts.StartDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
-		args = append(args, *opts.StartDate)
-	}
-	if opts.EndDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
-		args = append(args, *opts.EndDate)
-	}
-	if len(opts.ClientWorkloadIDs) > 0 {
-		n++
-		clauses = append(clauses, fmt.Sprintf("client_workload_id::text = ANY($%d)", n))
-		args = append(args, opts.ClientWorkloadIDs)
-	}
-	if len(opts.ServerWorkloadIDs) > 0 {
-		n++
-		clauses = append(clauses, fmt.Sprintf("server_workload_id::text = ANY($%d)", n))
-		args = append(args, opts.ServerWorkloadIDs)
-	}
-
-	if s := scope.FromContext(ctx); s != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("resource_set_id = $%d", n))
-		args = append(args, s.ResourceSetID)
-	}
-
-	return strings.Join(clauses, " AND "), args
-}
-
-func buildPipelineAuditFilters(ctx context.Context, tenantID uuid.UUID, opts events.QueryOptions) (string, []interface{}) {
-	args := []interface{}{tenantID}
-	clauses := []string{"tenant_id = $1"}
-	n := 1
-
-	if opts.Search != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("(actor_email ILIKE '%%' || $%d || '%%' OR category ILIKE '%%' || $%d || '%%' OR activity ILIKE '%%' || $%d || '%%' OR target_name ILIKE '%%' || $%d || '%%')", n, n, n, n))
-		args = append(args, opts.Search)
-	}
-	if len(opts.Severities) > 0 {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = ANY($%d)", n))
-		args = append(args, opts.Severities)
-	} else if opts.Severity != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("severity = $%d", n))
-		args = append(args, opts.Severity)
-	}
-	if opts.EventType != "" {
-		n++
-		clauses = append(clauses, fmt.Sprintf("category = $%d", n))
-		args = append(args, opts.EventType)
-	}
-	if opts.StartDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp >= $%d", n))
-		args = append(args, *opts.StartDate)
-	}
-	if opts.EndDate != nil {
-		n++
-		clauses = append(clauses, fmt.Sprintf("timestamp <= $%d", n))
-		args = append(args, *opts.EndDate)
-	}
-
-	return strings.Join(clauses, " AND "), args
 }

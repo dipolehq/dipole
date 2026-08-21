@@ -64,19 +64,28 @@ func main() {
 		}
 	}
 
-	ca, err := buildCertificateAuthority(regResult, logger)
-	if err != nil {
-		logger.Error("failed to create CA", "error", err)
-		os.Exit(1)
+	// TLS Decrypt requires a live Cloud connection to sign leaf certificates
+	// with the tenant's Root CA — the private key never leaves Cloud, so
+	// there is no local/dev fallback. If Cloud is unavailable or did not
+	// return a CA certificate, the proxy still starts (other protocols and
+	// policy evaluation degrade the same way), but the MITM engine is left
+	// nil and HTTPS/TLS-Decrypt connections fail closed per-connection.
+	var engine *dipoletls.MITMEngine
+	if cloud != nil {
+		anchor, err := buildTrustAnchor(regResult)
+		if err != nil {
+			logger.Error("failed to obtain tenant CA certificate, TLS Decrypt disabled", "error", err)
+		} else {
+			writeCAToSharedVolume(anchor, logger)
+			cache := dipoletls.NewCertCache(anchor, cloud)
+			engine = dipoletls.NewMITMEngine(cache)
+		}
+	} else {
+		logger.Warn("no cloud connection, TLS Decrypt disabled")
 	}
-
-	writeCAToSharedVolume(ca, logger)
 
 	credentialCache := credcache.NewCredentialCache(60 * time.Second)
 	go credentialCache.StartCleanupLoop(ctx, 5*time.Minute)
-
-	cache := dipoletls.NewCertCache(ca)
-	engine := dipoletls.NewMITMEngine(cache)
 
 	httpHandler := &protocols.HTTPHandler{Logger: logger}
 	gatherer := identity.NewEvidenceGatherer(logger, cfg.ProcessIdentificationEnabled)

@@ -1,3 +1,4 @@
+// agent_controller.go implements the AgentControllerRepository for PostgreSQL.
 package postgres
 
 import (
@@ -35,10 +36,15 @@ func (r *AgentControllerRepo) Create(ctx context.Context, tenantID uuid.UUID, ac
 func (r *AgentControllerRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.AgentController, error) {
 	ac := &domain.AgentController{}
 	var tags []byte
+
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
-		 FROM agent_controllers WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt)
+		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at, shared_secret_encrypted
+		 FROM agent_controllers WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
+		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt, &ac.SharedSecretEncrypted)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -49,53 +55,49 @@ func (r *AgentControllerRepo) GetByID(ctx context.Context, tenantID uuid.UUID, i
 	return ac, nil
 }
 
-func (r *AgentControllerRepo) GetByDeviceCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.AgentController, error) {
+func (r *AgentControllerRepo) ConsumeDeviceCode(ctx context.Context, tenantID uuid.UUID, deviceCode string, sharedSecretEncrypted []byte) (*domain.AgentController, error) {
 	ac := &domain.AgentController{}
 	var tags []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
-		 FROM agent_controllers WHERE tenant_id = $1 AND device_code = $2`, tenantID, code).
+		`UPDATE agent_controllers
+		 SET status = $3, device_code = NULL, device_code_expires_at = NULL, shared_secret_encrypted = $4, updated_at = NOW()
+		 WHERE tenant_id = $1 AND device_code = $2 AND status = $5 AND device_code_expires_at > NOW()
+		 RETURNING id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at`,
+		tenantID, deviceCode, domain.AgentStatusRegistered, sharedSecretEncrypted, domain.AgentStatusUnregistered).
 		Scan(&ac.ID, &ac.TenantID, &ac.Name, &ac.Description, &ac.IsActive, &ac.Status, &ac.DeviceCode, &ac.DeviceCodeExpiresAt, &ac.TrustProviderID, &ac.TLSHostname, &tags, &ac.LastHealthAt, &ac.ResourceSetID, &ac.CreatedAt, &ac.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get agent controller by device code: %w", err)
+		return nil, fmt.Errorf("consume device code: %w", err)
 	}
 	json.Unmarshal(tags, &ac.Tags)
+	ac.SharedSecretEncrypted = sharedSecretEncrypted
 	return ac, nil
 }
 
 func (r *AgentControllerRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.AgentController, int, error) {
-	search := escapeILIKE(opts.Search)
-	countArgs := []interface{}{tenantID, search}
-	n := 2
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM agent_controllers WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM agent_controllers WHERE `+where+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count agent controllers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, search}
-	n = 2
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, status, device_code, device_code_expires_at, trust_provider_id, tls_hostname, tags, last_health_at, resource_set_id, created_at, updated_at
 		 FROM agent_controllers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+where+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list agent controllers: %w", err)
@@ -117,10 +119,15 @@ func (r *AgentControllerRepo) List(ctx context.Context, tenantID uuid.UUID, opts
 
 func (r *AgentControllerRepo) Update(ctx context.Context, tenantID uuid.UUID, ac *domain.AgentController) error {
 	tags, _ := json.Marshal(ac.Tags)
+
+	args := []interface{}{ac.Name, ac.Description, ac.IsActive, ac.Status, ac.DeviceCode, ac.DeviceCodeExpiresAt, ac.TrustProviderID, ac.TLSHostname, tags, ac.LastHealthAt, ac.ResourceSetID, tenantID, ac.ID}
+	n := 13
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	_, err := r.pool.Exec(ctx,
 		`UPDATE agent_controllers SET name=$1, description=$2, is_active=$3, status=$4, device_code=$5, device_code_expires_at=$6, trust_provider_id=$7, tls_hostname=$8, tags=$9, last_health_at=$10, resource_set_id=$11, updated_at=NOW()
-		 WHERE tenant_id = $12 AND id = $13`,
-		ac.Name, ac.Description, ac.IsActive, ac.Status, ac.DeviceCode, ac.DeviceCodeExpiresAt, ac.TrustProviderID, ac.TLSHostname, tags, ac.LastHealthAt, ac.ResourceSetID, tenantID, ac.ID)
+		 WHERE tenant_id = $12 AND id = $13`+rsFilter,
+		args...)
 	if err != nil {
 		return fmt.Errorf("update agent controller: %w", err)
 	}
@@ -128,7 +135,11 @@ func (r *AgentControllerRepo) Update(ctx context.Context, tenantID uuid.UUID, ac
 }
 
 func (r *AgentControllerRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM agent_controllers WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM agent_controllers WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete agent controller: %w", err)
 	}

@@ -1,11 +1,4 @@
-/*
-azure_validator.go verifies Azure instance identity via IMDS attested documents.
-
-AzureValidator parses the PKCS#7 signed attestation document from Azure IMDS,
-verifies the cryptographic signature against system roots (or an optional
-pinned CA), extracts compute metadata from the verified payload, and evaluates
-match rules against fields (subscriptionId, vmId, sku).
-*/
+// azure_validator.go verifies Azure instance identity via IMDS attested documents, with a mandatory (OS trust store or pinned) CA and signed-timestamp freshness check.
 package trust
 
 import (
@@ -14,17 +7,28 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.mozilla.org/pkcs7"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-type AzureValidator struct{}
+type AzureValidator struct {
+	verifier chainVerifier
+}
+
+func NewAzureValidator() *AzureValidator {
+	return &AzureValidator{verifier: systemChainVerifier{}}
+}
 
 type azureConfig struct {
 	SigningCAPEM string `json:"signingCaPem"`
 }
+
+const azureTimestampLayout = "1/2/06 15:04:05 -0700"
+
+const azureClockSkew = 180 * time.Second
 
 func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvider, evidence *domain.ClientEvidence, _ *JWKSCache) (*domain.TrustProviderResult, error) {
 	if evidence.Azure == nil || evidence.Azure.Signature == "" {
@@ -36,13 +40,17 @@ func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvi
 		return nil, fmt.Errorf("parse azure config: %w", err)
 	}
 
-	computeFields, err := verifyAndExtractAzureAttestation(evidence.Azure.Signature, cfg.SigningCAPEM)
+	computeFields, err := verifyAndExtractAzureAttestation(evidence.Azure.Signature, cfg.SigningCAPEM, v.verifier)
 	if err != nil {
 		return &domain.TrustProviderResult{Attested: false, Reason: "InvalidSignature"}, nil
 	}
 
+	if fresh, reason := azureAttestationFresh(computeFields); !fresh {
+		return &domain.TrustProviderResult{Attested: false, Reason: reason}, nil
+	}
+
 	if len(provider.MatchRules) == 0 {
-		return &domain.TrustProviderResult{Attested: true}, nil
+		return &domain.TrustProviderResult{Attested: true, Claims: computeFields}, nil
 	}
 
 	passed, failure := EvaluateMatchRules(toMatchRules(provider.MatchRules), computeFields)
@@ -56,13 +64,10 @@ func (v *AzureValidator) Validate(_ context.Context, provider *domain.TrustProvi
 		}, nil
 	}
 
-	return &domain.TrustProviderResult{Attested: true}, nil
+	return &domain.TrustProviderResult{Attested: true, Claims: computeFields}, nil
 }
 
-// verifyAndExtractAzureAttestation parses the PKCS#7 signed attestation,
-// verifies the cryptographic signature, and returns the verified compute
-// metadata payload.
-func verifyAndExtractAzureAttestation(signatureBase64, signingCAPEM string) (map[string]interface{}, error) {
+func verifyAndExtractAzureAttestation(signatureBase64, signingCAPEM string, verifier chainVerifier) (map[string]interface{}, error) {
 	sigBytes, err := base64.StdEncoding.DecodeString(signatureBase64)
 	if err != nil {
 		return nil, fmt.Errorf("decode signature base64: %w", err)
@@ -73,18 +78,21 @@ func verifyAndExtractAzureAttestation(signatureBase64, signingCAPEM string) (map
 		return nil, fmt.Errorf("parse PKCS#7: %w", err)
 	}
 
+	var trustAnchor *x509.CertPool
 	if signingCAPEM != "" {
-		certPool := x509.NewCertPool()
-		if !certPool.AppendCertsFromPEM([]byte(signingCAPEM)) {
+		trustAnchor = x509.NewCertPool()
+		if !trustAnchor.AppendCertsFromPEM([]byte(signingCAPEM)) {
 			return nil, fmt.Errorf("failed to parse signing CA PEM")
 		}
-		if err := p7.VerifyWithChain(certPool); err != nil {
-			return nil, fmt.Errorf("PKCS#7 signature verification failed: %w", err)
-		}
 	} else {
-		if err := p7.Verify(); err != nil {
-			return nil, fmt.Errorf("PKCS#7 signature verification failed: %w", err)
+		trustAnchor, err = verifier.trustedRoots()
+		if err != nil {
+			return nil, fmt.Errorf("load default trust anchor: %w", err)
 		}
+	}
+
+	if err := p7.VerifyWithChain(trustAnchor); err != nil {
+		return nil, fmt.Errorf("PKCS#7 signature verification failed: %w", err)
 	}
 
 	var fields map[string]interface{}
@@ -93,4 +101,55 @@ func verifyAndExtractAzureAttestation(signatureBase64, signingCAPEM string) (map
 	}
 
 	return fields, nil
+}
+
+type chainVerifier interface {
+	trustedRoots() (*x509.CertPool, error)
+}
+
+type systemChainVerifier struct{}
+
+func (systemChainVerifier) trustedRoots() (*x509.CertPool, error) {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, err
+	}
+	if pool == nil {
+		return nil, fmt.Errorf("system certificate pool unavailable")
+	}
+	return pool, nil
+}
+
+func azureAttestationFresh(fields map[string]interface{}) (ok bool, reason string) {
+	ts, _ := fields["timeStamp"].(map[string]interface{})
+	if ts == nil {
+		return false, "MissingTimestamp"
+	}
+
+	createdOn, ok1 := parseAzureTimestamp(ts["createdOn"])
+	expiresOn, ok2 := parseAzureTimestamp(ts["expiresOn"])
+	if !ok1 || !ok2 {
+		return false, "MissingTimestamp"
+	}
+
+	now := time.Now().UTC()
+	if createdOn.Add(-azureClockSkew).After(now) {
+		return false, "AttestationNotYetValid"
+	}
+	if expiresOn.Add(azureClockSkew).Before(now) {
+		return false, "AttestationExpired"
+	}
+	return true, ""
+}
+
+func parseAzureTimestamp(v interface{}) (time.Time, bool) {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(azureTimestampLayout, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }

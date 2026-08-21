@@ -1,8 +1,4 @@
-/*
-dipole_access_token.go issues a short-lived platform access token using our
-OIDC Identity Issuance Service. Used for authenticating to the Dipole API
-itself or as a generic bearer token.
-*/
+// dipole_access_token.go issues a short-lived platform access token using our OIDC Identity Issuance Service.
 package credentials
 
 import (
@@ -27,7 +23,6 @@ type dipoleAccessTokenConfig struct {
 	LifetimeSeconds int `json:"lifetime_seconds"`
 }
 
-// issuerURL is the requesting tenant's identity host, used as the token's `iss`.
 func (h *DipoleAccessTokenHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence) (*domain.Credential, error) {
 	var cfg dipoleAccessTokenConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

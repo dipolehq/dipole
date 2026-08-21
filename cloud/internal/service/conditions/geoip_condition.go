@@ -1,14 +1,9 @@
-/*
-geoip_condition.go evaluates geographic access restrictions.
-
-Looks up the source IP in a MaxMind GeoLite2 database, extracts country and
-subdivision codes, and checks against the configured allowlist. Fails closed:
-if the DB is not loaded or IP lookup fails, the condition fails (deny).
-*/
+// geoip_condition.go evaluates geographic access restrictions via MaxMind GeoLite2 lookup; fails closed on any error.
 package conditions
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 
 	"github.com/oschwald/geoip2-golang"
@@ -23,12 +18,15 @@ type GeoIPConditionConfig struct {
 	Subdivisions []string `json:"subdivisions"`
 }
 
-func NewGeoIPConditionChecker(dbPath string) *GeoIPConditionChecker {
+func NewGeoIPConditionChecker(dbPath string, logger *slog.Logger) *GeoIPConditionChecker {
 	if dbPath == "" {
 		return &GeoIPConditionChecker{}
 	}
 	db, err := geoip2.Open(dbPath)
 	if err != nil {
+		if logger != nil {
+			logger.Warn("geoip database failed to load, geoip conditions will fail closed", "path", dbPath, "error", err)
+		}
 		return &GeoIPConditionChecker{}
 	}
 	return &GeoIPConditionChecker{db: db}

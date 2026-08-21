@@ -1,8 +1,12 @@
+// connection.go wires the PostgreSQL connection pool and constructs every repository in this package.
 package postgres
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -15,7 +19,6 @@ type Pool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// TxPool extends Pool with transaction support. Satisfied by *pgxpool.Pool.
 type TxPool interface {
 	Pool
 	Begin(ctx context.Context) (pgx.Tx, error)
@@ -55,6 +58,12 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+
+	config.MaxConns = int32(envInt("DIPOLE_DB_MAX_CONNS", 25))
+	config.MinConns = int32(envInt("DIPOLE_DB_MIN_CONNS", 5))
+	config.MaxConnLifetime = time.Duration(envInt("DIPOLE_DB_MAX_CONN_LIFETIME_SECS", 3600)) * time.Second
+	config.MaxConnIdleTime = time.Duration(envInt("DIPOLE_DB_MAX_CONN_IDLE_SECS", 300)) * time.Second
+	config.HealthCheckPeriod = time.Duration(envInt("DIPOLE_DB_HEALTH_CHECK_SECS", 30)) * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -104,6 +113,14 @@ func (r *Repositories) SetMCPEncryptionKey(key []byte) {
 	r.MCPUserCredentials.encKey = key
 }
 
+func (r *Repositories) SetLogStreamEncryptionKey(key []byte) {
+	r.LogStreams.encKey = key
+}
+
+func (r *Repositories) SetTrustProviderEncryptionKey(key []byte) {
+	r.TrustProviders.encKey = key
+}
+
 func (r *Repositories) Close() {
 	if p, ok := r.pool.(*pgxpool.Pool); ok {
 		p.Close()
@@ -115,4 +132,16 @@ func (r *Repositories) Ping(ctx context.Context) error {
 		return p.Ping(ctx)
 	}
 	return nil
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }

@@ -1,3 +1,4 @@
+// credential_provider.go implements the CredentialProviderRepository for PostgreSQL.
 package postgres
 
 import (
@@ -36,9 +37,13 @@ func (r *CredentialProviderRepo) GetByID(ctx context.Context, tenantID uuid.UUID
 	cp := &domain.CredentialProvider{}
 	var tags []byte
 
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config_encrypted, tags, integration_id, resource_set_id, created_at, updated_at
-		 FROM credential_providers WHERE tenant_id = $1 AND id = $2`, tenantID, id).
+		 FROM credential_providers WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
 		Scan(&cp.ID, &cp.TenantID, &cp.Name, &cp.Description, &cp.IsActive, &cp.Type, &cp.ConfigEncrypted, &tags, &cp.IntegrationID, &cp.ResourceSetID, &cp.CreatedAt, &cp.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -52,36 +57,28 @@ func (r *CredentialProviderRepo) GetByID(ctx context.Context, tenantID uuid.UUID
 }
 
 func (r *CredentialProviderRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.CredentialProvider, int, error) {
-	countArgs := []interface{}{tenantID, opts.Search}
-	n := 2
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM credential_providers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM credential_providers WHERE `+where+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count credential providers: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, opts.Search}
-	n = 2
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, type, config_encrypted, tags, integration_id, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM policy_credential_providers pcp WHERE pcp.credential_provider_id = credential_providers.id) AS policy_count
 		 FROM credential_providers
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+where+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list credential providers: %w", err)
@@ -104,11 +101,15 @@ func (r *CredentialProviderRepo) List(ctx context.Context, tenantID uuid.UUID, o
 func (r *CredentialProviderRepo) Update(ctx context.Context, tenantID uuid.UUID, cp *domain.CredentialProvider) error {
 	tags, _ := json.Marshal(cp.Tags)
 
+	args := []interface{}{cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID, tenantID, cp.ID}
+	n := 10
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`UPDATE credential_providers SET name=$1, description=$2, is_active=$3, type=$4, config_encrypted=$5, tags=$6, integration_id=$7, resource_set_id=$8, updated_at=NOW()
-		 WHERE tenant_id = $9 AND id = $10
+		 WHERE tenant_id = $9 AND id = $10`+rsFilter+`
 		 RETURNING created_at, updated_at`,
-		cp.Name, cp.Description, cp.IsActive, cp.Type, cp.ConfigEncrypted, tags, cp.IntegrationID, cp.ResourceSetID, tenantID, cp.ID).
+		args...).
 		Scan(&cp.CreatedAt, &cp.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update credential provider: %w", err)
@@ -117,7 +118,11 @@ func (r *CredentialProviderRepo) Update(ctx context.Context, tenantID uuid.UUID,
 }
 
 func (r *CredentialProviderRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM credential_providers WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM credential_providers WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete credential provider: %w", err)
 	}

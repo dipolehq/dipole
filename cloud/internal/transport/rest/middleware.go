@@ -1,30 +1,27 @@
-/*
-Package rest — middleware.go provides HTTP middleware for the REST API.
-
-Implements: proxy secret verification, auth (Bearer token validation), tenant
-scoping, request ID generation, rate limiting (per-tenant token bucket), CORS,
-and Resource Set scoping. All middleware stores extracted values in request
-context for downstream handlers.
-*/
+// middleware.go provides HTTP middleware: proxy secret verification, auth, tenant scoping, request ID, rate limiting, CORS, and resource set scoping.
 package rest
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dipolehq/dipole/cloud/internal/repository"
 	"github.com/dipolehq/dipole/cloud/internal/scope"
+	"github.com/dipolehq/dipole/cloud/internal/service"
 	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const (
-	ctxTenantID  contextKey = "tenant_id"
-	ctxUserEmail contextKey = "user_email"
-	ctxRequestID contextKey = "request_id"
+	ctxTenantID    contextKey = "tenant_id"
+	ctxUserEmail   contextKey = "user_email"
+	ctxRequestID   contextKey = "request_id"
+	ctxPermissions contextKey = "permissions"
 )
 
 func TenantIDFromContext(ctx context.Context) uuid.UUID {
@@ -43,6 +40,13 @@ func UserEmailFromContext(ctx context.Context) string {
 func ResourceSetFromContext(ctx context.Context) *uuid.UUID {
 	if s := scope.FromContext(ctx); s != nil {
 		return &s.ResourceSetID
+	}
+	return nil
+}
+
+func PermissionsFromContext(ctx context.Context) service.Permissions {
+	if p, ok := ctx.Value(ctxPermissions).(service.Permissions); ok {
+		return p
 	}
 	return nil
 }
@@ -92,7 +96,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 
 func ResourceSetMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip if scope was already set by AuthMiddleware (token-scoped).
+
 		if scope.FromContext(r.Context()) != nil {
 			next.ServeHTTP(w, r)
 			return
@@ -100,7 +104,6 @@ func ResourceSetMiddleware(next http.Handler) http.Handler {
 
 		tenantID := TenantIDFromContext(r.Context())
 
-		// Read resource set from header; fall back to Default if not provided.
 		rsID := scope.DefaultResourceSetID
 		if rsHeader := r.Header.Get("X-Dipole-ResourceSet"); rsHeader != "" {
 			if parsed, err := uuid.Parse(rsHeader); err == nil {
@@ -154,11 +157,17 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	}
 }
 
+const (
+	rateLimiterBucketTTL     = 1 * time.Hour
+	rateLimiterSweepInterval = 10 * time.Minute
+)
+
 type RateLimiter struct {
 	mu        sync.Mutex
 	buckets   map[uuid.UUID]*tokenBucket
 	readRate  int
 	writeRate int
+	lastSweep time.Time
 }
 
 type tokenBucket struct {
@@ -172,6 +181,7 @@ func NewRateLimiter(readRate, writeRate int) *RateLimiter {
 		buckets:   make(map[uuid.UUID]*tokenBucket),
 		readRate:  readRate,
 		writeRate: writeRate,
+		lastSweep: time.Now(),
 	}
 }
 
@@ -201,13 +211,15 @@ func (rl *RateLimiter) allow(tenantID uuid.UUID, rate int) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	now := time.Now()
+	rl.evictStaleBucketsLocked(now)
+
 	bucket, ok := rl.buckets[tenantID]
 	if !ok {
-		bucket = &tokenBucket{tokens: float64(rate), lastCheck: time.Now(), rate: float64(rate)}
+		bucket = &tokenBucket{tokens: float64(rate), lastCheck: now, rate: float64(rate)}
 		rl.buckets[tenantID] = bucket
 	}
 
-	now := time.Now()
 	elapsed := now.Sub(bucket.lastCheck).Seconds()
 	bucket.tokens += elapsed * bucket.rate
 	if bucket.tokens > float64(rate) {
@@ -222,6 +234,18 @@ func (rl *RateLimiter) allow(tenantID uuid.UUID, rate int) bool {
 	return true
 }
 
+func (rl *RateLimiter) evictStaleBucketsLocked(now time.Time) {
+	if now.Sub(rl.lastSweep) < rateLimiterSweepInterval {
+		return
+	}
+	rl.lastSweep = now
+	for tenantID, bucket := range rl.buckets {
+		if now.Sub(bucket.lastCheck) > rateLimiterBucketTTL {
+			delete(rl.buckets, tenantID)
+		}
+	}
+}
+
 func extractAPIToken(r *http.Request) string {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
@@ -234,9 +258,11 @@ func extractAPIToken(r *http.Request) string {
 	return parts[1]
 }
 
-func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string) http.Handler {
+func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowedOrigins []string, proxySecret string, users repository.UserRepository, roles repository.RoleRepository, logger *slog.Logger) http.Handler {
 	rateLimiter := NewRateLimiter(100, 30)
 	protected := rateLimiter.Middleware(mux)
+	protected = RBACEnforcementMiddleware(protected)
+	protected = RBACPermissionsMiddleware(users, roles, logger)(protected)
 	protected = ResourceSetMiddleware(protected)
 	protected = AuthMiddleware(authenticator)(protected)
 	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -253,9 +279,6 @@ func ApplyMiddleware(mux *http.ServeMux, authenticator APIAuthenticator, allowed
 	return handler
 }
 
-// ProxySecretMiddleware rejects requests that don't carry a valid
-// X-Dipole-Proxy-Secret header. This prevents direct access to Cloud Run
-// bypassing Cloudflare, which would allow X-Forwarded-Host forgery.
 func ProxySecretMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

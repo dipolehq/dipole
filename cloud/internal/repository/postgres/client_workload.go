@@ -1,3 +1,4 @@
+// client_workload.go implements the ClientWorkloadRepository for PostgreSQL.
 package postgres
 
 import (
@@ -38,9 +39,13 @@ func (r *ClientWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 	cw := &domain.ClientWorkload{}
 	var identifiers, tags []byte
 
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at
-		 FROM client_workloads WHERE tenant_id = $1 AND id = $2`, tenantID, id).
+		 FROM client_workloads WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
 		Scan(&cw.ID, &cw.TenantID, &cw.Name, &cw.Description, &cw.IsActive, &identifiers, &tags, &cw.ResourceSetID, &cw.CreatedAt, &cw.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -55,37 +60,28 @@ func (r *ClientWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 }
 
 func (r *ClientWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ClientWorkload, int, error) {
-	// Build resource-set-scoped query dynamically.
-	countArgs := []interface{}{tenantID, opts.Search}
-	n := 2
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM client_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM client_workloads WHERE `+where+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count client workloads: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, opts.Search}
-	n = 2
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, identifiers, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM access_policies ap WHERE ap.client_workload_id = client_workloads.id) AS policy_count
 		 FROM client_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+where+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list client workloads: %w", err)
@@ -110,11 +106,15 @@ func (r *ClientWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, cw 
 	identifiers, _ := json.Marshal(cw.Identifiers)
 	tags, _ := json.Marshal(cw.Tags)
 
+	args := []interface{}{cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID}
+	n := 8
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`UPDATE client_workloads SET name = $1, description = $2, is_active = $3, identifiers = $4, tags = $5, resource_set_id = $6, updated_at = NOW()
-		 WHERE tenant_id = $7 AND id = $8
+		 WHERE tenant_id = $7 AND id = $8`+rsFilter+`
 		 RETURNING created_at, updated_at`,
-		cw.Name, cw.Description, cw.IsActive, identifiers, tags, cw.ResourceSetID, tenantID, cw.ID).
+		args...).
 		Scan(&cw.CreatedAt, &cw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update client workload: %w", err)
@@ -123,7 +123,11 @@ func (r *ClientWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, cw 
 }
 
 func (r *ClientWorkloadRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM client_workloads WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM client_workloads WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete client workload: %w", err)
 	}

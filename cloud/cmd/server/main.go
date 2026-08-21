@@ -24,15 +24,17 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	"github.com/dipolehq/dipole/cloud/internal/repository/postgres"
 	"github.com/dipolehq/dipole/cloud/internal/service"
+	"github.com/dipolehq/dipole/cloud/internal/service/auth"
 	"github.com/dipolehq/dipole/cloud/internal/service/conditions"
 	"github.com/dipolehq/dipole/cloud/internal/service/credentials"
 	"github.com/dipolehq/dipole/cloud/internal/service/identity"
 	mcpsvc "github.com/dipolehq/dipole/cloud/internal/service/mcp"
 	mcpgw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
-	mcpserver "github.com/dipolehq/dipole/cloud/internal/service/mcp_server"
 	"github.com/dipolehq/dipole/cloud/internal/service/pki"
 	"github.com/dipolehq/dipole/cloud/internal/service/policy"
 	"github.com/dipolehq/dipole/cloud/internal/service/registration"
+	"github.com/dipolehq/dipole/cloud/internal/service/reporting"
+	"github.com/dipolehq/dipole/cloud/internal/service/resources"
 	"github.com/dipolehq/dipole/cloud/internal/service/trust"
 	grpctransport "github.com/dipolehq/dipole/cloud/internal/transport/grpc"
 	"github.com/dipolehq/dipole/cloud/internal/transport/rest"
@@ -99,6 +101,20 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	repos := postgres.NewRepositories(pool)
 	repos.SetMCPEncryptionKey(encKey)
+	repos.SetLogStreamEncryptionKey(encKey)
+	repos.SetTrustProviderEncryptionKey(encKey)
+
+	if n, err := repos.LogStreams.BackfillConfigEncryption(ctx); err != nil {
+		return fmt.Errorf("backfill log stream config encryption: %w", err)
+	} else if n > 0 {
+		logger.Info("backfilled log stream config encryption", "count", n)
+	}
+
+	if n, err := repos.TrustProviders.BackfillSymmetricKeyEncryption(ctx); err != nil {
+		return fmt.Errorf("backfill trust provider symmetric key encryption: %w", err)
+	} else if n > 0 {
+		logger.Info("backfilled trust provider symmetric key encryption", "count", n)
+	}
 
 	if err := devBootstrap(ctx, repos, cfg, logger); err != nil {
 		return fmt.Errorf("dev bootstrap: %w", err)
@@ -114,20 +130,25 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	}
 
 	broker := credentials.NewCredentialBroker(encKey, issuer, repos.Tenants, platformHosts)
-	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers)
-	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath)
+	trustValidator := trust.NewConfiguredService(logger, repos.AgentControllers, encKey)
+	conditionEval := conditions.NewConditionEvaluator(cfg.GeoIPDBPath, logger)
 	policyService := policy.NewPolicyEvaluationService(repos.AccessPolicies, trustValidator, conditionEval, broker, eventBus, logger)
 
-	clientWorkloadSvc := service.NewClientWorkloadService(repos.ClientWorkloads)
-	serverWorkloadSvc := service.NewServerWorkloadService(repos.ServerWorkloads)
-	trustProviderSvc := service.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts)
-	accessConditionSvc := service.NewAccessConditionService(repos.AccessConditions)
-	credentialProviderSvc := service.NewCredentialProviderService(repos.CredentialProviders, encKey)
-	accessPolicySvc := service.NewAccessPolicyService(repos.AccessPolicies)
-	authenticator := service.NewAPITokenAuthenticator(repos.Tenants)
+	clientWorkloadSvc := resources.NewClientWorkloadService(repos.ClientWorkloads)
+	serverWorkloadSvc := resources.NewServerWorkloadService(repos.ServerWorkloads)
+	trustProviderSvc := resources.NewTrustProviderService(repos.TrustProviders, repos.Tenants, cfg.Region, platformHosts, encKey)
+	accessConditionSvc := resources.NewAccessConditionService(repos.AccessConditions)
+	credentialProviderSvc := resources.NewCredentialProviderService(repos.CredentialProviders, encKey)
+	accessPolicySvc := resources.NewAccessPolicyService(repos.AccessPolicies, repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders, repos.CredentialProviders, repos.AccessConditions)
+	userSvc := resources.NewUserService(repos.Users)
+	roleSvc := resources.NewRoleService(repos.Roles)
+	resourceSetSvc := resources.NewResourceSetService(repos.ResourceSets)
+	identityProviderSvc := resources.NewIdentityProviderService(repos.IdentityProviders)
+	logStreamCRUDSvc := resources.NewLogStreamService(repos.LogStreams)
+	authenticator := auth.NewAPITokenAuthenticator(repos.Tenants)
 	authenticator.SetIssuer(issuer)
 	authenticator.SetAPITokenRepo(repos.APITokens)
-	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens)
+	registrationSvc := registration.NewRegistrationService(repos.AgentControllers, repos.AgentProxies, repos.RegistrationTokens, encKey)
 	caService := pki.NewTenantCAService(repos.TenantCAs, encKey)
 
 	resourceCounter := service.NewDBResourceCounter(
@@ -142,6 +163,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	accessConditionSvc.SetLimiter(planLimiter)
 	credentialProviderSvc.SetLimiter(planLimiter)
 	accessPolicySvc.SetLimiter(planLimiter)
+	userSvc.SetLimiter(planLimiter)
+	resourceSetSvc.SetLimiter(planLimiter)
+	logStreamCRUDSvc.SetLimiter(planLimiter)
+	registrationSvc.SetLimiter(planLimiter)
 
 	edgeTrustValidator := trust.NewEdgeTrustValidator(repos.TrustProviders, trustValidator)
 	edgePolicyAdapter := policy.NewEdgePolicyAdapter(policyService)
@@ -157,7 +182,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	mcpCodeStore := mcpsvc.NewAuthCodeStore()
 	mcpDCR := mcpsvc.NewDCRService(repos.MCPClients)
 	mcpPolicyFinder := mcpsvc.NewMCPPolicyFinder(repos.AccessPolicies)
-	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: service.NewHTTPOIDCClient()})
+	mcpIdPResolver := mcpsvc.NewDBIdentityProviderResolver(repos.IdentityProviders, &oidcDiscoveryAdapter{client: auth.NewHTTPOIDCClient()})
 	mcpIdPService := mcpsvc.NewIdPService(mcpIdPResolver)
 	mcpIdPCallback := mcpsvc.NewIdPCallbackService(mcpIdPService, mcpCodeStore, trustValidator, conditionEval)
 	mcpTokenConfigResolver := mcpsvc.NewPolicyTokenConfigResolver(repos.AccessPolicies, repos.CredentialProviders, repos.ClientWorkloads, encKey)
@@ -168,23 +193,24 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	wellKnownHandler := rest.NewWellKnownHandler(issuer, tenantHostResolver, logger)
 
-	mcpToolService := mcpserver.NewToolService(repos.Events, eventBus)
-	mcpResourceService := mcpserver.NewResourceService()
-	mcpDipoleServer := rest.NewDipoleMCPServer(mcpToolService, mcpResourceService, authenticator, logger)
-
 	gwLeftAuth := mcpgw.NewLeftSideAuth(issuer)
 	gwPolicyFinder := mcpgw.NewDBRightSidePolicyFinder(repos.AccessPolicies)
 	gwTokenStore := repos.MCPUserCredentials
 	gwDecrypter := mcpgw.NewAESCredentialDecrypter(encKey)
-	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, nil, gwDecrypter)
-	gwRightAuth.SetLogger(logger)
-	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
-	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, eventBus, logger)
+	gwSharedOAuth := mcpgw.NewAESSharedOAuthTokenResolver(encKey)
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
+	gwUserConsent := mcpgw.NewUserConsentService(consentConfigResolver)
+	gwTokenRefresher := mcpgw.NewOAuthTokenRefresher(consentConfigResolver)
 
-	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, eventBus, tenantHostResolver)
+	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, gwTokenRefresher, gwDecrypter, gwSharedOAuth)
+	gwRightAuth.SetLogger(logger)
+	gwClientFactory := mcpgw.NewHTTPMCPClientFactory()
+
+	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwUserConsent, eventBus, logger)
+
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tenantHostResolver)
 
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
@@ -193,11 +219,10 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 		"gateway_pattern", "https://<tenant>-mcpgateway."+platformHosts.Domain(),
 	)
 
-	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, mcpDipoleServer, wellKnownHandler, issuer, eventBus, caService)
+	httpServer := buildHTTPServer(cfg, repos, encKey, planLimiter, clientWorkloadSvc, serverWorkloadSvc, trustProviderSvc, accessConditionSvc, credentialProviderSvc, accessPolicySvc, userSvc, roleSvc, resourceSetSvc, identityProviderSvc, logStreamCRUDSvc, authenticator, registrationSvc, edgeAPI, mcpAuthServer, mcpGatewayServer, wellKnownHandler, issuer, eventBus, caService, trustValidator, logger)
 	grpcHandler := grpctransport.NewPolicyEvaluationServer(policyService, registrationSvc, repos.AgentProxies, caService, eventBus, logger)
 	grpcHandler.SetLeafSigner(caService)
 	grpcHandler.SetHostnameAuthorizer(repos.AccessPolicies)
-	grpcHandler.SetProxyAuthenticator(repos.AgentProxies)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -217,21 +242,50 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := grpctransport.StartServer(runCtx, cfg.GRPCPort, grpcHandler, cfg.GRPCTLSCert, cfg.GRPCTLSKey, logger); err != nil {
+		if err := grpctransport.StartServer(runCtx, cfg.GRPCPort, grpcHandler, cfg.GRPCTLSCert, cfg.GRPCTLSKey, repos.AgentProxies, logger); err != nil {
 			errCh <- fmt.Errorf("grpc server: %w", err)
 		}
 	}()
 
-	logStreamSvc := service.NewLogStreamService(repos.Events, repos.LogStreams, logger)
-	logStreamSvc.RegisterExporter("splunk_siem", service.NewSplunkExporter())
-	logStreamSvc.RegisterExporter("crowdstrike_siem", service.NewCrowdStrikeExporter())
-	logStreamSvc.RegisterExporter("aws_s3", &service.S3Exporter{})
-	logStreamSvc.RegisterExporter("gcs_bucket", &service.GCSExporter{})
+	logStreamSvc := reporting.NewLogStreamService(repos.Events, repos.LogStreams, logger)
+	logStreamSvc.RegisterExporter("splunk_siem", reporting.NewSplunkExporter())
+	logStreamSvc.RegisterExporter("crowdstrike_siem", reporting.NewCrowdStrikeExporter())
+	logStreamSvc.RegisterExporter("aws_s3", reporting.NewS3Exporter())
+	logStreamSvc.RegisterExporter("gcs_bucket", reporting.NewGCSExporter())
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		runLogStreamScheduler(runCtx, logStreamSvc, logger)
+	}()
+
+	// MCP authorization codes, SSO sessions, and refresh tokens are held in
+	// memory and are only ever marked used/expired on the request path, never
+	// deleted. Without this, quiet tenants and abandoned flows accumulate
+	// entries forever.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp auth code", 5*time.Minute, mcpCodeStore.SweepExpired, logger)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp idp session", 5*time.Minute, mcpIdPService.SweepExpired, logger)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp refresh token", 5*time.Minute, mcpTokenService.SweepExpired, logger)
+	}()
+
+	// Cached downstream MCP HTTP clients (and the sessions they hold) are
+	// evicted after mcpClientIdleTimeout of disuse, so tenants/servers that
+	// have gone quiet don't hold an open session forever.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runExpirySweeper(runCtx, "mcp gateway client cache", 5*time.Minute, gwClientFactory.SweepIdleClients, logger)
 	}()
 
 	var runErr error
@@ -244,6 +298,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	cancel()
 	shutdownHTTP(httpServer, logger)
+	eventBus.Shutdown(15 * time.Second)
 	wg.Wait()
 
 	logger.Info("shutdown complete")
@@ -255,22 +310,28 @@ func buildHTTPServer(
 	repos *postgres.Repositories,
 	encKey []byte,
 	planLimiter *service.PlanLimiter,
-	clientWorkloadSvc *service.ClientWorkloadService,
-	serverWorkloadSvc *service.ServerWorkloadService,
-	trustProviderSvc *service.TrustProviderService,
-	accessConditionSvc *service.AccessConditionService,
-	credentialProviderSvc *service.CredentialProviderService,
-	accessPolicySvc *service.AccessPolicyService,
+	clientWorkloadSvc *resources.ClientWorkloadService,
+	serverWorkloadSvc *resources.ServerWorkloadService,
+	trustProviderSvc *resources.TrustProviderService,
+	accessConditionSvc *resources.AccessConditionService,
+	credentialProviderSvc *resources.CredentialProviderService,
+	accessPolicySvc *resources.AccessPolicyService,
+	userSvc *resources.UserService,
+	roleSvc *resources.RoleService,
+	resourceSetSvc *resources.ResourceSetService,
+	identityProviderSvc *resources.IdentityProviderService,
+	logStreamCRUDSvc *resources.LogStreamService,
 	authenticator rest.APIAuthenticator,
 	registrationSvc *registration.RegistrationService,
 	edgeAPI *rest.EdgeAPIHandler,
 	mcpAuth *rest.MCPAuthServer,
 	mcpGateway *rest.MCPGatewayServer,
-	mcpDipole *rest.DipoleMCPServer,
 	wellKnown *rest.WellKnownHandler,
 	issuer *identity.IdentityIssuer,
 	eventBus *eventbus.EventBus,
 	caService *pki.TenantCAService,
+	trustValidator *trust.TrustValidationService,
+	logger *slog.Logger,
 ) *http.Server {
 	mux := http.NewServeMux()
 
@@ -278,20 +339,20 @@ func buildHTTPServer(
 		repos.AgentControllers,
 		repos.AgentProxies,
 		repos.APITokens,
-		repos.Users,
-		repos.Roles,
-		repos.ResourceSets,
-		repos.IdentityProviders,
+		repos.TrustProviders,
+		userSvc,
+		roleSvc,
+		resourceSetSvc,
+		identityProviderSvc,
 		repos.SignOnPolicies,
-		repos.LogStreams,
+		logStreamCRUDSvc,
 		repos.GlobalPolicyCompliance,
-		service.NewComplianceService(repos.AccessPolicies),
+		repos.AccessPolicies,
 		repos.TenantProfiles,
 		registrationSvc,
 		repos.Tenants,
 	)
 	apiHandlers.RegisterAPIRoutes(mux)
-	apiHandlers.SetPlanLimiter(planLimiter)
 	apiHandlers.SetHealthPinger(repos)
 
 	apiHandlers.SetAudit(eventBus)
@@ -320,37 +381,37 @@ func buildHTTPServer(
 	apHandler.SetAudit(eventBus)
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
-	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
-	rest.NewDashboardHandler(service.NewDashboardService(
+	rest.NewDashboardHandler(reporting.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,
 	)).RegisterRoutes(mux)
 	rest.NewTlsDecryptHandler(caService).RegisterRoutes(mux)
 	rest.NewInternalHandlers(registrationSvc).RegisterRoutes(mux)
 
-	mfaSvc := service.NewMFAService(repos.UserMFA, encKey)
+	mfaSvc := auth.NewMFAService(repos.UserMFA, encKey)
 	mfaHandler := rest.NewMFAHandler(mfaSvc, repos.Users)
 	mfaHandler.SetAudit(eventBus)
 	mfaHandler.RegisterRoutes(mux)
 
-	loginSvc := service.NewLoginService(repos.Users, repos.Tenants, issuer)
+	loginSvc := auth.NewLoginService(repos.Users, repos.Tenants, issuer)
 	loginSvc.SetMFA(repos.UserMFA, encKey)
 	loginSvc.SetRoles(repos.Roles)
-	passwordResetSvc := service.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
+	passwordResetSvc := auth.NewPasswordResetService(repos.Users, repos.PasswordResetTokens)
 	emailSvc := service.NewEmailService(cfg.ResendAPIKey, cfg.EmailFrom)
 	passwordResetSvc.SetEmail(emailSvc, cfg.ConsoleURL)
 
 	feedbackHandler := rest.NewFeedbackHandler(cfg.ResendAPIKey, cfg.EmailFrom, "support@dipolehq.com")
 	feedbackHandler.RegisterRoutes(mux)
-	signupSvc := service.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
+	signupSvc := auth.NewSignupService(repos.Tenants, repos.Users, repos.Roles, repos.ResourceSets, repos.TenantProfiles, issuer)
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
 
 	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
-		oidcClient := service.NewHTTPOIDCClient()
-		ssoSvc := service.NewAdminSSOService(repos.Users, oidcClient)
-		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID).RegisterRoutes(mux)
+		oidcClient := auth.NewHTTPOIDCClient()
+		ssoSvc := auth.NewAdminSSOService(repos.Users, oidcClient)
+		ssoSvc.SetJWKSCache(trustValidator.JWKSCache())
+		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID, encKey).RegisterRoutes(mux)
 	}
 
 	edgeAPI.RegisterEdgeRoutes(mux)
@@ -359,11 +420,8 @@ func buildHTTPServer(
 	mcpAuth.RegisterRoutes(mux)
 
 	mcpGateway.RegisterGatewayRoutes(mux)
-	if mcpDipole != nil {
-		mcpDipole.RegisterMCPServerRoutes(mux)
-	}
 
-	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret)
+	handler := rest.ApplyMiddleware(mux, authenticator, rest.ParseCORSOrigins(cfg.CORSAllowedOrigins), cfg.ProxySecret, repos.Users, repos.Roles, logger)
 
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
@@ -372,7 +430,7 @@ func buildHTTPServer(
 	}
 }
 
-func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, logger *slog.Logger) {
+func runLogStreamScheduler(ctx context.Context, svc *reporting.LogStreamService, logger *slog.Logger) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
@@ -389,6 +447,27 @@ func runLogStreamScheduler(ctx context.Context, svc *service.LogStreamService, l
 	}
 }
 
+// runExpirySweeper periodically invokes sweep with the current time until ctx
+// is cancelled. Shared by the MCP in-memory stores (auth codes, IdP sessions,
+// refresh tokens), which all need the same ticker/shutdown plumbing around a
+// store-specific sweep call.
+func runExpirySweeper(ctx context.Context, name string, interval time.Duration, sweep func(time.Time), logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	logger.Info(name+" sweeper started", "interval", interval.String())
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info(name + " sweeper stopped")
+			return
+		case <-ticker.C:
+			sweep(time.Now().UTC())
+		}
+	}
+}
+
 func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -398,7 +477,7 @@ func shutdownHTTP(srv *http.Server, logger *slog.Logger) {
 }
 
 type oidcDiscoveryAdapter struct {
-	client *service.HTTPOIDCClient
+	client *auth.HTTPOIDCClient
 }
 
 func (a *oidcDiscoveryAdapter) FetchDiscovery(ctx context.Context, discoveryURL string) (*mcpsvc.OIDCDiscovery, error) {

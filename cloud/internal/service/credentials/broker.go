@@ -1,32 +1,4 @@
-/*
-Package credentials implements the Credential Broker that retrieves credentials
-from Credential Providers.
-
-CredentialBrokerImpl decrypts stored credential configs (AES-256-GCM), dispatches
-to type-specific handlers, caches results, and returns credential values.
-Decrypted values are never logged or stored beyond the Retrieve() call scope.
-
-tenantID is required on Retrieve because several credential types mint a token
-signed by us, and the iss claim must be the requesting tenant's identity host.
-AWS STS, Azure Entra and GCP WIF all fetch OIDC discovery from iss and reject a
-mismatch. One process serves every tenant, so the issuer URL cannot be fixed at
-startup.
-
-Cache entries are keyed by credential provider ID, and a provider belongs to
-exactly one tenant, so a cached credential can never cross tenants. Static types
-(api_key, username_password) bypass the cache since they never expire.
-
-selfSignedCredentialTypes lists types where we mint the token and need the
-tenant's identity issuer URL. Everything else either returns a stored secret or
-fetches a token from an external provider. aws_secrets_manager and
-azure_key_vault don't sign tokens directly but authenticate to the secret store
-by delegating to the STS/Azure WIF handlers, which do.
-
-tenantIssuerURL fails closed for self-signed types: a wrong iss would be
-accepted here and then rejected opaquely by AWS/Azure/GCP, which is far harder
-to diagnose than an explicit error. An empty IssuerURL would silently fall back
-to the platform issuer, so we refuse to build one from an invalid subdomain.
-*/
+// broker.go implements the Credential Broker: decrypts stored credential configs, dispatches to type-specific handlers, and caches results.
 package credentials
 
 import (

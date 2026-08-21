@@ -1,6 +1,11 @@
 /*
-Package rest — access_policies.go is the HTTP handler for the Access
-Policies resource (typed handler → service → repository with DTOs).
+Routes:
+
+	GET    /api/v1/access-policies
+	POST   /api/v1/access-policies
+	GET    /api/v1/access-policies/{id}
+	PUT    /api/v1/access-policies/{id}
+	DELETE /api/v1/access-policies/{id}
 */
 package rest
 
@@ -206,7 +211,7 @@ func (h *AccessPolicyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
-	// Read-after-write: return the authoritative state from the database.
+
 	saved, err := h.svc.Get(r.Context(), tenantID, p.ID)
 	if err != nil {
 		respondDomainError(w, err)
@@ -225,6 +230,10 @@ func (h *AccessPolicyHandler) Get(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
+		return
+	}
+	if p == nil {
+		respondError(w, http.StatusNotFound, "not_found", "access policy not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toAccessPolicyResponse(p))
@@ -249,7 +258,7 @@ func (h *AccessPolicyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "AccessPolicies", "access_policy", p.ID, p.Name, clientIP(r), userAgent(r))
-	// Read-after-write: return the authoritative state from the database.
+
 	saved, err := h.svc.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)

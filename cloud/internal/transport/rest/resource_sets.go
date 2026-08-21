@@ -1,3 +1,12 @@
+/*
+Routes:
+
+	GET    /api/v1/resource-sets
+	POST   /api/v1/resource-sets
+	GET    /api/v1/resource-sets/{id}
+	PUT    /api/v1/resource-sets/{id}
+	DELETE /api/v1/resource-sets/{id}
+*/
 package rest
 
 import (
@@ -5,10 +14,9 @@ import (
 	"net/http"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
+	"github.com/dipolehq/dipole/cloud/internal/scope"
 	"github.com/google/uuid"
 )
-
-// --- Resource Set Handlers ---
 
 func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 	tenantID := TenantIDFromContext(r.Context())
@@ -20,7 +28,6 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch resource counts for all listed resource sets in one query.
 	ids := make([]uuid.UUID, len(items))
 	for i := range items {
 		ids[i] = items[i].ID
@@ -28,7 +35,7 @@ func (h *APIHandlers) ListResourceSets(w http.ResponseWriter, r *http.Request) {
 	counts, err := h.resourceSets.GetResourceCounts(r.Context(), tenantID, ids)
 	if err != nil {
 		slog.Error("get resource counts failed", "error", err)
-		// Non-fatal: return list without counts rather than failing entirely.
+
 		counts = nil
 	}
 
@@ -42,17 +49,13 @@ func (h *APIHandlers) CreateResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondBadRequest(w, err.Error())
 		return
 	}
-	if req.Name == "" {
-		respondBadRequest(w, "name is required")
-		return
-	}
 	rs := req.toDomain()
 	if err := h.resourceSets.Create(r.Context(), tenantID, &rs); err != nil {
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, rs.ID)
-	if err != nil || saved == nil {
+	saved, err := h.resourceSets.Get(r.Context(), tenantID, rs.ID)
+	if err != nil {
 		emitAuditCreated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusCreated, toResourceSetResponse(&rs))
 		return
@@ -68,13 +71,9 @@ func (h *APIHandlers) GetResourceSet(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	rs, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
+	rs, err := h.resourceSets.Get(r.Context(), tenantID, id)
 	if err != nil {
 		respondDomainError(w, err)
-		return
-	}
-	if rs == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
 		return
 	}
 	respondJSON(w, http.StatusOK, toResourceSetResponse(rs))
@@ -85,15 +84,6 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		respondBadRequest(w, "invalid id")
-		return
-	}
-	existing, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
 		return
 	}
 	var req resourceSetRequest
@@ -108,8 +98,8 @@ func (h *APIHandlers) UpdateResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondDomainError(w, err)
 		return
 	}
-	saved, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil || saved == nil {
+	saved, err := h.resourceSets.Get(r.Context(), tenantID, id)
+	if err != nil {
 		emitAuditUpdated(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", rs.ID, rs.Name, clientIP(r), userAgent(r))
 		respondJSON(w, http.StatusOK, toResourceSetResponse(&rs))
 		return
@@ -125,15 +115,6 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 		respondBadRequest(w, "invalid id")
 		return
 	}
-	existing, err := h.resourceSets.GetByID(r.Context(), tenantID, id)
-	if err != nil {
-		respondDomainError(w, err)
-		return
-	}
-	if existing == nil {
-		respondError(w, http.StatusNotFound, "not_found", "resource set not found")
-		return
-	}
 	if err := h.resourceSets.Delete(r.Context(), tenantID, id); err != nil {
 		respondDomainError(w, err)
 		return
@@ -141,8 +122,6 @@ func (h *APIHandlers) DeleteResourceSet(w http.ResponseWriter, r *http.Request) 
 	emitAuditDeleted(h.audit, r.Context(), tenantID, UserEmailFromContext(r.Context()), "ResourceSets", "resource_set", id, "", clientIP(r), userAgent(r))
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- Resource Set DTOs ---
 
 type resourceSetRequest struct {
 	Name        string `json:"name"`
@@ -160,6 +139,7 @@ type resourceSetResponse struct {
 	ID                  uuid.UUID `json:"id"`
 	Name                string    `json:"name"`
 	Description         string    `json:"description"`
+	IsDefault           bool      `json:"isDefault"`
 	AccessPolicies      int       `json:"accessPolicies"`
 	ClientWorkloads     int       `json:"clientWorkloads"`
 	TrustProviders      int       `json:"trustProviders"`
@@ -175,6 +155,7 @@ func toResourceSetResponse(rs *domain.ResourceSet) resourceSetResponse {
 		ID:          rs.ID,
 		Name:        rs.Name,
 		Description: rs.Description,
+		IsDefault:   rs.ID == scope.DefaultResourceSetID,
 		CreatedAt:   rs.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   rs.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

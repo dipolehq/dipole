@@ -1,11 +1,4 @@
-/*
-Package policy implements the core policy evaluation engine (PDP).
-
-PolicyEvaluationService evaluates access requests: finds matching policies by
-server target, verifies client identity against identifiers (AND logic), runs
-trust verification and condition checks, retrieves credentials, and builds
-injection config. Fail-closed: any error results in DENY.
-*/
+// Package policy implements the core policy evaluation engine (PDP), matching client identity, trust, and conditions to a server target and retrieving a credential, failing closed on any error.
 package policy
 
 import (
@@ -32,10 +25,6 @@ type ConditionEvaluator interface {
 }
 
 type CredentialBroker interface {
-	// tenantID is required so that credential types which mint a token we sign
-	// use the requesting tenant's identity host as the `iss` claim. Cloud
-	// federation providers (AWS STS, Azure Entra, GCP WIF) fetch OIDC discovery
-	// from `iss` and reject a mismatch.
 	Retrieve(ctx context.Context, tenantID uuid.UUID, provider *domain.CredentialProvider, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error)
 }
 
@@ -103,11 +92,9 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 			return ec.result, nil
 		}
 
-		// Trust verification (AND logic — all must attest)
 		trustFailed := false
 		var trustResults []domain.TrustProviderResult
 		for _, tp := range p.TrustProviders {
-			tp := tp
 			result, err := s.trust.Validate(ctx, &tp, evidence)
 			if err != nil {
 				return nil, err
@@ -127,7 +114,6 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 			continue
 		}
 
-		// Condition evaluation (AND logic — all must pass)
 		if len(p.AccessConditions) > 0 {
 			passed, reason, err := s.conditions.EvaluateAll(ctx, p.AccessConditions, evidence)
 			if err != nil {
@@ -139,12 +125,11 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 			}
 		}
 
-		// Retrieve credential
 		var credential *domain.Credential
 		if len(p.CredentialProviders) > 0 {
 			cp := &p.CredentialProviders[0]
 			ec.credentialProvider = cp
-			cred, err := s.broker.Retrieve(ctx, tenantID, cp, evidence, nil)
+			cred, err := s.broker.Retrieve(ctx, tenantID, cp, evidence, mergeTrustClaims(trustResults))
 			if err != nil {
 				ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "CredentialRetrievalFailed"}
 				return ec.result, nil
@@ -170,6 +155,22 @@ func (s *PolicyEvaluationService) Evaluate(ctx context.Context, tenantID uuid.UU
 
 	ec.result = &domain.EvaluationResult{Allowed: false, DenyReason: "NoMatchingPolicy"}
 	return ec.result, nil
+}
+
+func mergeTrustClaims(results []domain.TrustProviderResult) map[string]interface{} {
+	var merged map[string]interface{}
+	for _, r := range results {
+		if !r.Attested || r.Claims == nil {
+			continue
+		}
+		if merged == nil {
+			merged = make(map[string]interface{}, len(r.Claims))
+		}
+		for k, v := range r.Claims {
+			merged[k] = v
+		}
+	}
+	return merged
 }
 
 type eventContext struct {
@@ -263,66 +264,84 @@ func (s *PolicyEvaluationService) emitEvents(ctx context.Context, ec *eventConte
 	}
 
 	resourceSetID := ec.resourceSetID
-	base := events.SecurityEvent{
-		TenantID:                 ec.tenantID,
-		ContextID:                contextID,
-		SourceIP:                 ec.sourceIP,
-		Source:                   "edge_proxy",
-		Severity:                 "Info",
-		ResourceSetID:            &resourceSetID,
-		Allowed:                  ec.result.Allowed,
-		DenyReason:               ec.result.DenyReason,
-		ClientWorkload:           clientWL,
-		ClientWorkloadID:         clientWLID,
-		ServerWorkload:           serverWL,
-		ServerWorkloadID:         serverWLID,
-		ServerHost:               ec.targetHost,
-		ServerPort:               ec.targetPort,
-		PolicyID:                 policyID,
-		PolicyName:               policyName,
-		TrustResults:             trustResults,
-		CredentialType:           credType,
-		CredentialName:           credName,
-		CredentialProviderID:     credProviderID,
-		CredentialMaxAge:         credMaxAge,
-		CandidateClientWorkloads: candidateCW,
-		CandidateServerWorkloads: candidateSW,
+	envelope := events.SecurityEvent{
+		TenantID:      ec.tenantID,
+		ContextID:     contextID,
+		SourceIP:      ec.sourceIP,
+		Source:        "edge_proxy",
+		Severity:      "Info",
+		ResourceSetID: &resourceSetID,
 	}
 
-	request := base
+	request := envelope
 	request.EventType = "access.request"
 	if !ec.result.Allowed {
 		request.Severity = "Error"
 	}
+	request.Detail = events.RequestDetail{
+		ServerHost: ec.targetHost,
+		ServerPort: ec.targetPort,
+	}
 	s.events.EmitSecurity(ctx, request)
 
-	auth := base
+	auth := envelope
 	auth.EventType = "access.authorization"
 	auth.Severity = severity
+	auth.Detail = events.AuthorizationDetail{
+		Allowed:              ec.result.Allowed,
+		DenyReason:           ec.result.DenyReason,
+		ClientWorkload:       clientWL,
+		ClientWorkloadID:     clientWLID,
+		ServerWorkload:       serverWL,
+		ServerWorkloadID:     serverWLID,
+		PolicyID:             policyID,
+		PolicyName:           policyName,
+		TrustResults:         trustResults,
+		CredentialType:       credType,
+		CredentialName:       credName,
+		CredentialProviderID: credProviderID,
+		CredentialMaxAge:     credMaxAge,
+	}
 	s.events.EmitSecurity(ctx, auth)
 
 	if ec.credentialProvider != nil {
-		cred := base
+		cred := envelope
 		cred.EventType = "access.credential"
 		if !ec.result.Allowed {
 			cred.Severity = "Error"
 		}
+		cred.Detail = events.CredentialDetail{
+			Allowed:              ec.result.Allowed,
+			DenyReason:           ec.result.DenyReason,
+			ClientWorkload:       clientWL,
+			ClientWorkloadID:     clientWLID,
+			ServerWorkload:       serverWL,
+			ServerWorkloadID:     serverWLID,
+			PolicyID:             policyID,
+			PolicyName:           policyName,
+			TrustResults:         trustResults,
+			CredentialType:       credType,
+			CredentialName:       credName,
+			CredentialProviderID: credProviderID,
+			CredentialMaxAge:     credMaxAge,
+		}
 		s.events.EmitSecurity(ctx, cred)
 	}
 
-	discovery := base
+	discovery := envelope
 	discovery.EventType = "access.discovery"
 	if !ec.result.Allowed && ec.clientWorkload == nil {
 		discovery.Severity = "Error"
+	}
+	discovery.Detail = events.DiscoveryDetail{
+		CandidateClientWorkloads: candidateCW,
+		CandidateServerWorkloads: candidateSW,
 	}
 	if err := s.events.EmitSecurity(ctx, discovery); err != nil {
 		s.logger.Error("failed to emit auth events", "tenant_id", ec.tenantID, "error", err)
 	}
 }
 
-// matchAllIdentifiers implements Aembit's identifier semantics: values of the
-// same type are OR'd together, and distinct types are AND'd. A workload
-// matches only if every type group has at least one matching value.
 func matchAllIdentifiers(identifiers []domain.Identifier, evidence *domain.ClientEvidence) bool {
 	if len(identifiers) == 0 {
 		return true
@@ -488,8 +507,6 @@ func buildInjectionConfig(sw *domain.ServerWorkload) *domain.InjectionConfig {
 	}
 }
 
-// extractAWSField decodes a base64-encoded JSON identity document and returns
-// the string value of the specified field. Returns empty string on any failure.
 func extractAWSField(encodedDoc string, field string) string {
 	if encodedDoc == "" {
 		return ""
@@ -513,9 +530,6 @@ func extractAWSField(encodedDoc string, field string) string {
 	return s
 }
 
-// extractJWTClaim decodes a JWT (without signature verification — that happens
-// in the trust validation step) and returns the string value of the specified
-// claim from the payload. Returns empty string on any failure.
 func extractJWTClaim(token string, claim string) string {
 	if token == "" {
 		return ""

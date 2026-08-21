@@ -1,8 +1,4 @@
-/*
-oidc_id_token.go issues OIDC ID Tokens with configurable subject, audience,
-lifetime, signing algorithm, and custom claims. Supports dynamic claim
-resolution via ${oidc.identityToken.decode.payload.<claim>} expressions.
-*/
+// oidc_id_token.go issues OIDC ID Tokens with configurable subject, audience, lifetime, signing algorithm, and custom claims.
 package credentials
 
 import (
@@ -31,8 +27,6 @@ type oidcIDTokenConfig struct {
 	CustomClaims     map[string]string `json:"custom_claims"`
 }
 
-// issuerURL is the requesting tenant's identity host. It becomes the token's
-// `iss`, which the Server Workload validates against its configured issuer.
 func (h *OIDCIDTokenHandler) Retrieve(_ context.Context, configJSON []byte, issuerURL string, evidence *domain.ClientEvidence, trustClaims map[string]interface{}) (*domain.Credential, error) {
 	var cfg oidcIDTokenConfig
 	if err := json.Unmarshal(configJSON, &cfg); err != nil {

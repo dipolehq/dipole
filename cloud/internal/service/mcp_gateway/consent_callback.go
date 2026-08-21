@@ -1,10 +1,4 @@
-/*
-consent_callback.go handles the OAuth callback from downstream MCP servers.
-
-ConsentCallbackService parses the state parameter to identify the tenant, user,
-and server workload, exchanges the authorization code for tokens at the
-downstream server's token endpoint, and stores the resulting per-user credentials.
-*/
+// consent_callback.go implements ConsentCallbackService, which handles the OAuth callback from downstream MCP servers and stores the resulting per-user credentials.
 package mcp_gateway
 
 import (
@@ -37,16 +31,8 @@ func NewConsentCallbackService(tokenStore UserTokenStore, configResolver Consent
 	}
 }
 
-// ErrConsentTenantMismatch means the tenant encoded in the OAuth state does not
-// match the tenant that owns the hostname the callback arrived on.
 var ErrConsentTenantMismatch = errors.New("consent state tenant does not match the request hostname")
 
-// HandleCallback completes the per-user OAuth consent flow.
-//
-// scope is the tenant resolved from the hostname the callback arrived on. The
-// tenant encoded in state must match it: state is attacker-visible (it travels
-// through the user's browser), so accepting a state naming a different tenant
-// would let a token be stored against a tenant that never initiated the consent.
 func (s *ConsentCallbackService) HandleCallback(ctx context.Context, code string, state string, scope TenantScope) error {
 	if !scope.Valid() {
 		return ErrInvalidTenantScope
@@ -78,7 +64,7 @@ func (s *ConsentCallbackService) HandleCallback(ctx context.Context, code string
 		ExpiresAt:    expiresAt,
 	}
 
-	return s.tokenStore.Store(ctx, tenantID, userID, serverWorkloadID, entry)
+	return s.tokenStore.Store(ctx, tenantID, userID, serverWorkloadID, cfg.CredentialProviderID, entry)
 }
 
 func (s *ConsentCallbackService) exchangeCode(ctx context.Context, code string, cfg *ConsentConfig) (accessToken, refreshToken string, expiresIn int, err error) {
