@@ -201,7 +201,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	gwMethodHandler := mcpgw.NewMethodHandler(gwRightAuth, gwClientFactory, gwUserConsent, eventBus, logger)
 
-	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, eventBus, tenantHostResolver)
+	mcpGatewayServer := rest.NewMCPGatewayServer(gwLeftAuth, gwMethodHandler, consentCallback, logger, tenantHostResolver)
 
 	logger.Info("MCP services initialized",
 		"platform_domain", platformHosts.Domain(),
@@ -366,7 +366,6 @@ func buildHTTPServer(
 	apHandler.SetAudit(eventBus)
 	apHandler.RegisterRoutes(mux)
 	rest.NewEventHandlers(repos.Events).RegisterEventRoutes(mux)
-	rest.NewMCPTracingHandler(eventBus).RegisterRoutes(mux)
 	rest.NewDashboardHandler(reporting.NewDashboardService(
 		repos.ClientWorkloads, repos.ServerWorkloads, repos.TrustProviders,
 		repos.CredentialProviders, repos.AccessPolicies, repos.AccessConditions, repos.Events,

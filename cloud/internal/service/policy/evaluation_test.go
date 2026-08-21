@@ -90,18 +90,6 @@ func (r *recordingEventRepo) InsertAuditEvent(_ context.Context, _ *events.Audit
 	return nil
 }
 
-func (r *recordingEventRepo) QuerySecurityEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.SecurityEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingEventRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.WorkloadEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingEventRepo) QueryAuditEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.AuditEvent, int, error) {
-	return nil, 0, nil
-}
-
 func newTestService(policies []domain.AccessPolicyWithRelations, repoErr error, cred *domain.Credential, brokerErr error) *PolicyEvaluationService {
 	return NewPolicyEvaluationService(
 		&mockRepo{policies: policies, err: repoErr},

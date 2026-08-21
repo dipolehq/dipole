@@ -67,7 +67,6 @@ const NAV_SECTIONS: NavSectionConfig[] = [
           { label: 'Audit Logs', path: '/reporting/audit' },
           { label: 'Workload Events', path: '/reporting/workload-events' },
           { label: 'Compliance', path: '/reporting/compliance' },
-          { label: 'MCP Tracing', path: '/reporting/mcp-tracing' },
           { label: 'MCP Logs', path: '/reporting/mcp-logs' },
         ],
       },

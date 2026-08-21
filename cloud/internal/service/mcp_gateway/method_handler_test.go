@@ -639,18 +639,6 @@ func (r *recordingRepo) InsertAuditEvent(_ context.Context, _ *events.AuditEvent
 	return nil
 }
 
-func (r *recordingRepo) QuerySecurityEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.SecurityEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.WorkloadEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *recordingRepo) QueryAuditEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.AuditEvent, int, error) {
-	return nil, 0, nil
-}
-
 func TestEmitRightSideAuthEvent_CancelledRequestContext_StillEmits(t *testing.T) {
 	serverID := uuid.New()
 	tenantID := uuid.New()
@@ -723,18 +711,6 @@ func (r *failingSecurityRepo) InsertWorkloadEventBatch(_ context.Context, _ []ev
 
 func (r *failingSecurityRepo) InsertAuditEvent(_ context.Context, _ *events.AuditEvent) error {
 	return nil
-}
-
-func (r *failingSecurityRepo) QuerySecurityEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.SecurityEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *failingSecurityRepo) QueryWorkloadEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.WorkloadEvent, int, error) {
-	return nil, 0, nil
-}
-
-func (r *failingSecurityRepo) QueryAuditEvents(_ context.Context, _ uuid.UUID, _ events.QueryOptions) ([]events.AuditEvent, int, error) {
-	return nil, 0, nil
 }
 
 type countingLogHandler struct {

@@ -8,7 +8,6 @@ import { TimespanPicker } from '@/shared/components/TimespanPicker'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { AuditLogsTable } from '@/features/reporting/components/AuditLogsTable'
 import { GlobalPolicyComplianceTable } from '@/features/reporting/components/GlobalPolicyComplianceTable'
-import { McpAuthorizationTracingTable } from '@/features/reporting/components/McpAuthorizationTracingTable'
 import { WorkloadEventsTable } from '@/features/reporting/components/WorkloadEventsTable'
 import { PageSizeSelect } from '@/shared/components/PageSizeSelect'
 import { fetchAuthEvents, fetchWorkloadEvents, fetchAuditLogs } from '@/features/reporting/api/eventsApi'
@@ -146,7 +145,7 @@ export function ReportingPage() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {selectedLogType !== 'global_policy_compliance' && selectedLogType !== 'mcp_authorization_tracing' && (
+                  {selectedLogType !== 'global_policy_compliance' && (
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
                       <TimespanPicker value={timeRange} onChange={setTimeRange} />
@@ -213,8 +212,6 @@ export function ReportingPage() {
           <AuditLogsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} category={category} data={auditLogsQuery.data?.items} />
         ) : selectedLogType === 'global_policy_compliance' ? (
           <GlobalPolicyComplianceTable searchQuery={searchQuery} complianceStatus={complianceStatus} resourceSet={resourceSet} />
-        ) : selectedLogType === 'mcp_authorization_tracing' ? (
-          <McpAuthorizationTracingTable searchQuery={searchQuery} severity={severity} />
         ) : selectedLogType === 'workload_events' ? (
           <WorkloadEventsTable searchQuery={searchQuery} timeRange={timeRange} severity={severity} appProtocol={appProtocol} mcpUser={mcpUser} data={workloadEventsQuery.data?.items} />
         ) : (

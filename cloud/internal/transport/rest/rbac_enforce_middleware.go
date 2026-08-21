@@ -57,8 +57,7 @@ var selfServicePathPrefixes = []string{
 // unlike selfServicePathPrefixes these aren't a whole sub-tree of
 // self-scoped actions, just a couple of standalone views.
 var noResourceExemptPaths = map[string]bool{
-	"/api/v1/dashboard":          true, // cross-resource summary counts, not any one manageable entity
-	"/api/v1/events/mcp-tracing": true, // MCP session tracing view, not currently modeled as its own RBAC resource
+	"/api/v1/dashboard": true, // cross-resource summary counts, not any one manageable entity
 }
 
 func isRBACExempt(path string) bool {

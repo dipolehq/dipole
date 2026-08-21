@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
 	gw "github.com/dipolehq/dipole/cloud/internal/service/mcp_gateway"
 	"github.com/google/uuid"
@@ -75,7 +74,6 @@ type MCPGatewayServer struct {
 	methodHandler  GatewayMethodHandler
 	consentHandler ConsentCallbackHandler
 	resolver       *TenantHostResolver
-	events         *events.EventBus
 	logger         *slog.Logger
 }
 
@@ -84,7 +82,6 @@ func NewMCPGatewayServer(
 	handler GatewayMethodHandler,
 	consentHandler ConsentCallbackHandler,
 	logger *slog.Logger,
-	eventBus *events.EventBus,
 	resolver *TenantHostResolver,
 ) *MCPGatewayServer {
 	return &MCPGatewayServer{
@@ -92,7 +89,6 @@ func NewMCPGatewayServer(
 		methodHandler:  handler,
 		consentHandler: consentHandler,
 		resolver:       resolver,
-		events:         eventBus,
 		logger:         logger,
 	}
 }
@@ -145,7 +141,6 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	if token == "" {
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`"`)
-		s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Error", "Missing token", "", "")
 		writeGatewayError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
 		return
 	}
@@ -154,13 +149,11 @@ func (s *MCPGatewayServer) HandleMCP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resourceMetadataURL := scope.GatewayURL + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+resourceMetadataURL+`", error="invalid_token"`)
-		s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Error", "Invalid token", "", "")
 		s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, "", "", false, err.Error())
 		writeGatewayError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	s.emitTrace(scope.TenantID, clientIP, r.Header.Get("Origin"), scope.GatewayURL, "Info", "Authenticated", authResult.ClientWorkloadName, authResult.UserID)
 	authContextID := s.emitLeftSideAuth(r.Context(), scope.TenantID, clientIP, r.Host, authResult.UserID, authResult.ClientWorkloadName, true, "")
 
 	body, err := io.ReadAll(r.Body)
@@ -319,36 +312,4 @@ func (s *MCPGatewayServer) HandleProtectedResourceMetadata(w http.ResponseWriter
 
 func (s *MCPGatewayServer) emitLeftSideAuth(_ context.Context, _ uuid.UUID, _ string, _ string, _ string, _ string, _ bool, _ string) uuid.UUID {
 	return uuid.New()
-}
-
-func (s *MCPGatewayServer) emitTrace(tenantID uuid.UUID, clientIP string, redirectURI string, resourceServer string, severity string, policyDetail string, clientWorkloadName string, userID string) {
-	if s.events == nil {
-		return
-	}
-
-	cwName := clientWorkloadName
-	cwStatus := "Identified"
-	if cwName == "" {
-		cwName = userID
-	}
-	if cwName == "" {
-		cwName = "Unknown"
-		cwStatus = "Unknown"
-	}
-
-	policyStatus := "Active"
-	if severity == "Error" {
-		policyStatus = "Unknown"
-	}
-
-	s.events.EmitTrace(events.TraceEntry{
-		TenantID:       tenantID,
-		ClientIP:       clientIP,
-		Severity:       severity,
-		RedirectURI:    redirectURI,
-		ResourceServer: resourceServer,
-		AccessPolicy:   events.TracePolicyStatus{Name: policyDetail, Status: policyStatus},
-		ClientWorkload: events.TraceWorkloadStatus{Name: cwName, Status: cwStatus},
-		ServerWorkload: events.TraceWorkloadStatus{Name: "Dipole MCP Gateway", Status: "Identified"},
-	})
 }

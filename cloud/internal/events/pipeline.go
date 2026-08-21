@@ -1,12 +1,4 @@
-/*
-pipeline.go is the single entry point for all event emission in the Dipole
-cloud service.
-
-EventBus composes the four category-specific pipelines (Security, Workload,
-Tracing, Audit) behind a unified API. Every event producer in the system
-receives an *EventBus as its sole dependency for logging — no direct access
-to individual pipelines or repositories.
-*/
+// pipeline.go is the single entry point for all event emission in the Dipole cloud service: EventBus composes the Security, Workload, and Audit pipelines behind a unified API.
 package events
 
 import (
@@ -21,7 +13,6 @@ import (
 type EventBus struct {
 	security *SecurityPipeline
 	workload *WorkloadPipeline
-	tracing  *TracingPipeline
 	audit    *AuditPipeline
 	metrics  *Metrics
 	cancel   context.CancelFunc
@@ -38,7 +29,6 @@ func NewEventBus(repo Repository, logger *slog.Logger) *EventBus {
 	return &EventBus{
 		security: newSecurityPipeline(repo, logger, metrics),
 		workload: wp,
-		tracing:  newTracingPipeline(metrics),
 		audit:    newAuditPipeline(repo, logger, metrics),
 		metrics:  metrics,
 		cancel:   cancel,
@@ -51,10 +41,6 @@ func (b *EventBus) EmitSecurity(ctx context.Context, event SecurityEvent) error 
 
 func (b *EventBus) EmitWorkload(event WorkloadEvent) {
 	b.workload.Emit(event)
-}
-
-func (b *EventBus) EmitTrace(entry TraceEntry) {
-	b.tracing.Emit(entry)
 }
 
 func (b *EventBus) EmitAudit(ctx context.Context, event AuditEvent) error {
@@ -80,18 +66,6 @@ func (b *EventBus) IngestFromProxy(ctx context.Context, tenantID uuid.UUID, inco
 		incoming[i].Payload = redactPayload(incoming[i].Payload)
 	}
 	return b.workload.repo.InsertWorkloadEventBatch(ctx, incoming)
-}
-
-func (b *EventBus) RecentTraces(tenantID uuid.UUID) []TraceEntry {
-	return b.tracing.Recent(tenantID)
-}
-
-func (b *EventBus) SubscribeTraces(tenantID uuid.UUID) (string, chan TraceEntry) {
-	return b.tracing.Subscribe(tenantID)
-}
-
-func (b *EventBus) UnsubscribeTraces(id string) {
-	b.tracing.Unsubscribe(id)
 }
 
 func (b *EventBus) Metrics() *Metrics {

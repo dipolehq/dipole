@@ -18,7 +18,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/reporting/audit': 'Audit Logs',
   '/reporting/workload-events': 'Workload Events',
   '/reporting/compliance': 'Compliance',
-  '/reporting/mcp-tracing': 'MCP Tracing',
   '/reporting/mcp-logs': 'MCP Logs',
   '/edge-components': 'Edge Components',
   '/edge-components/agent-controllers': 'Agent Controllers',
