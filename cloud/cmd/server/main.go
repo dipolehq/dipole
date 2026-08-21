@@ -17,8 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/dipolehq/dipole/cloud/internal/config"
 	eventbus "github.com/dipolehq/dipole/cloud/internal/events"
 	"github.com/dipolehq/dipole/cloud/internal/platform"
@@ -406,13 +404,6 @@ func buildHTTPServer(
 	authHandler := rest.NewAuthHandler(loginSvc, passwordResetSvc, signupSvc)
 	authHandler.SetAudit(eventBus)
 	authHandler.RegisterRoutes(mux)
-
-	if ssoTenantID, err := uuid.Parse(cfg.AdminSSOTenantID); err == nil && ssoTenantID != uuid.Nil {
-		oidcClient := auth.NewHTTPOIDCClient()
-		ssoSvc := auth.NewAdminSSOService(repos.Users, oidcClient)
-		ssoSvc.SetJWKSCache(trustValidator.JWKSCache())
-		rest.NewSSOHandler(repos.IdentityProviders, ssoSvc, issuer, ssoTenantID, encKey).RegisterRoutes(mux)
-	}
 
 	edgeAPI.RegisterEdgeRoutes(mux)
 

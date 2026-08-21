@@ -1,21 +1,4 @@
-/*
-Package config loads application configuration from environment variables.
-
-Key fields:
-  - Env: "staging" or "production". Drives per-tenant URL generation so staging
-    emits <tenant>-<svc>-staging hostnames and clients never leave the staging
-    boundary.
-  - PlatformDomain: apex domain for per-tenant service hostnames.
-  - ProxySecret: shared secret the Cloudflare Worker attaches to every request.
-    When set, requests without a matching X-Dipole-Proxy-Secret header are
-    rejected with 403, preventing direct access to Cloud Run that would allow
-    X-Forwarded-Host forgery.
-  - DevBootstrap: enables auto-tenant creation and the X-Dipole-Tenant-Subdomain
-    header for local development. Must be false in deployed environments.
-  - AdminSSOTenantID: binds admin SSO login to one tenant. Last remaining
-    startup-bound tenant — exists because SSO routes run before authentication
-    and the console uses a shared hostname. Do not add new readers.
-*/
+// Package config loads application configuration from environment variables.
 package config
 
 import (
@@ -38,7 +21,6 @@ type Config struct {
 	ProxySecret        string
 	ConsoleURL         string
 	DevBootstrap       bool
-	AdminSSOTenantID   string
 	GRPCTLSCert        string
 	GRPCTLSKey         string
 	GeoIPDBPath        string
@@ -60,7 +42,6 @@ func LoadFromEnv() (*Config, error) {
 		ProxySecret:        os.Getenv("DIPOLE_PROXY_SECRET"),
 		ConsoleURL:         envStr("DIPOLE_CONSOLE_URL", "https://console.dipolehq.com"),
 		DevBootstrap:       envBool("DIPOLE_DEV_BOOTSTRAP", false),
-		AdminSSOTenantID:   os.Getenv("DIPOLE_TENANT_ID"),
 		GRPCTLSCert:        os.Getenv("DIPOLE_GRPC_TLS_CERT"),
 		GRPCTLSKey:         os.Getenv("DIPOLE_GRPC_TLS_KEY"),
 		GeoIPDBPath:        os.Getenv("DIPOLE_GEOIP_DB_PATH"),
@@ -88,7 +69,39 @@ func (c *Config) validate() error {
 	if c.Env != "production" && c.Env != "staging" {
 		return fmt.Errorf("DIPOLE_ENV must be \"production\" or \"staging\", got %q", c.Env)
 	}
+	if c.EmailFrom != "" {
+		if !isValidEmail(c.EmailFrom) {
+			return fmt.Errorf("DIPOLE_EMAIL_FROM must be a valid email address, got %q", c.EmailFrom)
+		}
+	}
 	return nil
+}
+
+func isValidEmail(s string) bool {
+	parts := splitEmail(s)
+	if len(parts) != 2 {
+		return false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	return true
+}
+
+func splitEmail(email string) []string {
+	if idx := lastIndex(email, '@'); idx != -1 {
+		return []string{email[:idx], email[idx+1:]}
+	}
+	return []string{email}
+}
+
+func lastIndex(s string, ch byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == ch {
+			return i
+		}
+	}
+	return -1
 }
 
 func envStr(key, fallback string) string {
