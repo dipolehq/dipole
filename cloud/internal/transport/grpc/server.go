@@ -1,10 +1,4 @@
-/*
-Package grpc provides the gRPC transport layer for the Cloud service.
-
-StartServer initializes a gRPC server with keepalive, logging, recovery, and
-timeout interceptors, registers the PolicyEvaluationService, listens on the
-configured port, and gracefully stops when the provided context is cancelled.
-*/
+// server.go initializes the gRPC server with keepalive, logging, recovery, timeout, and session-auth interceptors, registers PolicyEvaluationService and the health service, and manages graceful shutdown.
 package grpc
 
 import (
@@ -18,6 +12,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
@@ -39,10 +35,6 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 			loggingInterceptor(logger),
 			recoveryInterceptor(logger),
 			timeoutInterceptor(30*time.Second),
-			// Session auth runs after logging/recovery/timeout are in
-			// place, but before any handler logic — every RPC except
-			// Register requires a verified proxy identity before its
-			// request is ever inspected.
 			SessionAuthInterceptor(sessionAuth),
 		),
 		grpc.ChainStreamInterceptor(
@@ -66,6 +58,10 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 
 	pb.RegisterPolicyEvaluationServiceServer(srv, handler)
 
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(srv, healthServer)
+
 	addr := fmt.Sprintf(":%d", port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -75,6 +71,7 @@ func StartServer(ctx context.Context, port int, handler pb.PolicyEvaluationServi
 	go func() {
 		<-ctx.Done()
 		logger.Info("grpc server shutting down")
+		healthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 		srv.GracefulStop()
 	}()
 

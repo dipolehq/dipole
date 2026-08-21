@@ -289,6 +289,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	cancel()
 	shutdownHTTP(httpServer, logger)
+	eventBus.Shutdown(15 * time.Second)
 	wg.Wait()
 
 	logger.Info("shutdown complete")

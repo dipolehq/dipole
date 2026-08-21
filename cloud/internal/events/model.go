@@ -116,6 +116,13 @@ type WorkloadRef struct {
 }
 
 type WorkloadEvent struct {
+	// EventID is the event's own durable identity, matching Aembit's
+	// meta.eventId on workload events — distinct from ContextID/
+	// authorizationChain, which link a workload event back to the
+	// access-authorization event(s) that permitted it. Callers that don't
+	// generate one (uuid.Nil) get one assigned in WorkloadPipeline.Emit,
+	// same as ConnectionID.
+	EventID          uuid.UUID
 	TenantID         uuid.UUID
 	ConnectionID     uuid.UUID
 	Timestamp        time.Time

@@ -1,7 +1,4 @@
-/*
-policy_handler_test.go tests the gRPC PolicyEvaluationServer transport handlers,
-specifically the ReportHealth RPC and the mapWorkloadEvent mapping function.
-*/
+// policy_handler_test.go tests the gRPC PolicyEvaluationServer transport handlers, specifically the ReportHealth RPC and the mapWorkloadEvent mapping function.
 package grpc
 
 import (
@@ -74,9 +71,6 @@ func TestReportHealth_NoVerifiedIdentity_NotAcknowledged(t *testing.T) {
 		logger:        newTestLogger(),
 	}
 
-	// No verified identity injected into context — as if the session auth
-	// interceptor somehow did not run. Must fail closed, never fall back
-	// to trusting the request body's component_id/tenant_id.
 	resp, err := server.ReportHealth(context.Background(), &pb.HealthReport{
 		ComponentId: uuid.New().String(),
 		TenantId:    uuid.New().String(),
@@ -102,7 +96,7 @@ func TestReportHealth_ComponentIDMismatch_NotAcknowledged(t *testing.T) {
 	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
 
 	resp, err := server.ReportHealth(ctx, &pb.HealthReport{
-		ComponentId: uuid.New().String(), // claims a different proxy than the verified session
+		ComponentId: uuid.New().String(),
 		TenantId:    tenantID.String(),
 		Status:      "Healthy",
 	})
@@ -143,6 +137,7 @@ func TestReportHealth_UpdateFails_NotAcknowledged(t *testing.T) {
 
 func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 
+	eventID := uuid.New()
 	connID := uuid.New()
 	policyID := uuid.New()
 	cwID := uuid.New()
@@ -150,7 +145,7 @@ func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 	rsID := uuid.New()
 
 	ev := &pb.WorkloadEvent{
-		EventId:          uuid.New().String(),
+		EventId:          eventID.String(),
 		ConnectionId:     connID.String(),
 		EventType:        "http.request",
 		PolicyId:         policyID.String(),
@@ -165,6 +160,9 @@ func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 
 	incoming := mapWorkloadEvent(ev)
 
+	if incoming.EventID != eventID {
+		t.Errorf("eventID = %s, want %s", incoming.EventID, eventID)
+	}
 	if incoming.ConnectionID != connID {
 		t.Errorf("connectionID = %s, want %s", incoming.ConnectionID, connID)
 	}
@@ -200,7 +198,6 @@ func TestMapWorkloadEvent_MapsAllFields(t *testing.T) {
 func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
 
 	ev := &pb.WorkloadEvent{
-		EventId:   uuid.New().String(),
 		EventType: "tcp.open",
 		Outcome:   "Passthrough",
 		Severity:  "Info",
@@ -209,6 +206,9 @@ func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
 
 	incoming := mapWorkloadEvent(ev)
 
+	if incoming.EventID != uuid.Nil {
+		t.Errorf("eventID should be zero-value UUID for empty string, got %s", incoming.EventID)
+	}
 	if incoming.PolicyID != nil {
 		t.Error("policyID should be nil for empty string")
 	}
@@ -227,7 +227,6 @@ func TestMapWorkloadEvent_EmptyOptionalFields(t *testing.T) {
 	if incoming.EventType != "tcp.open" {
 		t.Errorf("eventType = %q, want %q", incoming.EventType, "tcp.open")
 	}
-	// Timestamp should default to approximately now when not set
 	if !incoming.Timestamp.IsZero() {
 		t.Errorf("timestamp should be zero when not set in proto, got %v", incoming.Timestamp)
 	}

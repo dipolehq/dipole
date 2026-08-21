@@ -1,14 +1,4 @@
-/*
-sign_leaf_certificate_e2e_test.go exercises the real signing flow end to
-end: a real gRPC server (over an in-memory bufconn listener) backed by the
-actual pki.TenantCAService (not a mock), a real gRPC client generated from
-the proto, and a CSR built exactly the way the edge proxy builds one
-(ephemeral ECDSA P-256 key + x509.CreateCertificateRequest). It verifies the
-returned leaf certificate chains to the tenant's Root CA certificate and
-that a proxy's CSR is bound to the hostname it authenticated for. Only the
-repository layer is faked (in-memory, no database) since this test does not
-exercise persistence.
-*/
+// sign_leaf_certificate_e2e_test.go exercises the real signing flow end to end over a bufconn gRPC server backed by the actual pki.TenantCAService, verifying the returned leaf certificate chains to the tenant's Root CA.
 package grpc
 
 import (
@@ -35,13 +25,9 @@ import (
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
-// inMemoryProxyRepo is a minimal, real (non-mock) in-memory stand-in for
-// the slice of repository.AgentProxyRepository the session auth
-// interceptor depends on: resolving a proxy by its session token hash.
-// Only the methods the e2e tests need are implemented.
 type inMemoryProxyRepo struct {
 	mu      sync.Mutex
-	proxies map[string]*domain.AgentProxy // keyed by session token hash
+	proxies map[string]*domain.AgentProxy
 }
 
 func newInMemoryProxyRepo() *inMemoryProxyRepo {
@@ -60,9 +46,6 @@ func (r *inMemoryProxyRepo) GetBySessionTokenHash(_ context.Context, tokenHash s
 	return r.proxies[tokenHash], nil
 }
 
-// generateTestSessionToken produces a random token in the same shape
-// RegistrationService issues, for tests that need to simulate an already
-// -registered proxy without going through the full Register RPC.
 func generateTestSessionToken(t *testing.T) string {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -71,15 +54,10 @@ func generateTestSessionToken(t *testing.T) string {
 	return hex.EncodeToString(raw)
 }
 
-// withSessionToken attaches a bearer session token to an outgoing context,
-// exactly as CloudClient's sessionAuthUnaryInterceptor does in edge.
 func withSessionToken(ctx context.Context, token string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 }
 
-// inMemoryTenantCARepo is a real (non-mock) in-memory implementation of
-// repository.TenantCARepository, so pki.TenantCAService runs its real
-// generate/encrypt/store/decrypt logic in this test, not a stub.
 type inMemoryTenantCARepo struct {
 	mu       sync.Mutex
 	certPEM  string
@@ -129,10 +107,6 @@ func (r *inMemoryTenantCARepo) SetLeafLifetime(_ context.Context, _ uuid.UUID, l
 	return nil
 }
 
-// buildProxyCSR replicates edge/internal/tls/certgen.go's GenerateLeafCert:
-// an ephemeral ECDSA P-256 key pair, a CSR naming exactly one DNS SAN, no CA
-// extensions. This is a same-package reimplementation (edge and cloud are
-// separate Go modules) but uses the identical stdlib call shape.
 func buildProxyCSR(t *testing.T, hostname string) (*ecdsa.PrivateKey, []byte) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -146,10 +120,6 @@ func buildProxyCSR(t *testing.T, hostname string) (*ecdsa.PrivateKey, []byte) {
 	return key, csrDER
 }
 
-// startBufconnServer wires SessionAuthInterceptor/SessionAuthStreamInterceptor
-// into the test gRPC server exactly as StartServer does in production, so
-// these tests exercise the real per-call authentication path end to end,
-// not just the handler logic in isolation.
 func startBufconnServer(t *testing.T, srv *PolicyEvaluationServer, proxyRepo SessionProxyAuthenticator) pb.PolicyEvaluationServiceClient {
 	const bufSize = 1024 * 1024
 	lis := bufconn.Listen(bufSize)
@@ -190,9 +160,6 @@ func TestE2E_SignLeafCertificate_RealSigningFlow(t *testing.T) {
 	proxyID := uuid.New()
 	const hostname = "api.stripe.com"
 
-	// Registration step: Cloud generates/returns the tenant CA. Only the
-	// public cert is what the proxy is expected to keep; the private key
-	// stays server-side inside caService/repo for the rest of the test.
 	tenantCACertPEM, _, err := caService.GetOrCreateTenantCA(context.Background(), tenantID)
 	if err != nil {
 		t.Fatalf("GetOrCreateTenantCA: %v", err)
@@ -206,18 +173,12 @@ func TestE2E_SignLeafCertificate_RealSigningFlow(t *testing.T) {
 		logger:        newTestLogger(),
 	}
 
-	// Registration also issues a session token; simulate that here since
-	// this test constructs the server directly rather than calling
-	// Register over the wire.
 	sessionToken := generateTestSessionToken(t)
 	proxyRepo := newInMemoryProxyRepo()
 	proxyRepo.registerWithToken(tenantID, proxyID, sessionToken)
 
 	client := startBufconnServer(t, server, proxyRepo)
 
-	// Edge-side step: generate an ephemeral leaf key + CSR, exactly as the
-	// real proxy does, then call the real RPC over the real gRPC stack,
-	// authenticated with the session token exactly as CloudClient does.
 	leafKey, csrDER := buildProxyCSR(t, hostname)
 
 	ctx, cancel := context.WithTimeout(withSessionToken(context.Background(), sessionToken), 5*time.Second)
@@ -241,9 +202,6 @@ func TestE2E_SignLeafCertificate_RealSigningFlow(t *testing.T) {
 		t.Fatalf("parse returned leaf cert: %v", err)
 	}
 
-	// Verify the leaf validates against the tenant's Root CA cert — the
-	// same public cert the proxy would have received at registration and
-	// injected into its local trust store.
 	caBlock, _ := pem.Decode([]byte(tenantCACertPEM))
 	if caBlock == nil {
 		t.Fatal("failed to decode tenant CA cert PEM")
@@ -274,8 +232,6 @@ func TestE2E_SignLeafCertificate_RealSigningFlow(t *testing.T) {
 		t.Errorf("leaf DNSNames = %v, want [%s]", leafCert.DNSNames, hostname)
 	}
 
-	// Confirm the leaf's public key matches the proxy's ephemeral private
-	// key — i.e. the proxy, not Cloud, controls the leaf's private key.
 	leafPub, ok := leafCert.PublicKey.(*ecdsa.PublicKey)
 	if !ok {
 		t.Fatal("leaf public key is not ECDSA")
@@ -290,13 +246,9 @@ func TestE2E_SignLeafCertificate_RealSigningFlow(t *testing.T) {
 }
 
 func TestE2E_SignLeafCertificate_CACreatedOnlyAtRegistration(t *testing.T) {
-	// Confirms the "no lazy CA generation" security property end to end
-	// over the real gRPC stack: if TLS Decrypt was never enabled (no
-	// registration ever created a CA), a sign request must be denied
-	// rather than silently creating one.
 	encKey := make([]byte, 32)
 	rand.Read(encKey)
-	repo := &inMemoryTenantCARepo{} // no CA created
+	repo := &inMemoryTenantCARepo{}
 	caService := pki.NewTenantCAService(repo, encKey)
 
 	tenantID := uuid.New()
@@ -339,12 +291,6 @@ func TestE2E_SignLeafCertificate_CACreatedOnlyAtRegistration(t *testing.T) {
 	}
 }
 
-// BenchmarkSignLeafCertificate_RoundTrip measures the latency of a single
-// SignLeafCertificate call over the real gRPC stack (bufconn transport +
-// proxy authentication + hostname authorization + ECDSA signing), which is
-// the cost now paid on a cache miss (first connection to a new hostname)
-// that previously did not exist at all (local in-memory signing only).
-// Run with: go test -run xxx -bench BenchmarkSignLeafCertificate_RoundTrip -benchtime=200x ./internal/transport/grpc/...
 func BenchmarkSignLeafCertificate_RoundTrip(b *testing.B) {
 	encKey := make([]byte, 32)
 	if _, err := rand.Read(encKey); err != nil {
@@ -378,10 +324,6 @@ func BenchmarkSignLeafCertificate_RoundTrip(b *testing.B) {
 	proxyRepo := newInMemoryProxyRepo()
 	proxyRepo.registerWithToken(tenantID, proxyID, sessionTokenHex)
 
-	// startBufconnServer takes *testing.T; benchmarks get *testing.B, so
-	// the bufconn wiring (including the session auth interceptors, whose
-	// cost this benchmark is meant to include) is duplicated here rather
-	// than reusing the helper.
 	const bufSize = 1024 * 1024
 	lis := bufconn.Listen(bufSize)
 	grpcServer := grpc.NewServer(

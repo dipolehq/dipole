@@ -60,8 +60,13 @@ func (r *EventPipelineRepo) InsertWorkloadEventBatch(ctx context.Context, batch 
 			payload = json.RawMessage(`{}`)
 		}
 
+		id := e.EventID
+		if id == uuid.Nil {
+			id = uuid.New()
+		}
+
 		args = append(args,
-			uuid.New(),
+			id,
 			e.TenantID,
 			e.ConnectionID,
 			e.EventType,

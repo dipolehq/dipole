@@ -1,10 +1,4 @@
-/*
-register_test.go tests the Register RPC handler, specifically that internal
-error details are never returned to the caller. Register is reachable with
-no session-token authentication at all (it is the RPC that establishes it),
-so this is the RPC where an information-disclosure leak has the widest
-possible audience.
-*/
+// register_test.go tests the Register RPC handler, specifically that internal error details are never returned to the caller.
 package grpc
 
 import (

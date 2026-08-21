@@ -45,6 +45,9 @@ func (p *WorkloadPipeline) Emit(event WorkloadEvent) {
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
 	}
+	if event.EventID == uuid.Nil {
+		event.EventID = uuid.New()
+	}
 	if event.ConnectionID == uuid.Nil {
 		event.ConnectionID = uuid.New()
 	}
@@ -99,14 +102,26 @@ func (p *WorkloadPipeline) Run(ctx context.Context) {
 			}
 			p.metrics.WorkloadChannelSize.Store(int64(len(p.ch)))
 		case <-ctx.Done():
-			close(p.ch)
-			for event := range p.ch {
-				batch = append(batch, event)
+			// Drain whatever is already buffered via non-blocking
+			// receives rather than closing p.ch: Emit's send is a
+			// non-blocking select (case p.ch <- event: / default:),
+			// and a send on a closed channel panics unconditionally
+			// in Go — select does not route it to default. A caller
+			// that's still mid-flight past this point (e.g. a request
+			// handler that outlived shutdownHTTP's drain window) would
+			// otherwise crash the process instead of simply losing an
+			// event it's too late to process anyway.
+			for {
+				select {
+				case event := <-p.ch:
+					batch = append(batch, event)
+				default:
+					if len(batch) > 0 {
+						p.flush(batch)
+					}
+					return
+				}
 			}
-			if len(batch) > 0 {
-				p.flush(batch)
-			}
-			return
 		}
 	}
 }

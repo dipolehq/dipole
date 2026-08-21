@@ -1,14 +1,4 @@
-/*
-sign_leaf_certificate_test.go tests the SignLeafCertificate RPC handler,
-specifically the security-critical checks: verified-identity enforcement,
-hostname authorization, TLS Decrypt enablement, and the happy-path
-CSR-to-leaf-cert flow. These checks are what stand between a proxy and the
-ability to mint trusted certificates for arbitrary hostnames or other
-tenants. Caller identity itself (tenant_id/proxy_id) is established by the
-session auth interceptor before this handler ever runs — see
-session_auth_test.go for those tests — so these tests inject a
-VerifiedProxy into the context directly, exactly as the interceptor would.
-*/
+// sign_leaf_certificate_test.go tests the SignLeafCertificate RPC handler's security-critical checks: verified-identity enforcement, hostname authorization, TLS Decrypt enablement, and the happy-path CSR-to-leaf-cert flow.
 package grpc
 
 import (
@@ -28,8 +18,6 @@ import (
 	pb "github.com/dipolehq/dipole/gen/dipole/v1"
 )
 
-// mockLeafSigner lets tests control SignCSR's outcome and whether TLS
-// Decrypt is considered enabled, without needing a real tenant CA/repo.
 type mockLeafSigner struct {
 	tlsDecryptEnabled  bool
 	tlsDecryptCheckErr error
@@ -56,7 +44,6 @@ func (m *mockLeafSigner) IsTlsDecryptEnabled(_ context.Context, _ uuid.UUID) (bo
 	return m.tlsDecryptEnabled, nil
 }
 
-// mockHostnameAuthorizer lets tests control which hostnames are authorized.
 type mockHostnameAuthorizer struct {
 	authorized map[string]bool
 	err        error
@@ -69,8 +56,6 @@ func (m *mockHostnameAuthorizer) IsHostnameAuthorizedForTLS(_ context.Context, _
 	return m.authorized[hostname], nil
 }
 
-// generateTestCSR builds a real, validly self-signed CSR for the given
-// hostname, matching what the edge proxy would produce.
 func generateTestCSR(t *testing.T, hostname string) []byte {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -84,16 +69,10 @@ func generateTestCSR(t *testing.T, hostname string) []byte {
 	return der
 }
 
-// withVerifiedProxy returns a context carrying a VerifiedProxy identity,
-// exactly as SessionAuthInterceptor would inject it after resolving a
-// session token. Handler-level tests use this instead of going through the
-// interceptor, since the interceptor itself is tested separately.
 func withVerifiedProxy(ctx context.Context, tenantID, proxyID uuid.UUID) context.Context {
 	return context.WithValue(ctx, verifiedProxyContextKey{}, VerifiedProxy{TenantID: tenantID, ProxyID: proxyID})
 }
 
-// testServerFixture bundles the mocks needed for a fully-configured
-// PolicyEvaluationServer.SignLeafCertificate call.
 type testServerFixture struct {
 	server   *PolicyEvaluationServer
 	signer   *mockLeafSigner
@@ -149,10 +128,6 @@ func TestSignLeafCertificate_HappyPath(t *testing.T) {
 	}
 }
 
-// TestSignLeafCertificate_NoVerifiedIdentity_Denied confirms the handler
-// fails closed if it somehow runs without a verified identity in context
-// (e.g. a bug in interceptor wiring) — it must never fall back to trusting
-// the request body's tenant_id/proxy_id fields on its own.
 func TestSignLeafCertificate_NoVerifiedIdentity_Denied(t *testing.T) {
 	f := newTestServerFixture()
 	tenantID := uuid.New()
@@ -172,11 +147,6 @@ func TestSignLeafCertificate_NoVerifiedIdentity_Denied(t *testing.T) {
 	}
 }
 
-// TestSignLeafCertificate_RequestIdentityMismatch_Denied is the core
-// security regression test for this fix: even if a caller's session token
-// verifies it as tenant A / proxy X, claiming a *different* tenant_id or
-// proxy_id in the request body must be rejected outright rather than
-// silently ignored — a mismatch is treated as a possible spoofing attempt.
 func TestSignLeafCertificate_RequestIdentityMismatch_Denied(t *testing.T) {
 	f := newTestServerFixture()
 	tenantID := uuid.New()
@@ -206,7 +176,6 @@ func TestSignLeafCertificate_HostnameNotAuthorized_Denied(t *testing.T) {
 	f := newTestServerFixture()
 	tenantID := uuid.New()
 	proxyID := uuid.New()
-	// Deliberately do not authorize "internal.corp" — no active TLS policy for it.
 
 	ctx := withVerifiedProxy(context.Background(), tenantID, proxyID)
 	resp, _ := f.server.SignLeafCertificate(ctx, &pb.SignLeafRequest{
@@ -242,10 +211,6 @@ func TestSignLeafCertificate_TLSDecryptNotEnabled_Denied(t *testing.T) {
 	}
 }
 
-// TestSignLeafCertificate_TLSDecryptCheckError_Denied confirms a transient
-// error checking TLS Decrypt status (e.g. a DB error) is denied rather than
-// treated the same as "not enabled" — IsTlsDecryptEnabled now returns an
-// error the handler must check explicitly instead of swallowing it.
 func TestSignLeafCertificate_TLSDecryptCheckError_Denied(t *testing.T) {
 	f := newTestServerFixture()
 	f.signer.tlsDecryptCheckErr = fmt.Errorf("db connection lost")
@@ -310,11 +275,6 @@ func TestSignLeafCertificate_SignCSRError_Denied(t *testing.T) {
 	}
 }
 
-// TestSignLeafCertificate_SignCSRError_DoesNotLeakInternalErrorDetails
-// guards against reintroducing an information-disclosure bug: internal
-// error text from SignCSR (crypto, parsing, or database failures) must
-// never be forwarded to the caller verbatim, no matter what the underlying
-// error says.
 func TestSignLeafCertificate_SignCSRError_DoesNotLeakInternalErrorDetails(t *testing.T) {
 	f := newTestServerFixture()
 	tenantID := uuid.New()

@@ -1,10 +1,4 @@
-/*
-session_auth_test.go tests SessionAuthInterceptor and
-SessionAuthStreamInterceptor directly: missing/invalid/malformed tokens
-must always be Unauthenticated, a valid token must inject the correct
-verified identity, Register must be exempt, and streaming RPCs must be
-covered the same as unary ones.
-*/
+// session_auth_test.go tests SessionAuthInterceptor and SessionAuthStreamInterceptor directly, covering token validation, identity injection, and method exemptions.
 package grpc
 
 import (
@@ -21,7 +15,7 @@ import (
 )
 
 type mockSessionProxyAuthenticator struct {
-	proxies map[string]*domain.AgentProxy // keyed by session token hash
+	proxies map[string]*domain.AgentProxy
 	err     error
 }
 
@@ -127,8 +121,6 @@ func TestSessionAuthInterceptor_TokenCaseInsensitiveBearerPrefix(t *testing.T) {
 	auth.register("mixed-case-token", tenantID, proxyID)
 	interceptor := SessionAuthInterceptor(auth)
 
-	// gRPC/HTTP header values are conventionally "Bearer <token>" but the
-	// scheme name itself is case-insensitive per RFC 7235.
 	ctx := withBearerMetadata(context.Background(), "BEARER mixed-case-token")
 	result, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/dipole.v1.PolicyEvaluationService/Evaluate"}, passthroughHandler)
 	if err != nil {
@@ -140,10 +132,9 @@ func TestSessionAuthInterceptor_TokenCaseInsensitiveBearerPrefix(t *testing.T) {
 }
 
 func TestSessionAuthInterceptor_RegisterIsExempt(t *testing.T) {
-	auth := newMockSessionProxyAuthenticator() // no tokens registered at all
+	auth := newMockSessionProxyAuthenticator()
 	interceptor := SessionAuthInterceptor(auth)
 
-	// No metadata at all, yet Register must still reach the handler.
 	result, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/dipole.v1.PolicyEvaluationService/Register"}, passthroughHandler)
 	if err != nil {
 		t.Fatalf("unexpected error for exempt method: %v", err)
@@ -153,8 +144,6 @@ func TestSessionAuthInterceptor_RegisterIsExempt(t *testing.T) {
 	}
 }
 
-// fakeServerStream is a minimal grpc.ServerStream for testing
-// SessionAuthStreamInterceptor without a real network connection.
 type fakeServerStream struct {
 	grpc.ServerStream
 	ctx context.Context
