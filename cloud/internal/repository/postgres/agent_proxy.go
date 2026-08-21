@@ -1,3 +1,4 @@
+// agent_proxy.go implements the AgentProxyRepository for PostgreSQL.
 package postgres
 
 import (

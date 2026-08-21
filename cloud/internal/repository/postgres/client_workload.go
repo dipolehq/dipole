@@ -1,3 +1,4 @@
+// client_workload.go implements the ClientWorkloadRepository for PostgreSQL.
 package postgres
 
 import (

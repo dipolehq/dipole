@@ -1,3 +1,4 @@
+// access_condition.go implements the AccessConditionRepository for PostgreSQL.
 package postgres
 
 import (

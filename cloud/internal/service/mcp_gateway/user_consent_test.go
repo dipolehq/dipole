@@ -33,7 +33,7 @@ func TestBuildConsentURL_CorrectFormat(t *testing.T) {
 		},
 	}
 
-	svc := NewUserConsentService(newMockTokenStore(), resolver)
+	svc := NewUserConsentService(resolver)
 
 	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestBuildConsentURL_StateFormat(t *testing.T) {
 		},
 	}
 
-	svc := NewUserConsentService(newMockTokenStore(), resolver)
+	svc := NewUserConsentService(resolver)
 
 	result, err := svc.BuildConsentURL(context.Background(), TenantScope{TenantID: tenantID, TenantSubdomain: "test", GatewayURL: testGatewayURL}, userID, serverWorkloadID)
 	if err != nil {

@@ -1,7 +1,4 @@
-/*
-user_mfa.go implements the UserMFARepository for PostgreSQL.
-TOTP secrets and backup codes are stored encrypted (AES-256-GCM).
-*/
+// user_mfa.go implements the UserMFARepository for PostgreSQL. TOTP secrets and backup codes are stored encrypted (AES-256-GCM).
 package postgres
 
 import (

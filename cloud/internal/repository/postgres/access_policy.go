@@ -1,3 +1,4 @@
+// access_policy.go implements the AccessPolicyRepository for PostgreSQL.
 package postgres
 
 import (
@@ -263,7 +264,6 @@ func (r *AccessPolicyRepo) ListActiveWithRelations(ctx context.Context, tenantID
 	args := []interface{}{tenantID}
 	n := 1
 	rsFilter := ResourceSetFilter(ctx, &args, &n)
-	// rsFilter returns " AND resource_set_id = $2" or "" — need to qualify with "ap."
 	apRsFilter := ""
 	if rsFilter != "" {
 		apRsFilter = fmt.Sprintf(" AND ap.resource_set_id = $%d", n)

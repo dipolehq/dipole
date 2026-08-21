@@ -1,14 +1,4 @@
-/*
-log_stream.go implements storage for log stream (SIEM/S3/GCS export)
-configurations. Config (destination credentials: Splunk HEC token,
-CrowdStrike client secret, AWS/GCS keys) is encrypted at rest with
-AES-256-GCM via internal/crypto, following the same pattern as
-CredentialProvider.ConfigEncrypted and MCPUserCredentialRepo. The legacy
-plaintext `config` column is retained only until a follow-up migration
-drops it once BackfillConfigEncryption has been run in every environment;
-Create/Update always scrub it to '{}' going forward so no new plaintext
-secret is ever written to it.
-*/
+// log_stream.go implements storage for log stream (SIEM/S3/GCS export) configurations, with destination credentials encrypted at rest via internal/crypto following the same pattern as CredentialProvider.ConfigEncrypted.
 package postgres
 
 import (
@@ -161,9 +151,6 @@ func (r *LogStreamRepo) ListAllActive(ctx context.Context) ([]domain.LogStream, 
 	return results, nil
 }
 
-// UpdateLastExportedAt records a successful export and clears any
-// previously recorded export error, so a stream that failed once and then
-// recovers stops showing a stale failure to the customer.
 func (r *LogStreamRepo) UpdateLastExportedAt(ctx context.Context, id uuid.UUID, t time.Time) error {
 	_, err := r.pool.Exec(ctx, `UPDATE log_streams SET last_exported_at = $1, last_export_error = NULL WHERE id = $2`, t, id)
 	if err != nil {
@@ -172,9 +159,6 @@ func (r *LogStreamRepo) UpdateLastExportedAt(ctx context.Context, id uuid.UUID, 
 	return nil
 }
 
-// SetLastExportError records that the most recent export attempt failed,
-// without touching last_exported_at (which reflects the last *successful*
-// export).
 func (r *LogStreamRepo) SetLastExportError(ctx context.Context, id uuid.UUID, errMsg string) error {
 	_, err := r.pool.Exec(ctx, `UPDATE log_streams SET last_export_error = $1 WHERE id = $2`, errMsg, id)
 	if err != nil {
@@ -183,25 +167,6 @@ func (r *LogStreamRepo) SetLastExportError(ctx context.Context, id uuid.UUID, er
 	return nil
 }
 
-// BackfillConfigEncryption is the one-time, idempotent migrate step of the
-// expand-migrate-contract rollout of encrypted log stream config: it
-// encrypts the plaintext `config` of every row that hasn't been migrated
-// yet (config_encrypted IS NULL) and clears the plaintext column. Safe to
-// run on every startup — rows already migrated are not touched. Must be
-// called after SetEncryptionKey and before the HTTP/gRPC servers start
-// accepting traffic, so no request ever observes a row mid-migration.
-//
-// Concurrency note: during a rolling deploy, an old-code instance may still
-// be serving traffic (and writing plaintext `config` via the old
-// Create/Update path, which is unaware of `config_encrypted`) while a
-// new-code instance runs this backfill. Without a guard, the backfill could
-// read a row's plaintext config, then have a concurrent old-code write
-// change it, then blindly overwrite `config_encrypted` with the stale value
-// it read — silently losing the customer's newer update. Each row's UPDATE
-// therefore includes `AND config = <the exact value just read>` as an
-// optimistic-concurrency check: if the plaintext changed since the SELECT,
-// the UPDATE affects 0 rows and that row is safely left for the next
-// backfill run (which happens on every startup) instead of clobbering it.
 func (r *LogStreamRepo) BackfillConfigEncryption(ctx context.Context) (int, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id, config FROM log_streams WHERE config_encrypted IS NULL`)
 	if err != nil {
@@ -238,9 +203,6 @@ func (r *LogStreamRepo) BackfillConfigEncryption(ctx context.Context) (int, erro
 			return migrated, fmt.Errorf("encrypt config for log stream %s: %w", p.id, err)
 		}
 
-		// originalConfig (not the {}-substituted `config`) is compared
-		// against the current row so the guard matches exactly what the
-		// initial SELECT observed, including a genuinely-NULL/empty column.
 		tag, err := r.pool.Exec(ctx,
 			`UPDATE log_streams SET config_encrypted = $1, config = '{}'
 			 WHERE id = $2 AND config_encrypted IS NULL AND config IS NOT DISTINCT FROM $3`,
@@ -251,10 +213,6 @@ func (r *LogStreamRepo) BackfillConfigEncryption(ctx context.Context) (int, erro
 		if tag.RowsAffected() == 1 {
 			migrated++
 		}
-		// RowsAffected() == 0 means the plaintext config (or
-		// config_encrypted) changed concurrently since the SELECT above —
-		// leave the row for the next backfill run rather than overwriting
-		// a newer write with the stale value read here.
 	}
 
 	return migrated, nil

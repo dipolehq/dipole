@@ -1,3 +1,4 @@
+// connection.go wires the PostgreSQL connection pool and constructs every repository in this package.
 package postgres
 
 import (
@@ -18,7 +19,6 @@ type Pool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// TxPool extends Pool with transaction support. Satisfied by *pgxpool.Pool.
 type TxPool interface {
 	Pool
 	Begin(ctx context.Context) (pgx.Tx, error)

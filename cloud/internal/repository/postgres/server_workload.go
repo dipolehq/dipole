@@ -1,3 +1,4 @@
+// server_workload.go implements the ServerWorkloadRepository for PostgreSQL.
 package postgres
 
 import (
@@ -43,9 +44,13 @@ func (r *ServerWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 	sw := &domain.ServerWorkload{}
 	var authConfig, httpHeaders, tags []byte
 
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id, created_at, updated_at
-		 FROM server_workloads WHERE tenant_id = $1 AND id = $2`, tenantID, id).
+		 FROM server_workloads WHERE tenant_id = $1 AND id = $2`+rsFilter, args...).
 		Scan(&sw.ID, &sw.TenantID, &sw.Name, &sw.Description, &sw.IsActive,
 			&sw.Host, &sw.Port, &sw.AppProtocol, &sw.TransportProtocol,
 			&sw.TLS, &sw.TLSVerification, &sw.RequestedPort, &sw.RequestedTLS,
@@ -64,37 +69,33 @@ func (r *ServerWorkloadRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id
 	return sw, nil
 }
 
+const serverWorkloadSearchFilter = "tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')"
+
 func (r *ServerWorkloadRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ServerWorkload, int, error) {
-	countArgs := []interface{}{tenantID, opts.Search}
+	countArgs := []interface{}{tenantID, escapeILIKE(opts.Search)}
 	n := 2
 	rsFilter := ResourceSetFilter(ctx, &countArgs, &n)
 
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM server_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`+rsFilter,
+		`SELECT COUNT(*) FROM server_workloads WHERE `+serverWorkloadSearchFilter+rsFilter,
 		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count server workloads: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
-	listArgs := []interface{}{tenantID, opts.Search}
+	listArgs := []interface{}{tenantID, escapeILIKE(opts.Search)}
 	n = 2
 	rsFilter = ResourceSetFilter(ctx, &listArgs, &n)
-	n++
-	listArgs = append(listArgs, opts.PerPage)
-	limitParam := fmt.Sprintf("$%d", n)
-	n++
-	listArgs = append(listArgs, offset)
-	offsetParam := fmt.Sprintf("$%d", n)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, is_active, host, port, app_protocol, transport_protocol, tls, tls_verification, requested_port, requested_tls, auth_method, auth_scheme, auth_config, http_headers, url_path, tags, resource_set_id, created_at, updated_at,
 		        (SELECT COUNT(*) FROM access_policies ap WHERE ap.server_workload_id = server_workloads.id) AS policy_count
 		 FROM server_workloads
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%' OR host ILIKE '%' || $2 || '%')`+rsFilter+`
-		 ORDER BY created_at DESC LIMIT `+limitParam+` OFFSET `+offsetParam,
+		 WHERE `+serverWorkloadSearchFilter+rsFilter+`
+		 ORDER BY created_at DESC `+limitOffset,
 		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list server workloads: %w", err)
@@ -125,15 +126,19 @@ func (r *ServerWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, sw 
 	httpHeaders, _ := json.Marshal(sw.HTTPHeaders)
 	tags, _ := json.Marshal(sw.Tags)
 
-	err := r.pool.QueryRow(ctx,
-		`UPDATE server_workloads SET name=$1, description=$2, is_active=$3, host=$4, port=$5, app_protocol=$6, transport_protocol=$7, tls=$8, tls_verification=$9, requested_port=$10, requested_tls=$11, auth_method=$12, auth_scheme=$13, auth_config=$14, http_headers=$15, url_path=$16, tags=$17, resource_set_id=$18, updated_at=NOW()
-		 WHERE tenant_id = $19 AND id = $20
-		 RETURNING created_at, updated_at`,
-		sw.Name, sw.Description, sw.IsActive,
+	args := []interface{}{sw.Name, sw.Description, sw.IsActive,
 		sw.Host, sw.Port, sw.AppProtocol, sw.TransportProtocol,
 		sw.TLS, sw.TLSVerification, sw.RequestedPort, sw.RequestedTLS,
 		sw.AuthMethod, sw.AuthScheme, authConfig, httpHeaders,
-		sw.URLPath, tags, sw.ResourceSetID, tenantID, sw.ID).
+		sw.URLPath, tags, sw.ResourceSetID, tenantID, sw.ID}
+	n := 20
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	err := r.pool.QueryRow(ctx,
+		`UPDATE server_workloads SET name=$1, description=$2, is_active=$3, host=$4, port=$5, app_protocol=$6, transport_protocol=$7, tls=$8, tls_verification=$9, requested_port=$10, requested_tls=$11, auth_method=$12, auth_scheme=$13, auth_config=$14, http_headers=$15, url_path=$16, tags=$17, resource_set_id=$18, updated_at=NOW()
+		 WHERE tenant_id = $19 AND id = $20`+rsFilter+`
+		 RETURNING created_at, updated_at`,
+		args...).
 		Scan(&sw.CreatedAt, &sw.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("update server workload: %w", err)
@@ -142,7 +147,11 @@ func (r *ServerWorkloadRepo) Update(ctx context.Context, tenantID uuid.UUID, sw 
 }
 
 func (r *ServerWorkloadRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM server_workloads WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	args := []interface{}{tenantID, id}
+	n := 2
+	rsFilter := ResourceSetFilter(ctx, &args, &n)
+
+	_, err := r.pool.Exec(ctx, `DELETE FROM server_workloads WHERE tenant_id = $1 AND id = $2`+rsFilter, args...)
 	if err != nil {
 		return fmt.Errorf("delete server workload: %w", err)
 	}

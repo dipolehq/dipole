@@ -64,7 +64,7 @@ func (s *ConsentCallbackService) HandleCallback(ctx context.Context, code string
 		ExpiresAt:    expiresAt,
 	}
 
-	return s.tokenStore.Store(ctx, tenantID, userID, serverWorkloadID, entry)
+	return s.tokenStore.Store(ctx, tenantID, userID, serverWorkloadID, cfg.CredentialProviderID, entry)
 }
 
 func (s *ConsentCallbackService) exchangeCode(ctx context.Context, code string, cfg *ConsentConfig) (accessToken, refreshToken string, expiresIn int, err error) {

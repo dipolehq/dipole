@@ -74,6 +74,9 @@ func (s *AuthorizeService) Authorize(ctx context.Context, tenantID uuid.UUID, re
 
 	client, err := s.dcr.GetClient(ctx, tenantID, clientUUID)
 	if err != nil {
+		return nil, fmt.Errorf("look up mcp client: %w", err)
+	}
+	if client == nil {
 		return nil, ErrClientNotFound
 	}
 

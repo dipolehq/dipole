@@ -1,3 +1,4 @@
+// tenant_profile.go implements the TenantProfileRepository for PostgreSQL, a per-tenant singleton row of billing/contact profile fields.
 package postgres
 
 import (

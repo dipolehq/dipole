@@ -138,7 +138,7 @@ func (s *mockTokenStore) Get(_ context.Context, _ uuid.UUID, userID string, serv
 	return entry, nil
 }
 
-func (s *mockTokenStore) Store(_ context.Context, _ uuid.UUID, userID string, serverID uuid.UUID, token *UserTokenEntry) error {
+func (s *mockTokenStore) Store(_ context.Context, _ uuid.UUID, userID string, serverID uuid.UUID, _ uuid.UUID, token *UserTokenEntry) error {
 	key := userID + ":" + serverID.String()
 	s.tokens[key] = token
 	return nil
@@ -795,7 +795,7 @@ func TestHandleToolsCall_ConsentRequired_EnrichesErrorWithConsentURL(t *testing.
 			GatewayCallbackURL:    "https://gw.example.com/mcp/consent/callback",
 		},
 	}
-	userConsent := NewUserConsentService(newMockTokenStore(), consentResolver)
+	userConsent := NewUserConsentService(consentResolver)
 
 	handler := NewMethodHandler(rightAuth, mapClientFactory{}, userConsent, nil, nil)
 

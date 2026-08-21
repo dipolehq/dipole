@@ -1,7 +1,4 @@
-/*
-Package postgres — tenant_ca.go implements the TenantCARepository using
-SELECT ... FOR UPDATE to safely handle concurrent CA generation attempts.
-*/
+// tenant_ca.go implements the TenantCARepository using SELECT ... FOR UPDATE to safely handle concurrent CA generation attempts.
 package postgres
 
 import (

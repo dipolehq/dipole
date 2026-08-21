@@ -54,7 +54,14 @@ type UserTokenEntry struct {
 
 type UserTokenStore interface {
 	Get(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID) (*UserTokenEntry, error)
-	Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, token *UserTokenEntry) error
+	// Store saves a user's per-server OAuth token. credentialProviderID
+	// records which Credential Provider issued this token (for
+	// auditability); it is not part of the row's identity — a token is
+	// looked up by tenant + user + server alone, matching Get above, so
+	// re-consenting under a different Credential Provider for the same
+	// tenant/user/server still updates the existing row rather than
+	// creating a duplicate.
+	Store(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, credentialProviderID uuid.UUID, token *UserTokenEntry) error
 }
 
 type RightSidePolicyFinder interface {
@@ -254,7 +261,7 @@ func (a *RightSideAuth) resolvePerUserToken(ctx context.Context, userID string, 
 		return "", ErrCredentialExpired
 	}
 
-	if storeErr := a.tokenStore.Store(ctx, scope.TenantID, userID, policy.ServerWorkload.ID, refreshed); storeErr != nil {
+	if storeErr := a.tokenStore.Store(ctx, scope.TenantID, userID, policy.ServerWorkload.ID, policy.CredentialProviderID, refreshed); storeErr != nil {
 		return "", ErrCredentialExpired
 	}
 

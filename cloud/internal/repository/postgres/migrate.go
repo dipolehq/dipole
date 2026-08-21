@@ -1,7 +1,4 @@
-/*
-Package postgres — migrate.go embeds the SQL migration files and drives
-schema migrations (up/down/steps/version/force) via golang-migrate.
-*/
+// migrate.go embeds the SQL migration files and drives schema migrations (up/down/steps/version/force) via golang-migrate.
 package postgres
 
 import (

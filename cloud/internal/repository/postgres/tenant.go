@@ -1,3 +1,4 @@
+// tenant.go implements the TenantRepository for PostgreSQL.
 package postgres
 
 import (

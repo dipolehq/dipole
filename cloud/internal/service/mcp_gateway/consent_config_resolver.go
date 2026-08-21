@@ -85,5 +85,6 @@ func (r *CPConsentConfigResolver) GetConsentConfig(ctx context.Context, tenantID
 		ClientSecret:          oauthCfg.ClientSecret,
 		Scopes:                oauthCfg.Scopes,
 		GatewayCallbackURL:    callbackURL,
+		CredentialProviderID:  cpID,
 	}, nil
 }

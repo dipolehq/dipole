@@ -1,3 +1,4 @@
+// resource_set.go implements the ResourceSetRepository for PostgreSQL.
 package postgres
 
 import (
@@ -15,11 +16,6 @@ type ResourceSetRepo struct {
 }
 
 func (r *ResourceSetRepo) Create(ctx context.Context, tenantID uuid.UUID, rs *domain.ResourceSet) error {
-	// Respect a caller-supplied ID (signup.go creates the tenant's Default
-	// resource set with the well-known scope.DefaultResourceSetID so it
-	// matches every resource-scoped table's column default) and only
-	// generate one when the caller hasn't set one — the same pattern used
-	// by every other repository's Create (e.g. TrustProviderRepo.Create).
 	if rs.ID == uuid.Nil {
 		rs.ID = uuid.New()
 	}
@@ -49,21 +45,25 @@ func (r *ResourceSetRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uu
 }
 
 func (r *ResourceSetRepo) List(ctx context.Context, tenantID uuid.UUID, opts domain.ListOptions) ([]domain.ResourceSet, int, error) {
-	search := escapeILIKE(opts.Search)
+	where, countArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
+
 	var total int
 	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM resource_sets WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')`,
-		tenantID, search).Scan(&total)
+		`SELECT COUNT(*) FROM resource_sets WHERE `+where,
+		countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count resource sets: %w", err)
 	}
 
 	offset := (opts.Page - 1) * opts.PerPage
+	where, listArgs, n := buildTenantSearchFilter(tenantID, opts.Search)
+	limitOffset := appendLimitOffset(&listArgs, &n, opts.PerPage, offset)
+
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, tenant_id, name, description, created_at, updated_at FROM resource_sets
-		 WHERE tenant_id = $1 AND ($2 = '' OR name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%')
-		 ORDER BY created_at DESC LIMIT $3 OFFSET $4`,
-		tenantID, search, opts.PerPage, offset)
+		 WHERE `+where+`
+		 ORDER BY created_at DESC `+limitOffset,
+		listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list resource sets: %w", err)
 	}
@@ -98,9 +98,6 @@ func (r *ResourceSetRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uui
 	return nil
 }
 
-// GetRoleIDs is tenant-scoped (matching RoleRepo.AssignResourceSets/
-// GetResourceSetIDs) so a lookup can never cross a tenant boundary even
-// if a resource_set_id collided with another tenant's.
 func (r *ResourceSetRepo) GetRoleIDs(ctx context.Context, tenantID uuid.UUID, resourceSetID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT role_id FROM role_resource_set_assignments WHERE tenant_id = $1 AND resource_set_id = $2`,
@@ -121,9 +118,6 @@ func (r *ResourceSetRepo) GetRoleIDs(ctx context.Context, tenantID uuid.UUID, re
 	return ids, nil
 }
 
-// GetResourceCounts returns per-resource-type counts for the given resource set IDs.
-// Uses a single query with UNION ALL for efficiency — one database roundtrip regardless
-// of how many resource sets are requested.
 func (r *ResourceSetRepo) GetResourceCounts(ctx context.Context, tenantID uuid.UUID, resourceSetIDs []uuid.UUID) (map[uuid.UUID]domain.ResourceSetCounts, error) {
 	if len(resourceSetIDs) == 0 {
 		return map[uuid.UUID]domain.ResourceSetCounts{}, nil

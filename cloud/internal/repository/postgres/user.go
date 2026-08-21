@@ -1,3 +1,4 @@
+// user.go implements the UserRepository for PostgreSQL.
 package postgres
 
 import (
@@ -113,9 +114,6 @@ func (r *UserRepo) Delete(ctx context.Context, tenantID uuid.UUID, id uuid.UUID)
 	return nil
 }
 
-// GetTenantsByEmail finds all tenants where a user with the given email exists.
-// This is a cross-tenant query used exclusively for the tenant switching feature.
-// It only returns non-secret tenant metadata (ID, name, subdomain).
 func (r *UserRepo) GetTenantsByEmail(ctx context.Context, email string) ([]domain.TenantSummary, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT t.id, t.name, t.subdomain

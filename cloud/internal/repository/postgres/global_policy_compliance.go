@@ -1,3 +1,4 @@
+// global_policy_compliance.go implements the GlobalPolicyComplianceRepository for PostgreSQL, a per-tenant singleton row of policy compliance recommendation settings.
 package postgres
 
 import (

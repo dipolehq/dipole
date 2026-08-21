@@ -1,16 +1,14 @@
-/*
-password_reset_token.go implements the PasswordResetTokenRepository for PostgreSQL.
-Tokens are stored with SHA-256 hashes and 1-hour expiry. Once consumed, they
-are marked used (not deleted) to prevent replay attacks.
-*/
+// password_reset_token.go implements the PasswordResetTokenRepository for PostgreSQL, storing SHA-256 token hashes with 1-hour expiry; consumed tokens are marked used (not deleted) to prevent replay attacks.
 package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
@@ -45,6 +43,9 @@ func (r *PasswordResetTokenRepo) GetByHash(ctx context.Context, tokenHash string
 	var t domain.PasswordResetToken
 	var createdAt time.Time
 	err := row.Scan(&t.ID, &t.TenantID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &t.Used, &createdAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get password reset token: %w", err)
 	}

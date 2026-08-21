@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +17,10 @@ type ConsentConfig struct {
 	ClientSecret          string
 	Scopes                string
 	GatewayCallbackURL    string
+	// CredentialProviderID is the Credential Provider this OAuth config
+	// was resolved from, recorded alongside the token it's used to fetch
+	// (see UserTokenStore.Store).
+	CredentialProviderID uuid.UUID
 }
 
 type ConsentResult struct {
@@ -33,13 +36,11 @@ type ConsentConfigResolver interface {
 }
 
 type UserConsentService struct {
-	tokenStore     UserTokenStore
 	configResolver ConsentConfigResolver
 }
 
-func NewUserConsentService(tokenStore UserTokenStore, configResolver ConsentConfigResolver) *UserConsentService {
+func NewUserConsentService(configResolver ConsentConfigResolver) *UserConsentService {
 	return &UserConsentService{
-		tokenStore:     tokenStore,
 		configResolver: configResolver,
 	}
 }
@@ -65,13 +66,4 @@ func (s *UserConsentService) BuildConsentURL(ctx context.Context, scope TenantSc
 		"&state=" + url.QueryEscape(state)
 
 	return &ConsentResult{ConsentURL: consentURL}, nil
-}
-
-func (s *UserConsentService) StoreToken(ctx context.Context, tenantID uuid.UUID, userID string, serverWorkloadID uuid.UUID, accessToken, refreshToken string, expiresIn int) error {
-	entry := &UserTokenEntry{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().UTC().Add(time.Duration(expiresIn) * time.Second),
-	}
-	return s.tokenStore.Store(ctx, tenantID, userID, serverWorkloadID, entry)
 }

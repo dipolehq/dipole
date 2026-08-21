@@ -101,13 +101,6 @@ func (r *EventPipelineRepo) InsertAuditEvent(ctx context.Context, event *events.
 	return nil
 }
 
-// buildSecurityPayload dispatches on event.EventType exactly as before typed
-// Detail payloads existed. Detail is asserted to the type each builder
-// expects; a producer that sets EventType without the matching Detail type
-// (which no current producer does — both always set EventType and Detail
-// together for one of the four access.* events) falls back to that
-// builder's zero-value Detail, the same "field never populated" outcome the
-// old flat-struct design had for any field a producer forgot to set.
 func buildSecurityPayload(event *events.SecurityEvent) json.RawMessage {
 	switch event.EventType {
 	case "access.request":

@@ -192,7 +192,7 @@ func run(ctx context.Context, cfg *config.Config, encKey []byte, logger *slog.Lo
 
 	consentConfigResolver := mcpgw.NewCPConsentConfigResolver(repos.AccessPolicies, repos.CredentialProviders, encKey)
 	consentCallback := mcpgw.NewConsentCallbackService(gwTokenStore, consentConfigResolver)
-	gwUserConsent := mcpgw.NewUserConsentService(gwTokenStore, consentConfigResolver)
+	gwUserConsent := mcpgw.NewUserConsentService(consentConfigResolver)
 	gwTokenRefresher := mcpgw.NewOAuthTokenRefresher(consentConfigResolver)
 
 	gwRightAuth := mcpgw.NewRightSideAuth(gwPolicyFinder, gwTokenStore, gwTokenRefresher, gwDecrypter, gwSharedOAuth)

@@ -11,8 +11,6 @@ import (
 	"github.com/dipolehq/dipole/cloud/internal/domain"
 )
 
-// loadRelationsForPolicies batch-loads TrustProviders, AccessConditions, and
-// CredentialProviders for all matched policies via junction table JOINs.
 func (r *AccessPolicyRepo) loadRelationsForPolicies(ctx context.Context, tenantID uuid.UUID, policies []domain.AccessPolicyWithRelations) error {
 	ids := make([]uuid.UUID, len(policies))
 	idxMap := make(map[uuid.UUID]int, len(policies))
@@ -100,10 +98,6 @@ func (r *AccessPolicyRepo) loadRelationsForPolicies(ctx context.Context, tenantI
 	return nil
 }
 
-// syncJunctionsWithTx replaces the full set of trust providers, credential
-// providers, and access conditions attached to a policy. Runs inside the
-// caller's transaction (Create/Update) so the delete-then-reinsert is
-// atomic with the policy row write it accompanies.
 func (r *AccessPolicyRepo) syncJunctionsWithTx(ctx context.Context, tx Pool, p *domain.AccessPolicy) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM policy_trust_providers WHERE policy_id = $1`, p.ID); err != nil {
 		return fmt.Errorf("clear policy trust providers: %w", err)
@@ -137,9 +131,6 @@ func (r *AccessPolicyRepo) syncJunctionsWithTx(ctx context.Context, tx Pool, p *
 	return nil
 }
 
-// loadJunctions loads the junction-table IDs (not full entity rows) for a
-// single policy — used by GetByID, where the caller only needs the related
-// IDs, not the joined entities (that's what loadRelationsForPolicies is for).
 func (r *AccessPolicyRepo) loadJunctions(ctx context.Context, p *domain.AccessPolicy) error {
 	tpRows, err := r.pool.Query(ctx, `SELECT trust_provider_id FROM policy_trust_providers WHERE policy_id = $1`, p.ID)
 	if err != nil {
@@ -192,8 +183,6 @@ func (r *AccessPolicyRepo) loadJunctions(ctx context.Context, p *domain.AccessPo
 	return nil
 }
 
-// batchLoadJunctions is the multi-policy counterpart of loadJunctions, used
-// by List to avoid an N+1 query per page of results.
 func (r *AccessPolicyRepo) batchLoadJunctions(ctx context.Context, policies []domain.AccessPolicy) error {
 	ids := make([]uuid.UUID, len(policies))
 	idxMap := make(map[uuid.UUID]int, len(policies))

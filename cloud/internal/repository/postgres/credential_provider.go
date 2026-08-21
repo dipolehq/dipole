@@ -1,3 +1,4 @@
+// credential_provider.go implements the CredentialProviderRepository for PostgreSQL.
 package postgres
 
 import (
