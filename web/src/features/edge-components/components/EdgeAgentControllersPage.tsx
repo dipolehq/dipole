@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useAgentControllers } from '@/features/edge-components/hooks/useAgentControllers'
 
@@ -113,9 +112,6 @@ export function EdgeAgentControllersPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <DataTable
         columns={columns}
         data={tableData}

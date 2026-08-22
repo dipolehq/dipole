@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
 import { ArrowLeftRight, MonitorSmartphone, CheckCircle, Clock, Key, Server } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable } from '@/shared/components/ui/DataTable'
 import { useResourceSets } from '@/features/administration/hooks/useResourceSets'
 
@@ -120,9 +119,6 @@ export function AdminResourceSetsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <DataTable
         columns={columns}
         data={tableData}

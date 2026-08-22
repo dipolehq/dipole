@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 
@@ -75,10 +74,6 @@ export function DetailPage({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar — same as table pages */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       {/* Toolbar — matches DataTable toolbar positioning */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">

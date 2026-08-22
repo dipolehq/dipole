@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Search, FileText, Filter } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
+import { usePageHeaderActions } from '@/shared/context/PageHeaderActionsContext'
 import { Dropdown } from '@/shared/components/Dropdown'
 import { TimespanPicker } from '@/shared/components/TimespanPicker'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
@@ -108,102 +108,100 @@ export function ReportingPage() {
     setMcpUser('')
   }
 
+  usePageHeaderActions(
+    <div className="flex items-center gap-3">
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search"
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value) }}
+          className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
+        />
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setShowFilter(!showFilter)}
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
+            showFilter ? 'border-gray-400 text-gray-700 bg-gray-50' : 'border-border text-gray-600 hover:border-gray-400'
+          }`}
+        >
+          <Filter size={14} />
+          Filter
+        </button>
+        {showFilter && (
+          <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-white border border-border rounded-lg shadow-lg z-50">
+            <div className="flex items-center justify-between mb-3">
+              <button type="button" onClick={handleResetFilters} className="text-[11px] text-gray-600 hover:text-gray-700 font-medium">Reset All</button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setShowFilter(false)} className="text-[11px] text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
+                <button type="button" onClick={() => setShowFilter(false)} className="px-2.5 py-1 bg-gray-800 hover:bg-gray-900 text-white text-[11px] font-medium rounded-md transition-colors">Apply</button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {selectedLogType !== 'global_policy_compliance' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
+                  <TimespanPicker value={timeRange} onChange={setTimeRange} />
+                </div>
+              )}
+              {selectedLogType === 'audit_logs' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Category</label>
+                  <Dropdown options={AUDIT_LOG_CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))} value={category} onChange={setCategory} placeholder="Category" />
+                </div>
+              )}
+              {selectedLogType !== 'global_policy_compliance' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
+                  <Dropdown options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_SEVERITY_OPTIONS : SEVERITY_OPTIONS).map((s) => ({ value: s.value, label: s.label }))} value={severity} onChange={setSeverity} placeholder="Severity" />
+                </div>
+              )}
+              {selectedLogType === 'access_authorization' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Event Type</label>
+                  <Dropdown options={EVENT_TYPE_OPTIONS.map((e) => ({ value: e.value, label: e.label }))} value={eventType} onChange={setEventType} placeholder="Event Type" />
+                </div>
+              )}
+              {selectedLogType === 'workload_events' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Application Protocol</label>
+                  <Dropdown options={WORKLOAD_PROTOCOL_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} value={appProtocol} onChange={setAppProtocol} placeholder="Application Protocol" />
+                </div>
+              )}
+              {selectedLogType === 'workload_events' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">User (MCP App Protocol only)</label>
+                  <input type="text" value={mcpUser} onChange={(e) => setMcpUser(e.target.value)} placeholder="User (MCP App Protocol only)" className="w-full px-3 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
+                </div>
+              )}
+              {selectedLogType === 'global_policy_compliance' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Resource Set</label>
+                  <Dropdown options={RESOURCE_SET_OPTIONS.map((r) => ({ value: r.value, label: r.label }))} value={resourceSet} onChange={setResourceSet} placeholder="Resource Set" />
+                </div>
+              )}
+              {selectedLogType === 'global_policy_compliance' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Compliance Status</label>
+                  <Dropdown options={COMPLIANCE_STATUS_OPTIONS.map((c) => ({ value: c.value, label: c.label }))} value={complianceStatus} onChange={setComplianceStatus} placeholder="Compliance Status" />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <LogTypeSelector
+        value={selectedLogType}
+        onChange={(v) => { setSelectedLogType(v) }}
+      />
+    </div>,
+  )
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[60px] border-b border-border bg-white">
-        <PageHeader />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value) }}
-              className="pl-9 pr-3 py-2 border border-border rounded-md text-sm w-48 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400"
-            />
-          </div>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowFilter(!showFilter)}
-              className={`flex items-center gap-1.5 px-4 py-2 border rounded-md text-sm font-medium transition-colors ${
-                showFilter ? 'border-gray-400 text-gray-700 bg-gray-50' : 'border-border text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              <Filter size={14} />
-              Filter
-            </button>
-            {showFilter && (
-              <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-white border border-border rounded-lg shadow-lg z-50">
-                <div className="flex items-center justify-between mb-3">
-                  <button type="button" onClick={handleResetFilters} className="text-[11px] text-gray-600 hover:text-gray-700 font-medium">Reset All</button>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setShowFilter(false)} className="text-[11px] text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
-                    <button type="button" onClick={() => setShowFilter(false)} className="px-2.5 py-1 bg-gray-800 hover:bg-gray-900 text-white text-[11px] font-medium rounded-md transition-colors">Apply</button>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {selectedLogType !== 'global_policy_compliance' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Timespan</label>
-                      <TimespanPicker value={timeRange} onChange={setTimeRange} />
-                    </div>
-                  )}
-                  {selectedLogType === 'audit_logs' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Category</label>
-                      <Dropdown options={AUDIT_LOG_CATEGORY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))} value={category} onChange={setCategory} placeholder="Category" />
-                    </div>
-                  )}
-                  {selectedLogType !== 'global_policy_compliance' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Severity</label>
-                      <Dropdown options={(selectedLogType === 'audit_logs' ? AUDIT_LOG_SEVERITY_OPTIONS : SEVERITY_OPTIONS).map((s) => ({ value: s.value, label: s.label }))} value={severity} onChange={setSeverity} placeholder="Severity" />
-                    </div>
-                  )}
-                  {selectedLogType === 'access_authorization' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Event Type</label>
-                      <Dropdown options={EVENT_TYPE_OPTIONS.map((e) => ({ value: e.value, label: e.label }))} value={eventType} onChange={setEventType} placeholder="Event Type" />
-                    </div>
-                  )}
-                  {selectedLogType === 'workload_events' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Application Protocol</label>
-                      <Dropdown options={WORKLOAD_PROTOCOL_OPTIONS.map((p) => ({ value: p.value, label: p.label }))} value={appProtocol} onChange={setAppProtocol} placeholder="Application Protocol" />
-                    </div>
-                  )}
-                  {selectedLogType === 'workload_events' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">User (MCP App Protocol only)</label>
-                      <input type="text" value={mcpUser} onChange={(e) => setMcpUser(e.target.value)} placeholder="User (MCP App Protocol only)" className="w-full px-3 py-1.5 border border-border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-400" />
-                    </div>
-                  )}
-                  {selectedLogType === 'global_policy_compliance' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Resource Set</label>
-                      <Dropdown options={RESOURCE_SET_OPTIONS.map((r) => ({ value: r.value, label: r.label }))} value={resourceSet} onChange={setResourceSet} placeholder="Resource Set" />
-                    </div>
-                  )}
-                  {selectedLogType === 'global_policy_compliance' && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">Compliance Status</label>
-                      <Dropdown options={COMPLIANCE_STATUS_OPTIONS.map((c) => ({ value: c.value, label: c.label }))} value={complianceStatus} onChange={setComplianceStatus} placeholder="Compliance Status" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <LogTypeSelector
-            value={selectedLogType}
-            onChange={(v) => { setSelectedLogType(v) }}
-          />
-        </div>
-      </div>
-
       {/* Table — full bleed */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {selectedLogType === 'access_authorization' ? (

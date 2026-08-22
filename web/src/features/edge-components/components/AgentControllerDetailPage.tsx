@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { TagsField } from '@/shared/components/TagsField'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
@@ -52,9 +51,6 @@ export function AgentControllerDetailPage() {
   if (!id || (!isLoading && controller === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">Agent Controller not found.</p>
         </div>
@@ -112,9 +108,6 @@ export function AgentControllerDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">

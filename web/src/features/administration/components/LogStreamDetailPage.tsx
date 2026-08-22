@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { identityIssuerUrl, dipoleAwsAccountId } from '@/shared/lib/platform-urls'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2 } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
@@ -74,9 +73,6 @@ export function LogStreamDetailPage() {
   if (!id || (!isLoading && ls === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">Log Stream not found.</p>
         </div>
@@ -142,9 +138,6 @@ export function LogStreamDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">

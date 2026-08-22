@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { TagsField } from '@/shared/components/TagsField'
 import { useCreateAgentController } from '@/features/edge-components/hooks/useAgentControllers'
@@ -51,9 +50,6 @@ export function CreateAgentControllerPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
         <button type="button" onClick={handleSave} disabled={createMutation.isPending} className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">

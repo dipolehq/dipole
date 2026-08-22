@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil, Trash2 } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { useUser, useSaveUser, useDeleteUser } from '@/features/administration/hooks/useUsers'
@@ -69,9 +68,6 @@ export function UserDetailPage() {
   if (!id || (!isLoading && user === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">User not found.</p>
         </div>
@@ -128,9 +124,6 @@ export function UserDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">

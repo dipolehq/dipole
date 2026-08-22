@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingDropdown } from '@/shared/components/FloatingInput'
 import { TrustProviderForm } from '@/shared/components/forms/TrustProviderForm'
 import { EMPTY_TRUST_PROVIDER } from '@/shared/components/forms/types'
@@ -37,9 +36,6 @@ export function CreateTrustProviderPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
         <button

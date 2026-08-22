@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { LogTable } from '@/shared/components/ui/LogTable'
 import { fetchAuditLogs } from '@/features/reporting/api/eventsApi'
 
@@ -84,9 +83,6 @@ export function ReportingAuditPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <div className="flex-1 min-h-0">
         <LogTable
           columns={columns}

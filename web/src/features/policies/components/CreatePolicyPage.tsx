@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/shared/components/PageHeader'
 import {
   FloatingInput,
   FloatingTextarea,
@@ -140,10 +139,6 @@ export function CreatePolicyPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       {/* Toolbar — step tracker on left, Save + Cancel on right */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">

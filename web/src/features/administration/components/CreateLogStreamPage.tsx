@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { identityIssuerUrl, dipoleAwsAccountId } from '@/shared/lib/platform-urls'
 import { useNavigate } from 'react-router-dom'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { LOG_STREAM_EVENT_TYPE_OPTIONS, LOG_STREAM_DESTINATION_OPTIONS } from '@/shared/constants/administration'
 import { useCreateLogStream } from '@/features/administration/hooks/useLogStreams'
@@ -85,9 +84,6 @@ export function CreateLogStreamPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-end gap-2 px-4 py-3 shrink-0">
         <button
