@@ -39,6 +39,13 @@ export function TrustProviderTab({
 
   function removeProvider(index: number) {
     if (displayValues.length <= 1) return
+    // If this entry was hydrated from an existing provider (tagged with
+    // existingId when added — see handleAddExisting), also drop its id
+    // from trustProviderIds. Without this, the trash icon only trimmed the
+    // display array and left the id attached, so it silently reappeared
+    // after save (fetchPolicy re-hydrates from trustProviderIds).
+    const existingId = displayValues[index]?.existingId
+    if (existingId) onToggleId(existingId)
     onChange(displayValues.filter((_, i) => i !== index))
   }
 
@@ -52,7 +59,15 @@ export function TrustProviderTab({
   }
 
   async function handleAddExisting(id: string) {
-    if (!selectedIds.includes(id)) onToggleId(id)
+    // The selector calls this for both additions and removals (a real
+    // toggle). If already selected, this is a removal.
+    if (selectedIds.includes(id)) {
+      const index = displayValues.findIndex((v) => v.existingId === id)
+      onToggleId(id)
+      if (index !== -1) onChange(displayValues.filter((_, i) => i !== index))
+      return
+    }
+    onToggleId(id)
     try {
       const tp = await fetchTrustProvider(id)
       const matchRules = (tp.matchRules ?? []).length > 0
@@ -62,6 +77,10 @@ export function TrustProviderTab({
       onChange([
         ...values,
         {
+          // Tagging this entry as existing tells createPolicy() to reuse
+          // trustProviderIds rather than POST a new /trust-providers record
+          // for it — see the comment on TrustProviderFormValues.existingId.
+          existingId: id,
           name: tp.name,
           description: tp.description,
           trustProviderType: tp.type,
@@ -81,7 +100,13 @@ export function TrustProviderTab({
         },
       ])
     } catch {
-      onChange([...values, { ...EMPTY_TRUST_PROVIDER }])
+      // Keep the id selected (already toggled on above) even though we
+      // couldn't fetch its details — push a placeholder tagged with
+      // existingId so it still displays as a card, stays removable via
+      // removeProvider, and is never mistaken for a brand-new entry to
+      // create. Reverting the toggle here would silently un-select the
+      // provider on a transient fetch failure.
+      onChange([...values, { ...EMPTY_TRUST_PROVIDER, existingId: id }])
     }
     setMode('new')
   }

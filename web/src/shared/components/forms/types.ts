@@ -40,6 +40,7 @@ export interface TrustProviderMatchRule {
 }
 
 export interface TrustProviderFormValues {
+  existingId?: string
   name: string
   description: string
   trustProviderType: string
@@ -71,6 +72,11 @@ export interface TimeConditionDay {
 }
 
 export interface AccessConditionFormValues {
+  // Set only when this entry was hydrated from an existing Access
+  // Condition (via "Select Existing"). See TrustProviderFormValues.existingId
+  // for why this matters — without it, createPolicy() re-creates a
+  // duplicate record for every existing condition selected.
+  existingId?: string
   name: string
   description: string
   integration: string

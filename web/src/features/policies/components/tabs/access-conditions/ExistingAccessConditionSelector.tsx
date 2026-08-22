@@ -37,9 +37,16 @@ export function ExistingAccessConditionSelector({
   }
 
   function handleUseSelected() {
-    // Find newly added ids (not already in selectedIds)
-    const newIds = Array.from(localSelected).filter((id) => !selectedIds.includes(id))
-    for (const id of newIds) {
+    // onToggle flips membership (adds if absent, removes if present), so
+    // propagate every id whose selection state actually changed — both
+    // newly checked ids AND ids the user unchecked. Only calling onToggle
+    // for additions silently dropped removals, leaving stale access
+    // condition ids attached to the policy after save.
+    const changedIds = [
+      ...Array.from(localSelected).filter((id) => !selectedIds.includes(id)),
+      ...selectedIds.filter((id) => !localSelected.has(id)),
+    ]
+    for (const id of changedIds) {
       onToggle(id)
     }
     onCancel()

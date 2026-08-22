@@ -267,6 +267,7 @@ export async function fetchPolicy(id: string): Promise<FetchPolicyResult | null>
     const trustProviders = tpData
       .filter((tp): tp is NonNullable<typeof tp> => tp !== null)
       .map((tp) => ({
+        existingId: tp.id,
         name: tp.name,
         description: tp.description,
         trustProviderType: tp.type,
@@ -288,6 +289,9 @@ export async function fetchPolicy(id: string): Promise<FetchPolicyResult | null>
     const accessConditions = acData
       .filter((ac): ac is NonNullable<typeof ac> => ac !== null)
       .map((ac) => ({
+        // Marks this entry as already existing so savePolicy/createPolicy
+        // never re-POST it as a new Access Condition record.
+        existingId: ac.id,
         name: ac.name,
         description: ac.description,
         integration: ac.type,
@@ -423,6 +427,10 @@ export async function createPolicy(values: PolicyFormValues): Promise<void> {
 
   const trustProviderIds = [...values.trustProviderIds]
   for (const tp of values.trustProviders ?? []) {
+    // Entries hydrated from "Select Existing" carry existingId and are
+    // already present in trustProviderIds — skip re-creating them, or
+    // every save would mint a duplicate Trust Provider record.
+    if (tp.existingId) continue
     if (tp.name) {
       try {
         const created = await apiClient.post<{ id: string }>('/trust-providers', {
@@ -455,6 +463,10 @@ export async function createPolicy(values: PolicyFormValues): Promise<void> {
 
   const accessConditionIds = [...values.accessConditionIds]
   for (const ac of values.accessConditions ?? []) {
+    // Entries hydrated from "Select Existing" carry existingId and are
+    // already present in accessConditionIds — skip re-creating them, or
+    // every save would mint a duplicate Access Condition record.
+    if (ac.existingId) continue
     if (ac.name) {
       try {
         const config: Record<string, unknown> = {}
