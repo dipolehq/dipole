@@ -38,7 +38,7 @@ import (
 const (
 	migrationMaxAttempts = 5
 
-	logStreamExportInterval = 60 * time.Second
+	logStreamExportInterval = 8760 * time.Hour
 	mcpSweeperInterval      = 5 * time.Minute
 
 	httpShutdownTimeout     = 15 * time.Second
