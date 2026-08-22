@@ -20,6 +20,9 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'https://api.d
 
 const PLATFORM_DOMAIN = (import.meta.env.VITE_PLATFORM_DOMAIN as string) || 'dipolehq.com'
 
+/** Environment suffix appended to per-tenant service labels (e.g. '-staging'). Empty in production. */
+const ENV_SUFFIX = (import.meta.env.VITE_ENV_SUFFIX as string) || ''
+
 /** Dipole's AWS Account ID used in cross-account bucket policies for log streaming. */
 const DIPOLE_AWS_ACCOUNT_ID = (import.meta.env.VITE_DIPOLE_AWS_ACCOUNT_ID as string) || '992382430086'
 
@@ -99,17 +102,17 @@ export function displayUrl(url: string): string {
 
 export function mcpAuthServerUrl(tenantSubdomain: string): string {
   if (!tenantSubdomain) return ''
-  return `https://${tenantSubdomain}-mcp.${PLATFORM_DOMAIN}`
+  return `https://${tenantSubdomain}-mcp${ENV_SUFFIX}.${PLATFORM_DOMAIN}`
 }
 
 export function identityIssuerUrl(tenantSubdomain: string): string {
   if (!tenantSubdomain) return ''
-  return `https://${tenantSubdomain}-id.${PLATFORM_DOMAIN}`
+  return `https://${tenantSubdomain}-id${ENV_SUFFIX}.${PLATFORM_DOMAIN}`
 }
 
 export function mcpGatewayUrl(tenantSubdomain: string): string {
   if (!tenantSubdomain) return ''
-  return `https://${tenantSubdomain}-mcpgateway.${PLATFORM_DOMAIN}`
+  return `https://${tenantSubdomain}-mcpgateway${ENV_SUFFIX}.${PLATFORM_DOMAIN}`
 }
 
 // ---------------------------------------------------------------------------

@@ -132,6 +132,7 @@ jobs:
           npm run build
         env:
           VITE_API_BASE_URL: https://staging-api.dipolehq.com
+          VITE_ENV_SUFFIX: -staging
 
       - name: Deploy to Cloudflare Pages (staging)
         working-directory: web
