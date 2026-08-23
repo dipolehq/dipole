@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { usePolicies } from '@/features/policies/hooks/usePolicy'
 import { fetchClientWorkloads, fetchServerWorkloads, fetchTrustProviders, fetchAccessConditions, fetchCredentialProviders } from '@/features/policies/api/entityApi'
@@ -144,24 +143,20 @@ export function PoliciesPage() {
     [],
   )
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <DataTable
-      columns={columns}
-      data={tableData}
-      searchPlaceholder="Filter by name or workload..."
-      searchKeys={['name', 'clientWorkload', 'serverWorkload', 'trustProvider', 'credentialProvider']}
-      facetedFilters={facetedFilters}
-      actionLabel="New Policy"
-      onAction={() => navigate('/access-policies/new')}
-      onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
-      emptyMessage="No access policies found."
-    />
+        columns={columns}
+        data={tableData}
+        isLoading={isLoading}
+        searchPlaceholder="Filter by name or workload..."
+        searchKeys={['name', 'clientWorkload', 'serverWorkload', 'trustProvider', 'credentialProvider']}
+        facetedFilters={facetedFilters}
+        actionLabel="New Policy"
+        onAction={() => navigate('/access-policies/new')}
+        onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
+        emptyMessage="No access policies found."
+      />
     </div>
   )
 }

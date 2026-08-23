@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { apiBaseUrl } from '@/shared/lib/platform-urls'
 import { Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { apiClient } from '@/shared/lib/api-client'
 import { MFAConfigTab } from '@/features/profile/components/MFAConfigTab'
@@ -148,10 +147,6 @@ function ProfileContent({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       {/* Toolbar — tabs on left, actions on right */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">

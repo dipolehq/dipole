@@ -37,6 +37,13 @@ export function AccessConditionTab({
   }
 
   function removeCondition(index: number) {
+    // If this entry was hydrated from an existing condition (tagged with
+    // existingId when added — see handleAddExisting), also drop its id
+    // from accessConditionIds. Without this, the trash icon only trimmed
+    // the display array and left the id attached, so it silently
+    // reappeared after save (fetchPolicy re-hydrates from accessConditionIds).
+    const existingId = displayValues[index]?.existingId
+    if (existingId) onToggleId(existingId)
     onChange(displayValues.filter((_, i) => i !== index))
   }
 
@@ -50,13 +57,25 @@ export function AccessConditionTab({
   }
 
   async function handleAddExisting(id: string) {
-    if (!selectedIds.includes(id)) onToggleId(id)
+    // The selector calls this for both additions and removals (a real
+    // toggle). If already selected, this is a removal.
+    if (selectedIds.includes(id)) {
+      const index = displayValues.findIndex((v) => v.existingId === id)
+      onToggleId(id)
+      if (index !== -1) onChange(displayValues.filter((_, i) => i !== index))
+      return
+    }
+    onToggleId(id)
     try {
       const ac = await fetchAccessCondition(id)
       const config = ac.config as Record<string, unknown> | undefined
       onChange([
         ...values,
         {
+          // Tagging this entry as existing tells createPolicy() to reuse
+          // accessConditionIds rather than POST a new /access-conditions
+          // record for it — see AccessConditionFormValues.existingId.
+          existingId: id,
           name: ac.name,
           description: ac.description,
           integration: ac.type,
@@ -67,7 +86,13 @@ export function AccessConditionTab({
         },
       ])
     } catch {
-      onChange([...values, { ...EMPTY_ACCESS_CONDITION }])
+      // Keep the id selected (already toggled on above) even though we
+      // couldn't fetch its details — push a placeholder tagged with
+      // existingId so it still displays as a card, stays removable via
+      // removeCondition, and is never mistaken for a brand-new entry to
+      // create. Reverting the toggle here would silently un-select the
+      // condition on a transient fetch failure.
+      onChange([...values, { ...EMPTY_ACCESS_CONDITION, existingId: id }])
     }
     setMode('new')
   }

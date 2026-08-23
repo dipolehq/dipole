@@ -11,12 +11,26 @@ interface SignOnPolicyData {
 export function SignOnPolicyPanel() {
   const qc = useQueryClient()
 
-  const { data } = useQuery<SignOnPolicyData>({
+  const { data, isLoading, isError } = useQuery<SignOnPolicyData>({
     queryKey: ['sign-on-policy'],
     queryFn: () => apiClient.get<SignOnPolicyData>('/sign-on-policy'),
   })
 
-  if (!data) return <div className="flex-1" />
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-gray-400">Loading sign-on policy…</p>
+      </div>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-gray-400">Unable to load sign-on policy.</p>
+      </div>
+    )
+  }
 
   return <SignOnPolicyForm data={data} queryClient={qc} />
 }

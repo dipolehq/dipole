@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/shared/components/Sidebar'
+import { PageHeader } from '@/shared/components/PageHeader'
+import { PageHeaderActionsProvider, usePageHeaderActionsValue } from '@/shared/context/PageHeaderActionsContext'
 
 interface LayoutProps {
   children: ReactNode
@@ -55,7 +57,24 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="h-screen bg-surface-secondary overflow-hidden flex">
       <Sidebar />
-      <main className="flex-1 ml-[204px] h-screen overflow-hidden flex flex-col">{children}</main>
+      <PageHeaderActionsProvider>
+        <main className="flex-1 ml-[204px] h-screen overflow-hidden flex flex-col">
+          <PageHeaderBar />
+          {children}
+        </main>
+      </PageHeaderActionsProvider>
+    </div>
+  )
+}
+
+function PageHeaderBar() {
+  const actions = usePageHeaderActionsValue()
+  const height = actions ? 'h-[60px]' : 'h-[44px]'
+
+  return (
+    <div className={`flex items-center justify-between px-4 shrink-0 ${height} border-b border-border bg-white`}>
+      <PageHeader />
+      {actions}
     </div>
   )
 }

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ColumnDef } from '@tanstack/react-table'
 import { ExternalLink, RefreshCw } from 'lucide-react'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable } from '@/shared/components/ui/DataTable'
 import { apiClient } from '@/shared/lib/api-client'
 
@@ -139,9 +138,6 @@ export function ReportingCompliancePage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <div className="flex-1 min-h-0">
         <DataTable
           columns={columns}

@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useAgentProxies } from '@/features/edge-components/hooks/useAgentProxies'
 
@@ -114,16 +113,12 @@ export function EdgeAgentProxiesPage() {
 
   const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <DataTable
         columns={columns}
         data={tableData}
+        isLoading={isLoading}
         searchPlaceholder="Filter by ID..."
         searchKeys={['proxyId', 'controllerId']}
         facetedFilters={facetedFilters}

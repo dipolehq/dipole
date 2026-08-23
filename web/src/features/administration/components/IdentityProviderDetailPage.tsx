@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Pencil, Trash2, Plus, X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingInput, FloatingTextarea, FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DeleteConfirmDialog } from '@/shared/components/ui/DeleteConfirmDialog'
 import { IDP_TYPE_OPTIONS } from '@/shared/constants/administration'
@@ -70,9 +69,6 @@ export function IdentityProviderDetailPage() {
   if (!id || (!isLoading && idp === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">Identity Provider not found.</p>
         </div>
@@ -157,9 +153,6 @@ export function IdentityProviderDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">

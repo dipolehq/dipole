@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { DataTable, type FacetedFilterConfig } from '@/shared/components/ui/DataTable'
 import { useRoles } from '@/features/administration/hooks/useRoles'
 
@@ -88,16 +87,12 @@ export function AdminRolesPage() {
 
   const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <DataTable
         columns={columns}
         data={tableData}
+        isLoading={isLoading}
         searchPlaceholder="Filter by name..."
         searchKeys={['name', 'description']}
         facetedFilters={facetedFilters}

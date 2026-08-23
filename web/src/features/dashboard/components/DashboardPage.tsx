@@ -5,7 +5,6 @@ import { WorkloadEventsChart } from '@/features/dashboard/components/WorkloadEve
 import { AccessDecisionsChart } from '@/features/dashboard/components/AccessDecisionsChart'
 import { ConnectionsChart } from '@/features/dashboard/components/ConnectionsChart'
 import { DonutChart } from '@/features/dashboard/components/DonutChart'
-import { PageHeader } from '@/shared/components/PageHeader'
 import {
   STAT_CARDS,
 } from '@/features/dashboard/config'
@@ -45,9 +44,6 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <div className="px-4 py-3 space-y-4 flex-1 overflow-y-auto">
 
       {isStatsError && (

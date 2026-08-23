@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { AccessAuthorizationTable } from '@/features/reporting/components/AccessAuthorizationTable'
 import { fetchAuthEvents } from '@/features/reporting/api/eventsApi'
 
@@ -20,9 +19,6 @@ export function ReportingAccessAuthPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
       <div className="flex-1 min-h-0">
         <AccessAuthorizationTable
           data={data?.items}

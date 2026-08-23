@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PageHeader } from '@/shared/components/PageHeader'
 import {
   FloatingInput,
   FloatingTextarea,
@@ -60,9 +59,6 @@ export function PolicyDetailPage() {
   if (!id || isError || (!isLoading && data === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center flex-col">
           <p className="text-sm text-gray-500">Policy not found.</p>
           <button
@@ -144,10 +140,6 @@ export function PolicyDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-        <PageHeader />
-      </div>
 
       {/* Toolbar — tabs on left, actions on right */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0">

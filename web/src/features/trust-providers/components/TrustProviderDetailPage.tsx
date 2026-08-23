@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PageHeader } from '@/shared/components/PageHeader'
 import { FloatingDropdown } from '@/shared/components/FloatingInput'
 import { DetailPage } from '@/shared/components/ui/DetailPage'
 import { TrustProviderForm } from '@/shared/components/forms/TrustProviderForm'
@@ -27,9 +26,6 @@ export function TrustProviderDetailPage() {
   if (!id || isError || (!isLoading && data === null)) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 shrink-0 h-[44px] border-b border-border bg-white">
-          <PageHeader />
-        </div>
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-gray-400">Trust provider not found.</p>
         </div>

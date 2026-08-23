@@ -66,6 +66,8 @@ interface DataTableProps<TData> {
   onAction?: () => void
   onRowClick?: (row: TData) => void
   emptyMessage?: string
+  isLoading?: boolean
+  skeletonRowCount?: number
 }
 
 export function DataTable<TData>({
@@ -78,6 +80,8 @@ export function DataTable<TData>({
   onAction,
   onRowClick,
   emptyMessage = 'No results.',
+  isLoading = false,
+  skeletonRowCount = 8,
 }: DataTableProps<TData>) {
   const id = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -214,7 +218,17 @@ export function DataTable<TData>({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows?.length ? (
+              {isLoading ? (
+                Array.from({ length: skeletonRowCount }, (_, i) => (
+                  <TableRow key={`skeleton-${i}`} className="hover:bg-transparent">
+                    {columns.map((_, colIdx) => (
+                      <TableCell key={colIdx}>
+                        <div className="h-4 rounded bg-gray-100 animate-pulse" style={{ width: `${60 + ((colIdx * 17) % 30)}%` }} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
