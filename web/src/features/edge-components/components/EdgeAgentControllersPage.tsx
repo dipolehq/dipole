@@ -108,13 +108,12 @@ export function EdgeAgentControllersPage() {
 
   const facetedFilters: FacetedFilterConfig[] = useMemo(() => [{ columnId: 'status', label: 'Status' }], [])
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
       <DataTable
         columns={columns}
         data={tableData}
+        isLoading={isLoading}
         searchPlaceholder="Filter by name..."
         searchKeys={['name', 'description']}
         facetedFilters={facetedFilters}

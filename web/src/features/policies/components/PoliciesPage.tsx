@@ -143,21 +143,20 @@ export function PoliciesPage() {
     [],
   )
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
       <DataTable
-      columns={columns}
-      data={tableData}
-      searchPlaceholder="Filter by name or workload..."
-      searchKeys={['name', 'clientWorkload', 'serverWorkload', 'trustProvider', 'credentialProvider']}
-      facetedFilters={facetedFilters}
-      actionLabel="New Policy"
-      onAction={() => navigate('/access-policies/new')}
-      onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
-      emptyMessage="No access policies found."
-    />
+        columns={columns}
+        data={tableData}
+        isLoading={isLoading}
+        searchPlaceholder="Filter by name or workload..."
+        searchKeys={['name', 'clientWorkload', 'serverWorkload', 'trustProvider', 'credentialProvider']}
+        facetedFilters={facetedFilters}
+        actionLabel="New Policy"
+        onAction={() => navigate('/access-policies/new')}
+        onRowClick={(row) => navigate(`/access-policies/${row.id}`)}
+        emptyMessage="No access policies found."
+      />
     </div>
   )
 }

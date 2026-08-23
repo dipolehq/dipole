@@ -23,12 +23,26 @@ interface GlobalPolicyData {
 export function GlobalPolicySettingsPanel() {
   const qc = useQueryClient()
 
-  const { data } = useQuery<GlobalPolicyData>({
+  const { data, isLoading, isError } = useQuery<GlobalPolicyData>({
     queryKey: ['global-policy-compliance'],
     queryFn: () => apiClient.get<GlobalPolicyData>('/global-policy-compliance'),
   })
 
-  if (!data) return <div className="flex-1" />
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-gray-400">Loading global policy compliance…</p>
+      </div>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-sm text-gray-400">Unable to load global policy compliance settings.</p>
+      </div>
+    )
+  }
 
   return <GlobalPolicyForm data={data} queryClient={qc} />
 }

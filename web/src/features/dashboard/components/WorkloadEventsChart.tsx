@@ -91,7 +91,7 @@ export function WorkloadEventsChart({ data, timeRange = '6h', onTimeRangeChange,
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#fcc419]" />Warning</span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#ff6b6b]" />Error</span>
           </div>
-          <button onClick={onRefresh} className="p-2 rounded-md bg-gray-800 hover:bg-gray-900 text-white transition-colors">
+          <button onClick={onRefresh} className="p-2 rounded-md border border-border bg-white text-gray-700 hover:bg-gray-50 transition-colors">
             <RotateCw size={14} />
           </button>
         </div>

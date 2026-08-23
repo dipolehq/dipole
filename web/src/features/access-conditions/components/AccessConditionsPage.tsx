@@ -101,13 +101,12 @@ export function AccessConditionsPage() {
     [],
   )
 
-  if (isLoading) return <div className="flex-1" />
-
   return (
     <div className="flex flex-col h-full">
       <DataTable
         columns={columns}
         data={tableData}
+        isLoading={isLoading}
         searchPlaceholder="Filter by name or type..."
         searchKeys={['name', 'type']}
         facetedFilters={facetedFilters}
